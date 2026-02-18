@@ -3,8 +3,8 @@ package com.bench.util;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Thread-safe prepared statement cache for a single connection.
@@ -13,13 +13,13 @@ import java.util.Map;
  */
 public class PreparedStatementCache {
     private final Connection connection;
-    private final Map<String, PreparedStatement> cache;
-    private long hits = 0;
-    private long misses = 0;
+    private final ConcurrentHashMap<String, PreparedStatement> cache;
+    private final AtomicLong hits = new AtomicLong(0);
+    private final AtomicLong misses = new AtomicLong(0);
     
     public PreparedStatementCache(Connection connection) {
         this.connection = connection;
-        this.cache = new HashMap<>();
+        this.cache = new ConcurrentHashMap<>();
     }
     
     /**
@@ -29,12 +29,12 @@ public class PreparedStatementCache {
     public PreparedStatement getPreparedStatement(String sql) throws SQLException {
         PreparedStatement stmt = cache.get(sql);
         if (stmt != null && !stmt.isClosed()) {
-            hits++;
+            hits.incrementAndGet();
             return stmt;
         }
         
         // Create new statement
-        misses++;
+        misses.incrementAndGet();
         stmt = connection.prepareStatement(sql);
         cache.put(sql, stmt);
         return stmt;
@@ -61,14 +61,14 @@ public class PreparedStatementCache {
      * Get cache hit count.
      */
     public long getHits() {
-        return hits;
+        return hits.get();
     }
     
     /**
      * Get cache miss count (statements created).
      */
     public long getMisses() {
-        return misses;
+        return misses.get();
     }
     
     /**

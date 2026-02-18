@@ -101,8 +101,8 @@ public class HistogramAggregator {
                 .filter(Files::isRegularFile)
                 .filter(p -> p.getFileName().toString().endsWith(".hlog") ||
                            p.getFileName().toString().equals("hdr.hlog"))
-                .filter(p -> sutName == null || p.toString().contains("/" + sutName + "/"))
-                .filter(p -> workloadName == null || p.toString().contains("/" + workloadName + "/"))
+                .filter(p -> sutName == null || p.toString().contains(File.separator + sutName + File.separator))
+                .filter(p -> workloadName == null || p.toString().contains(File.separator + workloadName + File.separator))
                 .collect(Collectors.toList());
         }
         
@@ -197,13 +197,13 @@ public class HistogramAggregator {
         sb.append(String.format("Std Dev: %.2f ms\n\n", (double)stats.get("stdDevLatencyUs") / 1000.0));
         
         sb.append("## Latency Percentiles\n\n");
-        sb.append(String.format("p50:   %8.2f ms\n", stats.get("p50Ms")));
-        sb.append(String.format("p75:   %8.2f ms\n", (long)stats.get("p75Us") / 1000.0));
-        sb.append(String.format("p90:   %8.2f ms\n", (long)stats.get("p90Us") / 1000.0));
-        sb.append(String.format("p95:   %8.2f ms\n", stats.get("p95Ms")));
-        sb.append(String.format("p99:   %8.2f ms\n", stats.get("p99Ms")));
-        sb.append(String.format("p99.9: %8.2f ms\n", stats.get("p999Ms")));
-        sb.append(String.format("p99.99:%8.2f ms\n", (long)stats.get("p9999Us") / 1000.0));
+        sb.append(String.format("p50:    %8.2f ms\n", stats.get("p50Ms")));
+        sb.append(String.format("p75:    %8.2f ms\n", (long)stats.get("p75Us") / 1000.0));
+        sb.append(String.format("p90:    %8.2f ms\n", (long)stats.get("p90Us") / 1000.0));
+        sb.append(String.format("p95:    %8.2f ms\n", stats.get("p95Ms")));
+        sb.append(String.format("p99:    %8.2f ms\n", stats.get("p99Ms")));
+        sb.append(String.format("p99.9:  %8.2f ms\n", stats.get("p999Ms")));
+        sb.append(String.format("p99.99: %8.2f ms\n", (long)stats.get("p9999Us") / 1000.0));
         
         Files.writeString(outputFile, sb.toString());
         logger.info("Wrote aggregated summary to: {}", outputFile);
