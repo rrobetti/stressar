@@ -37,6 +37,9 @@ public class BenchmarkConfig {
     
     // OJP-specific configuration
     private OjpConfig ojpConfig;
+    
+    // Prepared statement caching
+    private boolean enablePreparedStatementCache = true;
 
     public BenchmarkConfig() {
         this.database = new DatabaseConfig();
@@ -249,5 +252,13 @@ public class BenchmarkConfig {
                     "OJP mode must not use client-side pooling properties: " + key);
             }
         });
+    }
+    
+    public boolean isEnablePreparedStatementCache() {
+        return enablePreparedStatementCache;
+    }
+    
+    public void setEnablePreparedStatementCache(boolean enablePreparedStatementCache) {
+        this.enablePreparedStatementCache = enablePreparedStatementCache;
     }
 }
