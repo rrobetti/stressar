@@ -1,0 +1,71 @@
+# PgBouncer External Connection Pooler Configuration
+# Uses PgBouncer for connection pooling
+# Client maintains minimal connections (poolSize: 2)
+#
+# Prerequisites:
+#   - PgBouncer must be running and configured
+#   - Database URL should point to PgBouncer endpoint (not directly to PostgreSQL)
+#
+# PgBouncer Configuration Example:
+#   [databases]
+#   benchdb = host=localhost port=5432 dbname=benchdb
+#
+#   [pgbouncer]
+#   listen_addr = *
+#   listen_port = 6432
+#   auth_type = md5
+#   auth_file = /etc/pgbouncer/userlist.txt
+#   pool_mode = transaction
+#   max_client_conn = 1000
+#   default_pool_size = 50
+#
+# Run with:
+#   bench run --config pgbouncer-mode.yaml --output results/pgbouncer/
+
+database:
+  # Point to PgBouncer endpoint (not directly to PostgreSQL)
+  jdbcUrl: "jdbc:postgresql://pgbouncer-host:6432/benchdb"
+  username: "benchuser"
+  password: "benchpass"
+
+# Connection mode: PgBouncer
+connectionMode: PGBOUNCER
+
+# Pool configuration
+# Use minimal client-side connections since PgBouncer handles pooling
+poolSize: 2
+
+# Workload configuration
+workload:
+  type: W1_READ_ONLY
+  openLoop: true
+  targetRps: 2000
+  
+  # Phase durations
+  warmupSeconds: 300
+  durationSeconds: 600
+  cooldownSeconds: 120
+  repeatCount: 5
+  
+  # Workload mix for W1_READ_ONLY
+  queryAPercent: 0.30  # 30% account lookups, 70% recent orders
+  
+  # Parameter distribution
+  useZipf: false
+  seed: 42
+
+# Data generation (must match init-db settings)
+numAccounts: 10000
+numItems: 5000
+numOrders: 50000
+
+# Metrics
+metricsIntervalSeconds: 1
+
+# Output
+outputDir: "results"
+
+# Sweep configuration (if using sweep command)
+sweepIncrementPercent: 15.0
+sloP95Ms: 50
+errorRateThreshold: 0.001
