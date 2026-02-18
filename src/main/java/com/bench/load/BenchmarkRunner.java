@@ -188,12 +188,12 @@ public class BenchmarkRunner {
             );
             
             logger.info("=== Benchmark complete ===");
-            logger.info("Attempted RPS: {:.2f}", summary.attemptedRps);
-            logger.info("Achieved throughput: {:.2f} rps", summary.achievedThroughputRps);
-            logger.info("Error rate: {:.4f}", summary.errorRate);
-            logger.info("Latency p50: {:.2f} ms", summary.latencyMs.p50);
-            logger.info("Latency p95: {:.2f} ms", summary.latencyMs.p95);
-            logger.info("Latency p99: {:.2f} ms", summary.latencyMs.p99);
+            logger.info("Attempted RPS: {}", String.format("%.2f", summary.attemptedRps));
+            logger.info("Achieved throughput: {} rps", String.format("%.2f", summary.achievedThroughputRps));
+            logger.info("Error rate: {}", String.format("%.4f", summary.errorRate));
+            logger.info("Latency p50: {} ms", String.format("%.2f", summary.latencyMs.p50));
+            logger.info("Latency p95: {} ms", String.format("%.2f", summary.latencyMs.p95));
+            logger.info("Latency p99: {} ms", String.format("%.2f", summary.latencyMs.p99));
             logger.info("Results written to: {}", outputDir);
         }
     }

@@ -34,10 +34,10 @@ public class OjpProvider implements ConnectionProvider {
         
         // Performance settings
         config.setAutoCommit(false);
-        config.setCachePrepStmts(true);
-        config.setPrepStmtCacheSize(250);
-        config.setPrepStmtCacheSqlLimit(2048);
-        config.setUseServerPrepStmts(true);
+        config.addDataSourceProperty("cachePrepStmts", "true");
+        config.addDataSourceProperty("prepStmtCacheSize", "250");
+        config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
+        config.addDataSourceProperty("useServerPrepStmts", "true");
         
         // Add any additional properties
         dbConfig.getProperties().forEach((key, value) -> 
