@@ -29,6 +29,7 @@ import java.util.concurrent.Callable;
 )
 public class SweepCommand implements Callable<Integer> {
     private static final Logger logger = LoggerFactory.getLogger(SweepCommand.class);
+    private static final double INSTABILITY_ERROR_RATE_MULTIPLIER = 3.0;
     
     @Option(names = {"-c", "--config"}, required = true, description = "Configuration file (YAML)")
     private String configFile;
@@ -243,9 +244,9 @@ public class SweepCommand implements Callable<Integer> {
         
         double medianErrorRate = computeMedian(errorRates);
         
-        // If any run has error rate > 3x median, consider it unstable
+        // If any run has error rate > INSTABILITY_ERROR_RATE_MULTIPLIER * median, consider it unstable
         for (double errorRate : errorRates) {
-            if (medianErrorRate > 0 && errorRate > 3 * medianErrorRate) {
+            if (medianErrorRate > 0 && errorRate > INSTABILITY_ERROR_RATE_MULTIPLIER * medianErrorRate) {
                 return true;
             }
         }

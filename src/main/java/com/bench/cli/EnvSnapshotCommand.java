@@ -119,7 +119,7 @@ public class EnvSnapshotCommand implements Callable<Integer> {
         }
         envData.put("git", gitInfo);
         
-        // Dependency versions
+        // Dependency versions (from build.gradle - update when dependencies change)
         Map<String, String> dependencies = new HashMap<>();
         dependencies.put("postgresql-driver", "42.7.1");
         dependencies.put("hikaricp", "5.1.0");

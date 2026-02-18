@@ -26,6 +26,8 @@ import java.util.concurrent.Callable;
 )
 public class OverloadCommand implements Callable<Integer> {
     private static final Logger logger = LoggerFactory.getLogger(OverloadCommand.class);
+    private static final double STABILITY_ERROR_RATE_THRESHOLD = 0.01;
+    private static final double STABILITY_P95_LATENCY_MS = 1000.0;
     
     @Option(names = {"-c", "--config"}, required = true, description = "Configuration file (YAML)")
     private String configFile;
@@ -118,7 +120,8 @@ public class OverloadCommand implements Callable<Integer> {
                 logger.info("Results saved to: {}", runOutputDir);
                 
                 // Check if system maintained stability
-                if (summary.errorRate < 0.01 && summary.latencyMs.p95 < 1000) {
+                if (summary.errorRate < STABILITY_ERROR_RATE_THRESHOLD 
+                        && summary.latencyMs.p95 < STABILITY_P95_LATENCY_MS) {
                     logger.info("System handled overload gracefully");
                 } else {
                     logger.warn("System showed stress under overload (high errors or latency)");
