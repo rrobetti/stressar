@@ -318,7 +318,7 @@ Code Review: No issues found
 ## Dependencies
 
 ### Core (6)
-- postgresql:42.7.1 - JDBC driver
+- postgresql:42.7.2 - JDBC driver
 - HikariCP:5.1.0 - Connection pooling
 - HdrHistogram:2.1.12 - Latency tracking
 - picocli:4.7.5 - CLI framework
