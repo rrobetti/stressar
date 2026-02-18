@@ -177,6 +177,19 @@ public class BenchmarkRunner {
             runInfo.totalInstances = config.getReplicas();
             runInfo.seed = config.getWorkload().getSeed();
             
+            // Add OJP-specific fields if in OJP mode
+            if (connectionProvider instanceof com.bench.config.OjpProvider) {
+                com.bench.config.OjpProvider ojpProvider = (com.bench.config.OjpProvider) connectionProvider;
+                runInfo.clientPooling = "none";
+                runInfo.ojpVirtualConnectionMode = ojpProvider.getOjpConfig().getVirtualConnectionMode().toString();
+                runInfo.ojpPoolSharing = ojpProvider.getOjpConfig().getPoolSharing().toString();
+                runInfo.ojpPropertiesUsed = ojpProvider.getOjpConfig().getPropertiesForLogging();
+                runInfo.clientVirtualConnectionsOpenedTotal = ojpProvider.getVirtualConnectionsOpened();
+                runInfo.clientVirtualConnectionsMaxConcurrent = ojpProvider.getVirtualConnectionsMaxConcurrent();
+            } else {
+                runInfo.clientPooling = "hikari";
+            }
+            
             SummaryWriter.SummaryData summary = SummaryWriter.createSummary(finalSnapshot, runInfo);
             SummaryWriter summaryWriter = new SummaryWriter();
             summaryWriter.writeSummary(Paths.get(outputDir, "summary.json").toString(), summary);

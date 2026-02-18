@@ -737,3 +737,64 @@ Despite limitations, the tool is **usable for comparative analysis** if:
 **Document Version**: 1.0  
 **Last Updated**: 2026-02-18  
 **Implementation Reviewed**: Commit 70e230b
+
+---
+
+## 🔄 UPDATE: OJP Model Correction (2026-02-18)
+
+The OJP implementation has been corrected to reflect the accurate architectural model:
+
+### Previous Incorrect Model (REMOVED)
+- ❌ OJP used minimal client-side pooling (HikariCP with 2 connections)
+- ❌ Assumption that client must restrict to 1-2 connections
+- ❌ Cannot configure pool parameters on client
+
+### Correct OJP Model (IMPLEMENTED)
+1. **No Client-Side Pooling**: Application does NOT use HikariCP, DBCP, or any client pooling library
+2. **Virtual JDBC Connections**: Client creates many virtual JDBC Connection handles via `DriverManager.getConnection()`
+3. **Server-Side Pool**: OJP JDBC driver properties (ojp.maxConnections, etc.) configure the real backend DB pool on the OJP server
+4. **Pool Configuration**: Passed as Properties when obtaining connections, applied server-side
+
+### Implementation Details
+
+**New Classes:**
+- `OjpConfig`: Configuration for OJP-specific settings
+- `OjpVirtualConnectionMode`: PER_WORKER (default) or PER_OPERATION
+- `OjpPoolSharing`: SHARED (all replicas) or PER_INSTANCE (divided)
+- `ConnectionWrapper`: Base class for tracking virtual connection lifecycle
+
+**OjpProvider (Rewritten):**
+- Uses `DriverManager.getConnection()` directly (no HikariCP)
+- Passes OJP properties with each connection request
+- Tracks virtual connection metrics (opened, current, max concurrent)
+- Supports both PER_WORKER and PER_OPERATION modes
+
+**Disciplined Pooling Equivalence:**
+- SHARED: `ojp.maxConnections = dbConnectionBudget` (all replicas share one pool)
+- PER_INSTANCE: `ojp.maxConnections = floor(dbConnectionBudget / replicas)` (each replica gets own pool)
+
+**Configuration Validation:**
+- Rejects client-side poolSize for OJP mode
+- Fails fast if hikari.* or pool-related properties detected
+- Automatically calculates server-side pool allocation
+
+**Summary Output:**
+- `clientPooling: "none"` for OJP mode
+- `ojpVirtualConnectionMode`: PER_WORKER or PER_OPERATION
+- `ojpPoolSharing`: SHARED or PER_INSTANCE
+- `ojpPropertiesUsed`: OJP driver properties (password redacted)
+- `clientVirtualConnectionsOpenedTotal`: Total virtual connections opened
+- `clientVirtualConnectionsMaxConcurrent`: Peak concurrent virtual connections
+
+### Updated Documentation
+- RUNBOOK.md: Clarifies no client-side pooling for OJP
+- CONFIG.md: Documents all ojp.* properties
+- Examples: ojp-mode.yaml and ojp-per-instance-16-replicas.yaml
+
+### Test Coverage
+8 new unit tests in `OjpConfigTest`:
+- Allocation calculation (SHARED, PER_INSTANCE, rounding, minimum)
+- Configuration validation (rejects poolSize)
+- Properties building and logging
+
+All 25 tests passing (100%).

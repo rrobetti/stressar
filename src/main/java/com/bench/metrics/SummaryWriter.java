@@ -105,5 +105,13 @@ public class SummaryWriter {
         public int instanceId;
         public int totalInstances;
         public long seed;
+        
+        // OJP-specific fields
+        public String clientPooling;  // "none" for OJP, "hikari" for others
+        public String ojpVirtualConnectionMode;
+        public String ojpPoolSharing;
+        public java.util.Map<String, String> ojpPropertiesUsed;
+        public Long clientVirtualConnectionsOpenedTotal;
+        public Integer clientVirtualConnectionsMaxConcurrent;
     }
 }

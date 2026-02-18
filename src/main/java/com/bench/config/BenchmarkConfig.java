@@ -34,10 +34,14 @@ public class BenchmarkConfig {
     private int numAccounts = 10000;
     private int numItems = 5000;
     private int numOrders = 50000;
+    
+    // OJP-specific configuration
+    private OjpConfig ojpConfig;
 
     public BenchmarkConfig() {
         this.database = new DatabaseConfig();
         this.workload = new WorkloadConfig();
+        this.ojpConfig = new OjpConfig();
     }
 
     public DatabaseConfig getDatabase() {
@@ -184,6 +188,14 @@ public class BenchmarkConfig {
         this.numOrders = numOrders;
     }
 
+    public OjpConfig getOjpConfig() {
+        return ojpConfig;
+    }
+    
+    public void setOjpConfig(OjpConfig ojpConfig) {
+        this.ojpConfig = ojpConfig;
+    }
+    
     /**
      * Calculate pool size based on disciplined pooling strategy.
      */
@@ -193,5 +205,49 @@ public class BenchmarkConfig {
         }
         int calculated = dbConnectionBudget / replicas;
         return Math.max(1, Math.min(calculated, maxPoolSizePerReplica));
+    }
+    
+    /**
+     * Calculate OJP server-side pool allocation based on pool sharing strategy.
+     * @return The maxConnections value to set for OJP server-side pool
+     */
+    public int calculateOjpAllocation() {
+        if (ojpConfig.getPoolSharing() == OjpPoolSharing.SHARED) {
+            // All replicas share one pool - use full budget
+            return dbConnectionBudget;
+        } else {
+            // PER_INSTANCE - divide budget among replicas
+            if (replicas <= 0) {
+                return dbConnectionBudget;
+            }
+            int allocated = dbConnectionBudget / replicas;
+            return Math.max(1, allocated);
+        }
+    }
+    
+    /**
+     * Validate configuration for OJP mode.
+     * Ensures no client-side pooling is configured when using OJP.
+     */
+    public void validateOjpConfig() {
+        if (connectionMode != ConnectionMode.OJP) {
+            return;
+        }
+        
+        // OJP must not use client-side pooling
+        if (poolSize > 0 && poolSize != 20) {  // 20 is the default, might be set unintentionally
+            throw new IllegalArgumentException(
+                "OJP mode must not configure client-side poolSize. " +
+                "Use ojpConfig.maxConnections for server-side pool configuration.");
+        }
+        
+        // Check for hikari-specific properties in database config
+        database.getProperties().forEach((key, value) -> {
+            String keyStr = key.toString().toLowerCase();
+            if (keyStr.contains("hikari") || keyStr.contains("pool")) {
+                throw new IllegalArgumentException(
+                    "OJP mode must not use client-side pooling properties: " + key);
+            }
+        });
     }
 }

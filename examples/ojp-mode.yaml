@@ -1,6 +1,7 @@
-# OJP (Open JDBC Pooler) Gateway Configuration
-# Uses OJP for server-side connection pooling
-# Client maintains minimal connections (poolSize: 2)
+# OJP (Open JDBC Pooler) Configuration
+# IMPORTANT: OJP does NOT use client-side connection pooling.
+# The application creates virtual JDBC connections that map to a server-side pool.
+# Pool configuration is passed via OJP JDBC driver properties.
 #
 # Prerequisites:
 #   - OJP gateway must be running
@@ -15,12 +16,42 @@ database:
   username: "benchuser"
   password: "benchpass"
 
-# Connection mode: OJP
+# Connection mode: OJP (NO client-side pooling)
 connectionMode: OJP
 
-# Pool configuration
-# Use minimal client-side connections since OJP handles server-side pooling
-poolSize: 2
+# DO NOT set poolSize for OJP mode - it will be ignored
+# OJP uses server-side pooling configured below
+
+# Database connection budget for disciplined pooling equivalence
+dbConnectionBudget: 100
+replicas: 1
+
+# OJP-specific configuration
+ojp:
+  # Virtual connection mode: how the client manages JDBC Connection handles
+  # PER_WORKER: Each worker thread holds one virtual connection for the run (default, recommended)
+  # PER_OPERATION: Open/close virtual connection per operation (tests connection churn)
+  virtualConnectionMode: PER_WORKER
+  
+  # Pool sharing strategy for multi-replica scenarios
+  # SHARED: All replicas share one OJP server-side pool (pool size = dbConnectionBudget)
+  # PER_INSTANCE: Each replica gets its own pool (pool size = dbConnectionBudget / replicas)
+  poolSharing: SHARED
+  
+  # Server-side pool configuration (passed as OJP JDBC driver properties)
+  # maxConnections is calculated automatically based on poolSharing and dbConnectionBudget
+  # You can override by setting it explicitly:
+  # maxConnections: 100
+  
+  minConnections: 5
+  connectionTimeoutMs: 30000
+  idleTimeoutMs: 600000
+  maxLifetimeMs: 1800000
+  queueLimit: 1000
+  slowQueryThresholdMs: 1000
+  
+  # Additional OJP-specific properties (optional)
+  # properties.customProperty: "value"
 
 # Workload configuration
 workload:

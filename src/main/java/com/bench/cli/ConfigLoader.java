@@ -109,6 +109,55 @@ public class ConfigLoader {
                 config.setNumOrders((Integer) data.get("numOrders"));
             }
             
+            // OJP configuration
+            if (data.containsKey("ojp")) {
+                Map<String, Object> ojpData = (Map<String, Object>) data.get("ojp");
+                com.bench.config.OjpConfig ojpConfig = config.getOjpConfig();
+                
+                if (ojpData.containsKey("virtualConnectionMode")) {
+                    String mode = (String) ojpData.get("virtualConnectionMode");
+                    ojpConfig.setVirtualConnectionMode(
+                        com.bench.config.OjpVirtualConnectionMode.valueOf(mode));
+                }
+                if (ojpData.containsKey("poolSharing")) {
+                    String sharing = (String) ojpData.get("poolSharing");
+                    ojpConfig.setPoolSharing(
+                        com.bench.config.OjpPoolSharing.valueOf(sharing));
+                }
+                if (ojpData.containsKey("minConnections")) {
+                    ojpConfig.setMinConnections((Integer) ojpData.get("minConnections"));
+                }
+                if (ojpData.containsKey("maxConnections")) {
+                    ojpConfig.setMaxConnections((Integer) ojpData.get("maxConnections"));
+                }
+                if (ojpData.containsKey("connectionTimeoutMs")) {
+                    ojpConfig.setConnectionTimeoutMs((Integer) ojpData.get("connectionTimeoutMs"));
+                }
+                if (ojpData.containsKey("idleTimeoutMs")) {
+                    ojpConfig.setIdleTimeoutMs((Integer) ojpData.get("idleTimeoutMs"));
+                }
+                if (ojpData.containsKey("maxLifetimeMs")) {
+                    ojpConfig.setMaxLifetimeMs((Integer) ojpData.get("maxLifetimeMs"));
+                }
+                if (ojpData.containsKey("queueLimit")) {
+                    ojpConfig.setQueueLimit((Integer) ojpData.get("queueLimit"));
+                }
+                if (ojpData.containsKey("slowQueryThresholdMs")) {
+                    ojpConfig.setSlowQueryThresholdMs((Integer) ojpData.get("slowQueryThresholdMs"));
+                }
+                if (ojpData.containsKey("poolKey")) {
+                    ojpConfig.setPoolKey((String) ojpData.get("poolKey"));
+                }
+                
+                // Additional properties with ojp. prefix
+                ojpData.forEach((key, value) -> {
+                    if (key.startsWith("properties.")) {
+                        String propKey = key.substring("properties.".length());
+                        ojpConfig.addProperty(propKey, String.valueOf(value));
+                    }
+                });
+            }
+            
             // Output directory
             if (data.containsKey("outputDir")) {
                 config.setOutputDir((String) data.get("outputDir"));

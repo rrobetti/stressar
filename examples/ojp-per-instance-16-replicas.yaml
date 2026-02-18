@@ -1,0 +1,65 @@
+# OJP Multi-Replica PER_INSTANCE Configuration
+# Each replica gets its own OJP server-side pool
+# Pool size per replica = dbConnectionBudget / replicas
+#
+# This example shows 16 replicas with 100 total connection budget
+# Each replica gets: floor(100/16) = 6 connections
+#
+# Run with:
+#   bench run --config ojp-per-instance-16-replicas.yaml --output results/ojp-multi/
+
+database:
+  jdbcUrl: "jdbc:postgresql://ojp-gateway:5432/benchdb"
+  username: "benchuser"
+  password: "benchpass"
+
+# Connection mode: OJP (NO client-side pooling)
+connectionMode: OJP
+
+# Disciplined pooling settings
+dbConnectionBudget: 100
+replicas: 16
+instanceId: 0  # Set to 0-15 for each replica instance
+
+# OJP-specific configuration
+ojp:
+  # PER_WORKER mode: each worker holds one virtual connection
+  virtualConnectionMode: PER_WORKER
+  
+  # PER_INSTANCE: Each replica gets its own pool
+  # Each pool size = dbConnectionBudget / replicas = 100 / 16 = 6 connections
+  poolSharing: PER_INSTANCE
+  
+  # Server-side pool configuration
+  # maxConnections will be automatically set to 6 (100/16)
+  minConnections: 2
+  connectionTimeoutMs: 30000
+  idleTimeoutMs: 600000
+  maxLifetimeMs: 1800000
+  queueLimit: 200
+
+# Workload configuration
+workload:
+  type: W2_MIXED
+  openLoop: true
+  targetRps: 500  # Per replica, total = 500 * 16 = 8000 RPS
+  
+  warmupSeconds: 300
+  durationSeconds: 600
+  cooldownSeconds: 120
+  repeatCount: 5
+  
+  useZipf: true
+  zipfAlpha: 1.1
+  seed: 42
+
+# Data generation
+numAccounts: 100000
+numItems: 10000
+numOrders: 500000
+
+# Metrics
+metricsIntervalSeconds: 1
+
+# Output
+outputDir: "results"
