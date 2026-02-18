@@ -36,7 +36,7 @@ ojp:
   # Pool sharing strategy for multi-replica scenarios
   # SHARED: All replicas share one OJP server-side pool (pool size = dbConnectionBudget)
   # PER_INSTANCE: Each replica gets its own pool (pool size = dbConnectionBudget / replicas)
-  poolSharing: SHARED
+  poolSharing: PER_INSTANCE  # DEFAULT - each replica gets own pool
   
   # Server-side pool configuration (passed as OJP JDBC driver properties)
   # maxConnections is calculated automatically based on poolSharing and dbConnectionBudget

@@ -12,7 +12,9 @@ import java.util.Properties;
  */
 public class OjpConfig {
     private OjpVirtualConnectionMode virtualConnectionMode = OjpVirtualConnectionMode.PER_WORKER;
-    private OjpPoolSharing poolSharing = OjpPoolSharing.SHARED;
+    // IMPORTANT: Default is PER_INSTANCE (each replica gets its own pool)
+    // This is the required behavior for correct multi-replica testing
+    private OjpPoolSharing poolSharing = OjpPoolSharing.PER_INSTANCE;
     
     // Server-side pool configuration (passed as OJP properties)
     private Integer minConnections;

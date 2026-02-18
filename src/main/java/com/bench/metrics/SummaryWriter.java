@@ -106,6 +106,11 @@ public class SummaryWriter {
         public int totalInstances;
         public long seed;
         
+        // Open-loop specific metrics
+        public Long openLoopAttemptedOps;
+        public Long openLoopMissedOpportunities;
+        public Double openLoopSchedulingDelayMs;
+        
         // OJP-specific fields
         public String clientPooling;  // "none" for OJP, "hikari" for others
         public String ojpVirtualConnectionMode;

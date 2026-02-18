@@ -62,9 +62,12 @@ public class BenchmarkRunner {
             
             // Create load generator
             LoadGenerator loadGen;
+            TrueOpenLoopLoadGenerator trueOpenLoop = null;
             if (config.getWorkload().isOpenLoop()) {
-                loadGen = new OpenLoopLoadGenerator(workload, metrics, config.getWorkload().getTargetRps());
-                logger.info("Load mode: open-loop, target RPS: {}", config.getWorkload().getTargetRps());
+                trueOpenLoop = new TrueOpenLoopLoadGenerator(workload, metrics, config.getWorkload().getTargetRps());
+                loadGen = trueOpenLoop;
+                logger.info("Load mode: true open-loop (absolute time-based), target RPS: {}", 
+                           config.getWorkload().getTargetRps());
             } else {
                 loadGen = new ClosedLoopLoadGenerator(workload, metrics, config.getWorkload().getConcurrency());
                 logger.info("Load mode: closed-loop, concurrency: {}", config.getWorkload().getConcurrency());
@@ -78,44 +81,50 @@ public class BenchmarkRunner {
             ScheduledExecutorService metricsScheduler = Executors.newSingleThreadScheduledExecutor();
             
             // Capture metrics at regular intervals
+            // IMPORTANT: Use separate collector for per-interval percentiles
             MetricsCollector intervalMetrics = new MetricsCollector();
             metricsScheduler.scheduleAtFixedRate(() -> {
                 try {
-                    MetricsSnapshot snapshot = intervalMetrics.getSnapshot();
-                    intervalSnapshots.add(snapshot);
+                    // Get snapshot of interval metrics (includes per-interval histogram)
+                    MetricsSnapshot intervalSnapshot = intervalMetrics.getSnapshot();
+                    
+                    // Also get cumulative snapshot for counting
+                    MetricsSnapshot cumulativeSnapshot = metrics.getSnapshot();
+                    intervalSnapshots.add(cumulativeSnapshot);
                     
                     long intervalStart = intervalSnapshots.size() > 1 ? 
                         intervalSnapshots.get(intervalSnapshots.size() - 2).getTimestampMs() :
-                        intervalMetrics.getStartTimeMs();
+                        metrics.getStartTimeMs();
                     
-                    double intervalSeconds = (snapshot.getTimestampMs() - intervalStart) / 1000.0;
+                    double intervalSeconds = (cumulativeSnapshot.getTimestampMs() - intervalStart) / 1000.0;
                     double intervalAttemptedRps = 0;
                     double intervalAchievedRps = 0;
                     
                     if (intervalSnapshots.size() > 1) {
                         MetricsSnapshot prev = intervalSnapshots.get(intervalSnapshots.size() - 2);
-                        long attemptedDelta = snapshot.getAttemptedRequests() - prev.getAttemptedRequests();
-                        long completedDelta = snapshot.getCompletedRequests() - prev.getCompletedRequests();
+                        long attemptedDelta = cumulativeSnapshot.getAttemptedRequests() - prev.getAttemptedRequests();
+                        long completedDelta = cumulativeSnapshot.getCompletedRequests() - prev.getCompletedRequests();
                         intervalAttemptedRps = attemptedDelta / intervalSeconds;
                         intervalAchievedRps = completedDelta / intervalSeconds;
                     }
                     
                     long intervalErrors = intervalSnapshots.size() > 1 ?
-                        snapshot.getErrors() - intervalSnapshots.get(intervalSnapshots.size() - 2).getErrors() : 0;
+                        cumulativeSnapshot.getErrors() - intervalSnapshots.get(intervalSnapshots.size() - 2).getErrors() : 0;
                     
+                    // FIXED: Use per-interval histogram percentiles, not cumulative
                     timeseriesWriter.writeRow(
-                        snapshot.getTimestampMs(),
+                        cumulativeSnapshot.getTimestampMs(),
                         intervalAttemptedRps,
                         intervalAchievedRps,
                         intervalErrors,
-                        snapshot.getP50(),
-                        snapshot.getP95(),
-                        snapshot.getP99(),
-                        snapshot.getP999(),
-                        snapshot.getMax()
+                        intervalSnapshot.getP50(),    // Per-interval percentiles
+                        intervalSnapshot.getP95(),
+                        intervalSnapshot.getP99(),
+                        intervalSnapshot.getP999(),
+                        intervalSnapshot.getMax()
                     );
                     
-                    // Reset interval metrics
+                    // Reset interval metrics for next window
                     intervalMetrics.reset();
                     
                 } catch (Exception e) {
@@ -176,6 +185,13 @@ public class BenchmarkRunner {
             runInfo.instanceId = config.getInstanceId();
             runInfo.totalInstances = config.getReplicas();
             runInfo.seed = config.getWorkload().getSeed();
+            
+            // Add open-loop specific metrics if applicable
+            if (trueOpenLoop != null) {
+                runInfo.openLoopAttemptedOps = trueOpenLoop.getAttemptedOps();
+                runInfo.openLoopMissedOpportunities = trueOpenLoop.getMissedOpportunities();
+                runInfo.openLoopSchedulingDelayMs = trueOpenLoop.getSchedulingDelaysNanos() / 1_000_000.0;
+            }
             
             // Add OJP-specific fields if in OJP mode
             if (connectionProvider instanceof com.bench.config.OjpProvider) {
