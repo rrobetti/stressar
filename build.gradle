@@ -1,0 +1,92 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'com.bench'
+version = '1.0.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Database
+    implementation 'org.postgresql:postgresql:42.7.2'
+    implementation 'com.zaxxer:HikariCP:5.1.0'
+    
+    // Metrics
+    implementation 'org.hdrhistogram:HdrHistogram:2.1.12'
+    
+    // System monitoring
+    implementation 'com.github.oshi:oshi-core:6.4.10'
+    
+    // Charting
+    implementation 'org.knowm.xchart:xchart:3.8.5'
+    
+    // Configuration
+    implementation 'org.yaml:snakeyaml:2.2'
+    
+    // CLI
+    implementation 'info.picocli:picocli:4.7.5'
+    annotationProcessor 'info.picocli:picocli-codegen:4.7.5'
+    
+    // Logging
+    implementation 'org.slf4j:slf4j-api:2.0.9'
+    implementation 'ch.qos.logback:logback-classic:1.4.14'
+    
+    // JSON
+    implementation 'com.google.code.gson:gson:2.10.1'
+    
+    // Testing
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.hamcrest:hamcrest:2.2'
+}
+
+application {
+    mainClass = 'com.bench.cli.BenchmarkCLI'
+}
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
+
+test {
+    useJUnit()
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+    }
+}
+
+// Create a distribution with all dependencies
+distributions {
+    main {
+        contents {
+            from('src/main/resources') {
+                into 'resources'
+            }
+            from('docs') {
+                into 'docs'
+            }
+        }
+    }
+}
+
+// Create executable wrapper script
+startScripts {
+    applicationName = 'bench'
+}
+
+// Task to copy SQL resources
+task copySqlResources(type: Copy) {
+    from 'src/main/resources'
+    into "$buildDir/resources/main"
+}
+
+processResources.dependsOn copySqlResources

@@ -1,0 +1,62 @@
+# W3 Slow Query Workload Configuration
+# Tests mixed workload with fast queries and occasional slow queries
+# Useful for testing tail latency behavior under mixed query patterns
+#
+# Query Mix:
+#   - Fast queries (99%): Indexed lookups (QueryA, QueryB)
+#   - Slow queries (1%): Complex aggregations, table scans
+#
+# Slow Query Example:
+#   SELECT a.id, COUNT(o.id) as order_count, SUM(o.total) as total_spent
+#   FROM accounts a
+#   LEFT JOIN orders o ON o.account_id = a.id
+#   GROUP BY a.id
+#   ORDER BY total_spent DESC
+#   LIMIT 100;
+#
+# Run with:
+#   bench run --config w3-slow-query.yaml --output results/w3/
+
+database:
+  jdbcUrl: "jdbc:postgresql://localhost:5432/benchdb"
+  username: "benchuser"
+  password: "benchpass"
+
+# Connection mode
+connectionMode: HIKARI_DIRECT
+poolSize: 50  # Higher pool size to handle slow queries
+
+# Workload configuration
+workload:
+  type: W3_SLOW_QUERY
+  openLoop: true
+  targetRps: 200  # Lower RPS due to slow queries
+  
+  # Phase durations
+  warmupSeconds: 300
+  durationSeconds: 600
+  cooldownSeconds: 120
+  repeatCount: 5
+  
+  # Workload mix for W3_SLOW_QUERY
+  slowQueryPercent: 0.01  # 1% slow queries, 99% fast queries
+  
+  # Parameter distribution
+  useZipf: false
+  seed: 42
+
+# Data generation (must match init-db settings)
+numAccounts: 10000
+numItems: 5000
+numOrders: 50000
+
+# Metrics
+metricsIntervalSeconds: 1
+
+# Output
+outputDir: "results"
+
+# Sweep configuration (if using sweep command)
+sweepIncrementPercent: 10.0  # Slower increment due to slow queries
+sloP95Ms: 100  # More relaxed SLO for slow query workload
+errorRateThreshold: 0.001

@@ -1,0 +1,86 @@
+# OJP (Open JDBC Pooler) Configuration
+# IMPORTANT: OJP does NOT use client-side connection pooling.
+# The application creates virtual JDBC connections that map to a server-side pool.
+# Pool configuration is passed via OJP JDBC driver properties.
+#
+# Prerequisites:
+#   - OJP gateway must be running
+#   - Database URL should point to OJP endpoint (not directly to PostgreSQL)
+#
+# Run with:
+#   bench run --config ojp-mode.yaml --output results/ojp/
+
+database:
+  # Point to OJP gateway endpoint (not directly to PostgreSQL)
+  jdbcUrl: "jdbc:postgresql://ojp-gateway:5432/benchdb"
+  username: "benchuser"
+  password: "benchpass"
+
+# Connection mode: OJP (NO client-side pooling)
+connectionMode: OJP
+
+# DO NOT set poolSize for OJP mode - it will be ignored
+# OJP uses server-side pooling configured below
+
+# Database connection budget for disciplined pooling equivalence
+dbConnectionBudget: 100
+replicas: 1
+
+# OJP-specific configuration
+ojp:
+  # Virtual connection mode: how the client manages JDBC Connection handles
+  # PER_WORKER: Each worker thread holds one virtual connection for the run (default, recommended)
+  # PER_OPERATION: Open/close virtual connection per operation (tests connection churn)
+  virtualConnectionMode: PER_WORKER
+  
+  # Pool sharing strategy for multi-replica scenarios
+  # SHARED: All replicas share one OJP server-side pool (pool size = dbConnectionBudget)
+  # PER_INSTANCE: Each replica gets its own pool (pool size = dbConnectionBudget / replicas)
+  poolSharing: PER_INSTANCE  # DEFAULT - each replica gets own pool
+  
+  # Server-side pool configuration (passed as OJP JDBC driver properties)
+  # maxConnections is calculated automatically based on poolSharing and dbConnectionBudget
+  # You can override by setting it explicitly:
+  # maxConnections: 100
+  
+  minConnections: 5
+  connectionTimeoutMs: 30000
+  idleTimeoutMs: 600000
+  maxLifetimeMs: 1800000
+  queueLimit: 1000
+  slowQueryThresholdMs: 1000
+  
+  # Additional OJP-specific properties (optional)
+  # properties.customProperty: "value"
+
+# Workload configuration
+workload:
+  type: W2_READ_WRITE
+  openLoop: true
+  targetRps: 1000
+  
+  # Phase durations
+  warmupSeconds: 300
+  durationSeconds: 600
+  cooldownSeconds: 120
+  repeatCount: 5
+  
+  # Parameter distribution
+  useZipf: false
+  seed: 42
+
+# Data generation (must match init-db settings)
+numAccounts: 10000
+numItems: 5000
+numOrders: 50000
+
+# Metrics
+metricsIntervalSeconds: 1
+
+# Output
+outputDir: "results"
+
+# Sweep configuration (if using sweep command)
+sweepIncrementPercent: 15.0
+sloP95Ms: 50
+errorRateThreshold: 0.001

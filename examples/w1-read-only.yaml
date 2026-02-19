@@ -1,0 +1,54 @@
+# W1 Read-Only Workload Configuration
+# Tests read-only workload with QueryA (account lookup) and QueryB (recent orders)
+#
+# Queries:
+#   - QueryA (30%): SELECT * FROM accounts WHERE id = ?
+#   - QueryB (70%): SELECT * FROM orders WHERE account_id = ? ORDER BY order_date DESC LIMIT 20
+#
+# Run with:
+#   bench run --config w1-read-only.yaml --output results/w1/
+
+database:
+  jdbcUrl: "jdbc:postgresql://localhost:5432/benchdb"
+  username: "benchuser"
+  password: "benchpass"
+
+# Connection mode
+connectionMode: HIKARI_DIRECT
+poolSize: 20
+
+# Workload configuration
+workload:
+  type: W1_READ_ONLY
+  openLoop: true
+  targetRps: 1000
+  
+  # Phase durations
+  warmupSeconds: 300
+  durationSeconds: 600
+  cooldownSeconds: 120
+  repeatCount: 5
+  
+  # Workload mix for W1_READ_ONLY
+  queryAPercent: 0.30  # 30% QueryA (account lookup), 70% QueryB (recent orders)
+  
+  # Parameter distribution
+  useZipf: false  # Set to true for skewed access pattern
+  zipfAlpha: 1.1  # Only used if useZipf: true
+  seed: 42
+
+# Data generation (must match init-db settings)
+numAccounts: 10000
+numItems: 5000
+numOrders: 50000
+
+# Metrics
+metricsIntervalSeconds: 1
+
+# Output
+outputDir: "results"
+
+# Sweep configuration (if using sweep command)
+sweepIncrementPercent: 15.0
+sloP95Ms: 50
+errorRateThreshold: 0.001

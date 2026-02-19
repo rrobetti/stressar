@@ -1,0 +1,55 @@
+# Example benchmark configuration for W2 Read-Write workload
+# Open-loop mode at 500 RPS with 4 replicas
+
+database:
+  jdbcUrl: "jdbc:postgresql://localhost:5432/benchdb"
+  username: "benchuser"
+  password: "benchpass"
+
+# Connection mode: HIKARI_DIRECT, HIKARI_DISCIPLINED, OJP, PGBOUNCER
+connectionMode: HIKARI_DIRECT
+
+# Pool configuration
+poolSize: 20
+dbConnectionBudget: 100  # For disciplined pooling
+replicas: 4
+maxPoolSizePerReplica: 50
+
+# Workload configuration
+workload:
+  type: W2_MIXED  # W1_READ_ONLY, W2_READ_WRITE, W2_MIXED, W2_WRITE_ONLY, W3_SLOW_QUERY
+  openLoop: true
+  targetRps: 500
+  concurrency: 20  # Used only if openLoop: false
+  
+  # Phase durations
+  warmupSeconds: 300
+  durationSeconds: 600
+  cooldownSeconds: 120
+  repeatCount: 5
+  
+  # Workload-specific parameters
+  queryAPercent: 0.30  # For W1 and W2_MIXED
+  writePercent: 0.20   # For W2_MIXED
+  slowQueryPercent: 0.01  # For W3
+  
+  # Parameter distribution
+  useZipf: false
+  zipfAlpha: 1.1
+  seed: 42
+
+# Data generation
+numAccounts: 10000
+numItems: 5000
+numOrders: 50000
+
+# Metrics
+metricsIntervalSeconds: 1
+
+# Output
+outputDir: "results"
+
+# Sweep configuration (used by sweep command)
+sweepIncrementPercent: 15.0
+sloP95Ms: 50
+errorRateThreshold: 0.001
