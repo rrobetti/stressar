@@ -60,16 +60,21 @@ public class BenchmarkRunner {
             // Create metrics collector
             MetricsCollector metrics = new MetricsCollector();
             
+            // Create interval metrics collector for per-interval percentiles
+            MetricsCollector intervalMetrics = new MetricsCollector();
+            
             // Create load generator
             LoadGenerator loadGen;
             TrueOpenLoopLoadGenerator trueOpenLoop = null;
             if (config.getWorkload().isOpenLoop()) {
-                trueOpenLoop = new TrueOpenLoopLoadGenerator(workload, metrics, config.getWorkload().getTargetRps());
+                trueOpenLoop = new TrueOpenLoopLoadGenerator(workload, metrics, intervalMetrics, 
+                                                             config.getWorkload().getTargetRps());
                 loadGen = trueOpenLoop;
                 logger.info("Load mode: true open-loop (absolute time-based), target RPS: {}", 
                            config.getWorkload().getTargetRps());
             } else {
-                loadGen = new ClosedLoopLoadGenerator(workload, metrics, config.getWorkload().getConcurrency());
+                loadGen = new ClosedLoopLoadGenerator(workload, metrics, intervalMetrics, 
+                                                      config.getWorkload().getConcurrency());
                 logger.info("Load mode: closed-loop, concurrency: {}", config.getWorkload().getConcurrency());
             }
             
@@ -81,8 +86,6 @@ public class BenchmarkRunner {
             ScheduledExecutorService metricsScheduler = Executors.newSingleThreadScheduledExecutor();
             
             // Capture metrics at regular intervals
-            // IMPORTANT: Use separate collector for per-interval percentiles
-            MetricsCollector intervalMetrics = new MetricsCollector();
             metricsScheduler.scheduleAtFixedRate(() -> {
                 try {
                     // Get snapshot of interval metrics (includes per-interval histogram)

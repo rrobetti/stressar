@@ -22,11 +22,13 @@ public class OpenLoopLoadGenerator extends LoadGenerator {
     /**
      * Create an open-loop load generator.
      * @param workload The workload to execute
-     * @param metrics Metrics collector
+     * @param metrics Cumulative metrics collector
+     * @param intervalMetrics Interval metrics collector
      * @param targetRps Target requests per second
      */
-    public OpenLoopLoadGenerator(Workload workload, MetricsCollector metrics, int targetRps) {
-        super(workload, metrics);
+    public OpenLoopLoadGenerator(Workload workload, MetricsCollector metrics, 
+                                 MetricsCollector intervalMetrics, int targetRps) {
+        super(workload, metrics, intervalMetrics);
         this.targetRps = targetRps;
         // Use enough threads to handle the target rate with some headroom
         this.numThreads = Math.max(4, Math.min(targetRps / 10, 200));

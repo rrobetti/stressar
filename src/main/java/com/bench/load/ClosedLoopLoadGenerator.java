@@ -21,11 +21,13 @@ public class ClosedLoopLoadGenerator extends LoadGenerator {
     /**
      * Create a closed-loop load generator.
      * @param workload The workload to execute
-     * @param metrics Metrics collector
+     * @param metrics Cumulative metrics collector
+     * @param intervalMetrics Interval metrics collector
      * @param concurrency Number of concurrent workers
      */
-    public ClosedLoopLoadGenerator(Workload workload, MetricsCollector metrics, int concurrency) {
-        super(workload, metrics);
+    public ClosedLoopLoadGenerator(Workload workload, MetricsCollector metrics, 
+                                   MetricsCollector intervalMetrics, int concurrency) {
+        super(workload, metrics, intervalMetrics);
         this.concurrency = concurrency;
     }
     
