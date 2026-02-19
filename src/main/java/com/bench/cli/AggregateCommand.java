@@ -112,7 +112,7 @@ public class AggregateCommand implements Callable<Integer> {
         
         // Extract from path structure: results/raw/{timestamp}/{sut}/{workload}/{level}/{run_or_instance}/...
         Path relativePath = rootPath.relativize(summaryPath.getParent());
-        String[] parts = relativePath.toString().split(File.separator.equals("\\") ? "\\\\" : File.separator);
+        String[] parts = relativePath.toString().split(java.util.regex.Pattern.quote(File.separator));
         
         if (parts.length < 4) {
             logger.warn("Unexpected path structure: {}", relativePath);
@@ -208,9 +208,10 @@ public class AggregateCommand implements Callable<Integer> {
             totalAttemptedRps += run.summary.attemptedRps;
             totalAchievedRps += run.summary.achievedThroughputRps;
             
-            // Calculate errors from error rate
+            // Estimate total completed operations from throughput
+            // Assume measurement duration based on achieved RPS and completed count
             long completed = (long) (run.summary.achievedThroughputRps * 
-                (run.summary.latencyMs.p50 > 0 ? 60 : 1)); // Estimate duration
+                (run.summary.latencyMs.p50 > 0 ? 60 : 1)); // Rough estimate for aggregation
             totalCompleted += completed;
             totalErrors += (long) (completed * run.summary.errorRate);
         }
@@ -234,8 +235,10 @@ public class AggregateCommand implements Callable<Integer> {
                 result.p999 = merged.getValueAtPercentile(99.9) / 1000.0;
                 result.max = merged.getMaxValue() / 1000.0;
                 
-                logger.info("Merged histogram: p50={:.2f}ms, p95={:.2f}ms, p99={:.2f}ms", 
-                    result.p50, result.p95, result.p99);
+                logger.info("Merged histogram: p50={}ms, p95={}ms, p99={}ms", 
+                    String.format("%.2f", result.p50), 
+                    String.format("%.2f", result.p95), 
+                    String.format("%.2f", result.p99));
             } catch (Exception e) {
                 logger.warn("Failed to merge histograms: {}", e.getMessage());
                 // Fall back to averaging percentiles (not correct, but better than nothing)
