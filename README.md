@@ -46,6 +46,18 @@ build/install/ojp-performance-tester/bin/bench run \
 
 Comprehensive documentation is available in the `docs/` directory:
 
+- **[RATIONALE.md](docs/RATIONALE.md)** - Why this tool was built
+  - Absence of JDBC-client benchmarks for PgBouncer
+  - Limitations of closed-loop load generation
+  - Reproducibility requirements for scientific publication
+
+- **[BENCHMARKING_GUIDE.md](docs/BENCHMARKING_GUIDE.md)** - Step-by-step benchmarking protocol
+  - Deployment topology and hardware specifications
+  - Software installation and configuration (PostgreSQL, PgBouncer, OJP)
+  - Six test scenarios including a 130 % overload / recovery test
+  - Expected outcomes stated as falsifiable hypotheses
+  - Analysis and reporting procedures
+
 - **[RUNBOOK.md](docs/RUNBOOK.md)** - Complete operational guide with exact commands
   - PostgreSQL setup and configuration
   - Database initialization
