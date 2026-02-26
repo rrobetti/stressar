@@ -52,11 +52,12 @@ load distribution differently:
 
 The baseline scenarios (T1 and T2) require only LG, APP (T2 only), and DB.
 
-**What is the APP machine?** The APP machine is a second load generator. The bench JVM can run
-multiple replicas simultaneously; when more replicas are needed than a single machine can host
-comfortably, they are split across LG and APP. In T2 (HIKARI_DISCIPLINED), 16 replicas are needed
-— LG runs replicas 0–7 and APP runs replicas 8–15. In T1, T3, and T4 the benchmark is run as a
-single replica on LG only; APP is not needed.
+**What is the APP machine?** APP is a second machine that runs extra instances of the same
+`$BENCH` tool from this repository — there is no separate application software involved. In T2
+(HIKARI_DISCIPLINED), 16 independent `$BENCH` JVM processes are needed to simulate 16
+microservice replicas. Running all 16 on one machine would saturate its CPU, so they are split:
+LG runs replicas 0–7 and APP runs replicas 8–15. In T1, T3, and T4 a single `$BENCH` replica
+on LG is sufficient; APP is idle and not needed.
 
 No machine plays more than one role. Internet access is not required and must be disabled on all
 machines during the test run to eliminate background noise.
@@ -583,7 +584,7 @@ haproxy -v >> results/env/lb-version.txt
 | # | Name | What runs | Machines needed | Load | What you measure |
 |---|------|-----------|-----------------|------|-----------------|
 | T1 | Direct JDBC baseline | Single bench JVM replica; HikariCP pool → PostgreSQL directly | LG, DB | 1,000 RPS | Latency/throughput with no proxy — the upper-bound baseline |
-| T2 | Disciplined pooling | 16 bench JVM replicas (8 on LG, 8 on APP); connection budget divided equally | LG, APP, DB | 1,000 RPS aggregate | Whether small per-replica pools perform as well as one large pool |
+| T2 | Disciplined pooling | 16 independent $BENCH JVM processes (8 on LG, 8 on APP), each simulating one microservice replica; 300-connection budget split equally (~20 per replica) | LG, APP, DB | 1,000 RPS aggregate | Whether splitting the pool budget across 16 replicas (as production microservices do) costs anything vs. T1's single large pool |
 | T3 | PgBouncer (3 instances) | Single bench JVM; JDBC → HAProxy → 3 × PgBouncer → PostgreSQL | LG, LB, PROXY-1–3, DB | 1,000 RPS | Proxy overhead of PgBouncer transaction-mode pooling |
 | T4 | OJP (3 instances) | Single bench JVM; OJP JDBC driver routes connections to 3 × OJP server → PostgreSQL | LG, PROXY-1–3, DB | 1,000 RPS | Proxy overhead of OJP server-side pooling with client-side LB |
 | T5 | Capacity sweep | Same setup as T1, T3, T4 (run each separately) | Same as T1/T3/T4 | 200 RPS → max (15 % steps) | Maximum sustainable throughput (MST) for each SUT |
@@ -666,11 +667,19 @@ $BENCH run --config configs/t1-hikari-direct.yaml
 
 ### T2 — Disciplined Pooling (HIKARI_DISCIPLINED)
 
-**Purpose:** Measure the effect of dividing the connection budget equally among multiple replicas,
-without any external proxy. This tests the hypothesis that disciplined pooling (small pool per
-replica) performs comparably to a single large pool.
+**Purpose:** Simulate a production deployment where a fixed total connection budget is divided
+equally across many independent microservice replicas. In real production systems, each
+microservice instance maintains its own HikariCP connection pool; no single instance holds all
+300 connections. T2 models this with 16 independent `$BENCH` JVM processes — each representing
+one microservice replica — where each replica receives `300 ÷ 16 ≈ 20` connections from the
+total budget.
 
-**Connection path:** LG + APP → DB (direct, 16 replicas)
+The hypothesis being tested is: *does this fragmented, "disciplined" pooling model deliver the
+same throughput and latency as T1's single large pool?* If it does, it confirms that pool
+fragmentation alone is not a bottleneck; any latency gap observed in T3/T4 is therefore
+attributable to the proxy layer itself.
+
+**Connection path:** 16 × `$BENCH` replica (8 on LG, 8 on APP) → DB (direct, no proxy)
 
 **Configuration file:** `configs/t2-disciplined-16.yaml`
 
