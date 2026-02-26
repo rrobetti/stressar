@@ -1158,16 +1158,76 @@ saturated.
 
 #### Proxy Tier — OJP Server (T4)
 
-Per instance (× 3 identical machines):
+Per instance (× 3 identical machines). OJP is a JVM-based server (gRPC / Netty transport).
+JVM memory has three distinct buckets; all three must be reported to get an accurate picture.
+
+**Bucket A — JVM heap (Java objects; controlled by `-Xmx`)**
+
+| Sub-bucket | Expected value |
+|-----------|---------------|
+| Live data (after full GC) | 100–200 MB (connection state, queue state, codec buffers) |
+| GC headroom (G1 default: 45% occupancy target) | +120–260 MB |
+| Heap committed to OS (`-Xms` or G1 adaptive) | **300–512 MB** |
+
+Recommended flag: `-Xms512m -Xmx512m` (fixed heap prevents adaptive-resize jitter during
+measurement). With G1GC (`-XX:+UseG1GC`) GC pauses at this heap size are < 5 ms at 1,000 RPS.
+
+**Bucket B — Off-heap / native memory (tracked by NMT)**
+
+| Component | Expected value |
+|-----------|---------------|
+| Metaspace (class metadata) | 80–130 MB |
+| Code cache (JIT compiled code) | 60–100 MB |
+| Thread stacks (Netty event loops + worker threads, ~40 threads × 512 KB) | 20–30 MB |
+| Direct byte buffers (Netty I/O buffers for gRPC framing) | 50–150 MB |
+| GC data structures (G1 region metadata) | 20–40 MB |
+| Other JVM internals | 20–40 MB |
+| **Bucket B total** | **250–490 MB** |
+
+**Bucket C — OS-level RSS (what `ps` / `top` / `/proc/<pid>/status VmRSS` reports)**
+
+RSS ≈ Bucket A (heap committed) + Bucket B (NMT total) + OS mmap overhead.
+Expected RSS per OJP instance: **600 MB–1.1 GB**.
+
+**Measurement commands** (run during steady-state T4 measurement window):
+
+```bash
+# Enable NMT before starting OJP — add to JVM flags:
+# -XX:NativeMemoryTracking=summary
+
+# Collect NMT snapshot (replace <pid> with OJP process ID):
+jcmd <pid> VM.native_memory summary scale=MB > results/t4-ojp/nmt-$(hostname).txt
+
+# OS-level RSS:
+ps -o pid,rss,vsz,comm -p <pid>
+# or
+cat /proc/<pid>/status | grep -E "VmRSS|VmPeak|VmSize"
+
+# GC pause log — add to JVM flags:
+# -Xlog:gc*:file=logs/ojp-gc.log:time,uptime:filecount=5,filesize=20m
+```
+
+Save all three outputs to `results/t4-ojp/` for disclosure in the publication. If any GC pause
+exceeds 20 ms during the measurement window, the pause timestamp must be correlated with the
+`timeseries.csv` p95 values and disclosed.
+
+**Recommended OJP JVM flags for this experiment:**
+
+```
+-Xms512m -Xmx512m
+-XX:+UseG1GC
+-XX:MaxGCPauseMillis=10
+-XX:NativeMemoryTracking=summary
+-Xlog:gc*:file=logs/ojp-gc.log:time,uptime:filecount=5,filesize=20m
+```
 
 | Resource | Expected value |
 |----------|---------------|
-| CPU | 1–4 cores (depends on OJP implementation; JVM-based implementations incur GC overhead) |
-| Memory | 512 MB–2 GB (JVM heap; 100 backend connections + OJP internal queue state) |
+| CPU | 1–3 cores (Netty event loops; scales with in-flight gRPC streams) |
+| Heap committed (Bucket A) | 300–512 MB |
+| Off-heap / native (Bucket B) | 250–490 MB |
+| **Total RSS (Bucket C)** | **600 MB–1.1 GB** |
 | Network | ≈ same as PgBouncer — forwarding query traffic to DB |
-
-If OJP is JVM-based, allocate at least `-Xmx2g` and use G1GC. Monitor GC pause frequency;
-pauses > 20 ms during the measurement window will inflate tail latency and must be disclosed.
 
 #### Database Server (DB)
 
@@ -1188,7 +1248,7 @@ proxy tier. Reduce `targetRps` until DB CPU drops below 70% before comparing pro
 | LG / APP | 2–4 cores | 3–6 GB JVM heap | Bottleneck if CPU > 75% |
 | LB (HAProxy, T3 only) | < 0.5 cores | < 200 MB | T3 only; negligible overhead |
 | PROXY ×3 — PgBouncer (T3) | 0.5–1.5 cores | 50–150 MB | Single-threaded; saturates at 1 core |
-| PROXY ×3 — OJP (T4) | 1–4 cores | 512 MB–2 GB | JVM GC pauses must be monitored |
+| PROXY ×3 — OJP (T4) | 1–3 cores | 600 MB–1.1 GB RSS | Heap 300–512 MB + off-heap 250–490 MB; collect NMT |
 | DB | 4–10 cores | 65–70 GB | Bottleneck if CPU > 80% |
 
 ---
