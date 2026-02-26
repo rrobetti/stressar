@@ -1105,6 +1105,92 @@ statements). This overhead, if present, will manifest as increased p99 latency a
 for the W2_READ_WRITE workload (which uses explicit multi-statement transactions) than for the
 W1_READ_ONLY workload (single-statement transactions).
 
+### 11.5 Expected Resource Consumption
+
+The following approximate CPU and memory usage is expected during the steady-state measurement
+window at 1,000 RPS. These are guiding values for capacity planning and anomaly detection, not
+acceptance criteria. If any node consistently exceeds these bounds, it is likely the bottleneck
+and the result should be flagged.
+
+The **same three proxy machines** are used for both the T3 (PgBouncer) and T4 (OJP) test runs.
+PgBouncer is stopped and OJP is started on each machine between scenario runs. This ensures the
+hardware is identical across the two proxy SUTs and eliminates machine-to-machine variation as a
+confounding factor.
+
+#### Load Generator / Application Tier (LG and APP)
+
+| Resource | Expected value |
+|----------|---------------|
+| CPU | 2–4 cores (out of 8) for the bench JVM; spikes to 6 cores during warm-up |
+| Heap (JVM) | 3–6 GB live data (within `-Xmx8g`); GC pauses < 10 ms with G1GC |
+| Network TX | 20–80 Mbps (small query payloads; dominated by connection-setup overhead at high RPS) |
+| Network RX | 30–100 Mbps |
+
+At 1,000 RPS each open-loop worker thread performs one SQL round-trip per slot. CPU usage is
+bounded by the number of in-flight requests, not by throughput alone. If CPU on LG exceeds 75%
+sustained, the load generator itself is the bottleneck; reduce `targetRps` or distribute replicas
+further.
+
+#### Load Balancer — HAProxy (LB, T3 only)
+
+| Resource | Expected value |
+|----------|---------------|
+| CPU | < 0.5 cores (HAProxy TCP mode, no TLS termination) |
+| Memory | < 200 MB (connection state for up to 10,000 concurrent sessions) |
+| Network TX + RX | ≈ same as aggregate LG traffic — HAProxy is transparent at layer 4 |
+
+HAProxy in TCP pass-through mode has negligible CPU overhead. If HAProxy CPU exceeds 1 core, TLS
+or application-layer inspection has accidentally been enabled.
+
+#### Proxy Tier — PgBouncer (T3)
+
+Per instance (× 3 identical machines):
+
+| Resource | Expected value |
+|----------|---------------|
+| CPU | 0.5–1.5 cores (PgBouncer is single-threaded; one core handles ~50 K simple TPS) |
+| Memory | 50–150 MB (connection state for 100 backend + up to 2,000 client connections) |
+| Network | ≈ LG-to-proxy traffic forwarded to DB; proportional to query payload size |
+
+Because PgBouncer is single-threaded, CPU usage will never exceed 1 core regardless of load. If
+`SHOW POOLS` shows `cl_waiting > 0` sustained and CPU is at 100% on the one core, PgBouncer is
+saturated.
+
+#### Proxy Tier — OJP Server (T4)
+
+Per instance (× 3 identical machines):
+
+| Resource | Expected value |
+|----------|---------------|
+| CPU | 1–4 cores (depends on OJP implementation; JVM-based implementations incur GC overhead) |
+| Memory | 512 MB–2 GB (JVM heap; 100 backend connections + OJP internal queue state) |
+| Network | ≈ same as PgBouncer — forwarding query traffic to DB |
+
+If OJP is JVM-based, allocate at least `-Xmx2g` and use G1GC. Monitor GC pause frequency;
+pauses > 20 ms during the measurement window will inflate tail latency and must be disclosed.
+
+#### Database Server (DB)
+
+| Resource | Expected value |
+|----------|---------------|
+| CPU | 4–10 cores (out of 16) at 1,000 RPS on cache-warm W2_MIXED workload |
+| Memory | 65–70 GB resident (64 GB `shared_buffers` + OS page cache + working memory) |
+| Storage I/O | Near zero read IOPS if dataset fits in `shared_buffers`; 5–20 MB/s WAL writes |
+| Network | 50–150 Mbps (query results + WAL streaming if replicas are attached) |
+
+If DB CPU exceeds 80% sustained, the workload has hit the compute limit of the DB tier, not the
+proxy tier. Reduce `targetRps` until DB CPU drops below 70% before comparing proxy SUTs.
+
+#### Summary Table
+
+| Node | CPU (expected) | Memory (expected) | Notes |
+|------|---------------|-------------------|-------|
+| LG / APP | 2–4 cores | 3–6 GB JVM heap | Bottleneck if CPU > 75% |
+| LB (HAProxy, T3 only) | < 0.5 cores | < 200 MB | T3 only; negligible overhead |
+| PROXY ×3 — PgBouncer (T3) | 0.5–1.5 cores | 50–150 MB | Single-threaded; saturates at 1 core |
+| PROXY ×3 — OJP (T4) | 1–4 cores | 512 MB–2 GB | JVM GC pauses must be monitored |
+| DB | 4–10 cores | 65–70 GB | Bottleneck if CPU > 80% |
+
 ---
 
 ## 12. Analysis Procedure
