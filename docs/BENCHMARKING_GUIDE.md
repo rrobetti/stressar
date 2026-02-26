@@ -44,13 +44,19 @@ load distribution differently:
 
 - **T3 — PgBouncer**: PgBouncer has no built-in client-side load balancing. An external HAProxy
   load balancer (LB) distributes JDBC connections across the three PgBouncer instances. The
-  full topology requires **seven** machines: LG, APP, LB, PROXY-1, PROXY-2, PROXY-3, and DB.
+  full topology requires **six** machines: LG, LB, PROXY-1, PROXY-2, PROXY-3, and DB.
 - **T4 — OJP**: The OJP JDBC driver includes built-in client-side load balancing. A multi-host
   JDBC URL lists all three OJP server addresses; the driver distributes connections without an
-  external load balancer. The topology requires **six** machines: LG, APP, PROXY-1, PROXY-2,
+  external load balancer. The topology requires **five** machines: LG, PROXY-1, PROXY-2,
   PROXY-3, and DB.
 
 The baseline scenarios (T1 and T2) require only LG, APP (T2 only), and DB.
+
+**What is the APP machine?** The APP machine is a second load generator. The bench JVM can run
+multiple replicas simultaneously; when more replicas are needed than a single machine can host
+comfortably, they are split across LG and APP. In T2 (HIKARI_DISCIPLINED), 16 replicas are needed
+— LG runs replicas 0–7 and APP runs replicas 8–15. In T1, T3, and T4 the benchmark is run as a
+single replica on LG only; APP is not needed.
 
 No machine plays more than one role. Internet access is not required and must be disabled on all
 machines during the test run to eliminate background noise.
@@ -60,7 +66,6 @@ machines during the test run to eliminate background noise.
 ```mermaid
 graph TD
     LG["Load Generator (LG)\nbench JVM"]
-    APP["Application Tier (APP)\nbench JVM replicas"]
     LB["Load Balancer (LB)\nHAProxy :6432"]
 
     subgraph PROXY_TIER ["Proxy Tier — 3 × PgBouncer"]
@@ -72,7 +77,6 @@ graph TD
     DB[("PostgreSQL (DB)")]
 
     LG -- "JDBC via HAProxy" --> LB
-    APP -- "JDBC via HAProxy" --> LB
     LB -- "leastconn" --> P1
     LB -- "leastconn" --> P2
     LB -- "leastconn" --> P3
@@ -86,7 +90,6 @@ graph TD
 ```mermaid
 graph TD
     LG["Load Generator (LG)\nOJP JDBC driver\nclient-side LB"]
-    APP["Application Tier (APP)\nOJP JDBC driver\nclient-side LB"]
 
     subgraph PROXY_TIER ["Proxy Tier — 3 × OJP Server"]
         P1["PROXY-1\nojp-server :5432"]
@@ -99,9 +102,6 @@ graph TD
     LG -- "each connection routed\nby driver to one instance" --> P1
     LG -. "driver selects\nper connection" .-> P2
     LG -. "driver selects\nper connection" .-> P3
-    APP -. "driver selects\nper connection" .-> P1
-    APP -. "driver selects\nper connection" .-> P2
-    APP -- "each connection routed\nby driver to one instance" --> P3
     P1 --> DB
     P2 --> DB
     P3 --> DB
@@ -127,18 +127,20 @@ graph TD
 
 | Label | Role | Scenarios |
 |-------|------|-----------|
-| LG    | Load generator | All |
-| APP   | Application tier (multi-replica runs only) | T2 |
-| LB    | HAProxy load balancer | T3 only |
-| PROXY-1 | Connection proxy (instance 1) | T3, T4 |
-| PROXY-2 | Connection proxy (instance 2) | T3, T4 |
-| PROXY-3 | Connection proxy (instance 3) | T3, T4 |
-| DB    | Database server | All |
+| LG    | Load generator — runs the bench JVM, issues all JDBC requests | All |
+| APP   | Second load generator — runs 8 additional bench JVM replicas alongside LG | T2 only |
+| LB    | HAProxy load balancer — distributes connections to 3 × PgBouncer | T3 only |
+| PROXY-1 | Connection proxy (instance 1) — runs PgBouncer or OJP | T3, T4 |
+| PROXY-2 | Connection proxy (instance 2) — runs PgBouncer or OJP | T3, T4 |
+| PROXY-3 | Connection proxy (instance 3) — runs PgBouncer or OJP | T3, T4 |
+| DB    | Database server — runs PostgreSQL | All |
 
 Each of the three proxy instances maintains an independent backend connection pool of 100
 connections, giving a total of 300 backend connections to PostgreSQL across the proxy tier.
 
-Single-replica runs execute entirely on LG; the APP machine is used only for multi-replica runs.
+For T1, T3, and T4 the benchmark runs as a single replica on LG; APP is idle and not required.
+APP is only needed in T2, where 16 replicas are split between LG (replicas 0–7) and APP
+(replicas 8–15) to stay within each machine's CPU and memory envelope.
 
 ---
 
@@ -575,6 +577,21 @@ haproxy -v >> results/env/lb-version.txt
 ---
 
 ## 9. Test Scenarios
+
+### Quick Reference — All Test Scenarios
+
+| # | Name | What runs | Machines needed | Load | What you measure |
+|---|------|-----------|-----------------|------|-----------------|
+| T1 | Direct JDBC baseline | Single bench JVM replica; HikariCP pool → PostgreSQL directly | LG, DB | 1,000 RPS | Latency/throughput with no proxy — the upper-bound baseline |
+| T2 | Disciplined pooling | 16 bench JVM replicas (8 on LG, 8 on APP); connection budget divided equally | LG, APP, DB | 1,000 RPS aggregate | Whether small per-replica pools perform as well as one large pool |
+| T3 | PgBouncer (3 instances) | Single bench JVM; JDBC → HAProxy → 3 × PgBouncer → PostgreSQL | LG, LB, PROXY-1–3, DB | 1,000 RPS | Proxy overhead of PgBouncer transaction-mode pooling |
+| T4 | OJP (3 instances) | Single bench JVM; OJP JDBC driver routes connections to 3 × OJP server → PostgreSQL | LG, PROXY-1–3, DB | 1,000 RPS | Proxy overhead of OJP server-side pooling with client-side LB |
+| T5 | Capacity sweep | Same setup as T1, T3, T4 (run each separately) | Same as T1/T3/T4 | 200 RPS → max (15 % steps) | Maximum sustainable throughput (MST) for each SUT |
+| T6 | Overload and recovery | Same setup as T1, T3, T4 (run each separately) | Same as T1/T3/T4 | 130 % MST for 300 s, then 70 % MST for 600 s | How quickly each SUT recovers after a sustained overload episode |
+
+> **T5 depends on T1/T3/T4 first:** Run T1, T3, and T4 at the fixed 1,000 RPS target before the
+> sweep to confirm the system is healthy at that load level.
+> **T6 depends on T5:** You need the MST from T5 to compute the overload and recovery RPS levels.
 
 All test scenarios share the following global parameters unless explicitly overridden:
 
