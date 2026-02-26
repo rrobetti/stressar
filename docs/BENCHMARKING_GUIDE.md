@@ -39,43 +39,76 @@ in the experimental report along with a justification.
 
 ## 1. Test Environment Topology
 
-The full proxy-tier topology (scenarios T3 and T4) requires seven physically separate machines
-connected by a dedicated 10 Gbps Ethernet switch: LG, APP, LB, PROXY-1, PROXY-2, PROXY-3, and
-DB. The baseline topology (scenarios T1 and T2) requires only LG, APP (T2 only), and DB. No
-machine plays more than one role. Internet access is not required and must be disabled on all
+Both proxy-tier scenarios (T3 PgBouncer and T4 OJP) run three proxy instances, but they achieve
+load distribution differently:
+
+- **T3 — PgBouncer**: PgBouncer has no built-in client-side load balancing. An external HAProxy
+  load balancer (LB) distributes JDBC connections across the three PgBouncer instances. The
+  full topology requires **seven** machines: LG, APP, LB, PROXY-1, PROXY-2, PROXY-3, and DB.
+- **T4 — OJP**: The OJP JDBC driver includes built-in client-side load balancing. A multi-host
+  JDBC URL lists all three OJP server addresses; the driver distributes connections without an
+  external load balancer. The topology requires **six** machines: LG, APP, PROXY-1, PROXY-2,
+  PROXY-3, and DB.
+
+The baseline scenarios (T1 and T2) require only LG, APP (T2 only), and DB.
+
+No machine plays more than one role. Internet access is not required and must be disabled on all
 machines during the test run to eliminate background noise.
 
-The proxy tier runs **three** instances of the proxy under test (PgBouncer or OJP). A hardware or
-software load balancer distributes client connections across the three instances. This three-node
-topology is the unit of comparison: results for PgBouncer are collected with three PgBouncer
-instances behind a load balancer, and results for OJP are collected with three OJP instances
-behind the same load balancer.
-
-### Full Topology (T3 — PgBouncer, T4 — OJP)
+### T3 — PgBouncer Topology (HAProxy Load Balancer)
 
 ```mermaid
 graph TD
     LG["Load Generator (LG)\nbench JVM"]
     APP["Application Tier (APP)\nbench JVM replicas"]
-    LB["Load Balancer (LB)\nHAProxy  :6432 PgBouncer / :5432 OJP"]
+    LB["Load Balancer (LB)\nHAProxy :6432"]
 
-    subgraph PROXY_TIER ["Proxy Tier — PgBouncer OR OJP (3 identical instances)"]
-        P1["PROXY-1"]
-        P2["PROXY-2"]
-        P3["PROXY-3"]
+    subgraph PROXY_TIER ["Proxy Tier — 3 × PgBouncer"]
+        P1["PROXY-1\nPgBouncer :6432"]
+        P2["PROXY-2\nPgBouncer :6432"]
+        P3["PROXY-3\nPgBouncer :6432"]
     end
 
     DB[("PostgreSQL (DB)")]
 
-    LG -- "T3 / T4: via load balancer" --> LB
-    APP -- "T3 / T4: via load balancer" --> LB
-    LB --> P1
-    LB --> P2
-    LB --> P3
+    LG -- "JDBC via HAProxy" --> LB
+    APP -- "JDBC via HAProxy" --> LB
+    LB -- "leastconn" --> P1
+    LB -- "leastconn" --> P2
+    LB -- "leastconn" --> P3
     P1 --> DB
     P2 --> DB
     P3 --> DB
 ```
+
+### T4 — OJP Topology (Client-Side Load Balancing)
+
+```mermaid
+graph TD
+    LG["Load Generator (LG)\nOJP JDBC driver\nclient-side LB"]
+    APP["Application Tier (APP)\nOJP JDBC driver\nclient-side LB"]
+
+    subgraph PROXY_TIER ["Proxy Tier — 3 × OJP Server"]
+        P1["PROXY-1\nojp-server :5432"]
+        P2["PROXY-2\nojp-server :5432"]
+        P3["PROXY-3\nojp-server :5432"]
+    end
+
+    DB[("PostgreSQL (DB)")]
+
+    LG -- "each connection routed\nby driver to one instance" --> P1
+    LG -. "driver selects\nper connection" .-> P2
+    LG -. "driver selects\nper connection" .-> P3
+    APP -. "driver selects\nper connection" .-> P1
+    APP -. "driver selects\nper connection" .-> P2
+    APP -- "each connection routed\nby driver to one instance" --> P3
+    P1 --> DB
+    P2 --> DB
+    P3 --> DB
+```
+
+> **Note:** The arrows represent the pool of possible connection targets. The OJP JDBC driver
+> selects one OJP server instance per connection at connect time — not all instances simultaneously.
 
 ### Baseline Topology (T1 — HIKARI_DIRECT, T2 — HIKARI_DISCIPLINED)
 
@@ -92,25 +125,18 @@ graph TD
 
 **Machine roles:**
 
-| Label | Role | Processes |
+| Label | Role | Scenarios |
 |-------|------|-----------|
-| LG    | Load generator | `bench run` JVM process (1 per replica) |
-| APP   | Application tier | `bench run` JVM process for multi-replica runs (T2 only) |
-| LB    | Load balancer | HAProxy; distributes client connections to PROXY-1/2/3 |
-| PROXY-1 | Connection proxy (instance 1) | `pgbouncer` or `ojp-server` |
-| PROXY-2 | Connection proxy (instance 2) | `pgbouncer` or `ojp-server` |
-| PROXY-3 | Connection proxy (instance 3) | `pgbouncer` or `ojp-server` |
-| DB    | Database server | `postgresql` |
+| LG    | Load generator | All |
+| APP   | Application tier (multi-replica runs only) | T2 |
+| LB    | HAProxy load balancer | T3 only |
+| PROXY-1 | Connection proxy (instance 1) | T3, T4 |
+| PROXY-2 | Connection proxy (instance 2) | T3, T4 |
+| PROXY-3 | Connection proxy (instance 3) | T3, T4 |
+| DB    | Database server | All |
 
-For the baseline HIKARI_DIRECT (T1) and HIKARI_DISCIPLINED (T2) scenarios the proxy tier and load
-balancer are idle; the `bench` process on LG (and APP for T2) connects directly to DB.
-
-For the PgBouncer (T3) and OJP (T4) scenarios the connection path is:
-LG → LB → PROXY-{1,2,3} → DB.
-
-The load balancer distributes new connections to proxy instances using the least-connections
-algorithm. Each of the three proxy instances maintains an independent backend connection pool of
-100 connections, giving a total of 300 backend connections to PostgreSQL across the proxy tier.
+Each of the three proxy instances maintains an independent backend connection pool of 100
+connections, giving a total of 300 backend connections to PostgreSQL across the proxy tier.
 
 Single-replica runs execute entirely on LG; the APP machine is used only for multi-replica runs.
 
@@ -156,7 +182,10 @@ handlers.
 OJP resource requirements depend on the implementation; allocate the same hardware as for
 PgBouncer unless OJP documentation specifies otherwise.
 
-### 2.4 Load Balancer (LB)
+### 2.4 Load Balancer (LB) — T3 only
+
+The load balancer is **only required for the T3 (PgBouncer) scenario**. OJP (T4) performs
+client-side load balancing via the OJP JDBC driver; no dedicated LB machine is needed for T4.
 
 | Component | Specification |
 |-----------|---------------|
@@ -168,8 +197,7 @@ PgBouncer unless OJP documentation specifies otherwise.
 | Software | HAProxy 2.8 or later |
 
 HAProxy in TCP mode adds less than 0.05 ms round-trip overhead on a 10 GbE LAN at the load levels
-used in this benchmark. This overhead is identical for PgBouncer and OJP scenarios and therefore
-cancels out in the comparative analysis.
+used in this benchmark.
 
 ### 2.5 Database Server (DB)
 
@@ -219,17 +247,16 @@ Verify:
 psql --version   # Must report 16.x
 ```
 
-### 3.3 Install HAProxy on LB
+### 3.3 Install HAProxy on LB (T3 only)
+
+The load balancer is only needed for the T3 (PgBouncer) scenario. Skip this section for T4.
 
 ```bash
 sudo apt-get install -y haproxy
 haproxy -v   # Must report 2.8 or later
 ```
 
-Configure `/etc/haproxy/haproxy.cfg` for PgBouncer (T3) and OJP (T4) scenarios. The two
-configurations are mutually exclusive; swap them between scenario runs.
-
-**haproxy.cfg — PgBouncer frontend (T3):**
+Configure `/etc/haproxy/haproxy.cfg`:
 
 ```
 global
@@ -250,29 +277,6 @@ backend pgbouncer_back
     server proxy1 <PROXY1_IP>:6432 check inter 2s
     server proxy2 <PROXY2_IP>:6432 check inter 2s
     server proxy3 <PROXY3_IP>:6432 check inter 2s
-```
-
-**haproxy.cfg — OJP frontend (T4):**
-
-```
-global
-    maxconn 10000
-
-defaults
-    mode    tcp
-    timeout connect 5s
-    timeout client  300s
-    timeout server  300s
-
-frontend ojp_front
-    bind *:5432
-    default_backend ojp_back
-
-backend ojp_back
-    balance leastconn
-    server proxy1 <PROXY1_IP>:5432 check inter 2s
-    server proxy2 <PROXY2_IP>:5432 check inter 2s
-    server proxy3 <PROXY3_IP>:5432 check inter 2s
 ```
 
 Reload HAProxy after configuration changes:
@@ -446,6 +450,10 @@ psql -h <LB_IP> -p 6432 -U benchuser -d benchdb -c "SELECT 1;"
 
 ## 6. OJP Configuration
 
+The OJP JDBC driver implements **client-side load balancing**. A multi-host JDBC URL lists all
+three OJP server addresses; the driver distributes new connections across the instances without
+requiring an external load balancer. No HAProxy or LB machine is needed for the T4 scenario.
+
 The following configuration is applied identically to PROXY-1, PROXY-2, and PROXY-3. Each OJP
 instance connects directly to the PostgreSQL server and maintains an independent backend pool of
 100 connections. The aggregate backend-connection count across the three instances is 300.
@@ -464,10 +472,15 @@ psql -h <PROXY2_IP> -p 5432 -U benchuser -d benchdb -c "SELECT 1;"
 psql -h <PROXY3_IP> -p 5432 -U benchuser -d benchdb -c "SELECT 1;"
 ```
 
-Verify via load balancer:
-```bash
-psql -h <LB_IP> -p 5432 -U benchuser -d benchdb -c "SELECT 1;"
+The JDBC URL used by the benchmark (see Section 9, T4) lists all three hosts so the OJP driver
+distributes connections at the client side:
+
 ```
+jdbc:ojp://<PROXY1_IP>:5432,<PROXY2_IP>:5432,<PROXY3_IP>:5432/benchdb
+```
+
+Consult the OJP JDBC driver documentation for the exact URL syntax and any driver-specific
+load-balancing configuration properties.
 
 ---
 
@@ -554,7 +567,7 @@ pgbouncer --version >> results/env/proxy-versions.txt
 ojp-server --version >> results/env/proxy-versions.txt  # Adjust to actual OJP binary name
 ```
 
-Record the HAProxy version on LB:
+Record the HAProxy version on LB (T3 only):
 ```bash
 haproxy -v >> results/env/lb-version.txt
 ```
@@ -760,21 +773,21 @@ three instances to obtain aggregate values.
 
 ---
 
-### T4 — OJP Server-Side Pooling (3 Instances)
+### T4 — OJP Server-Side Pooling (3 Instances, Client-Side LB)
 
 **Purpose:** Measure the throughput and latency of a JDBC workload using three OJP instances with
 no client-side HikariCP pool. Each OJP instance maintains a backend pool of 100 connections; total
-backend connections to PostgreSQL = 300. Client connections are distributed across the three
-instances by HAProxy using the least-connections algorithm.
+backend connections to PostgreSQL = 300. Load distribution is handled by the OJP JDBC driver
+via a multi-host JDBC URL — no external load balancer is required.
 
-**Connection path:** LG → LB (HAProxy:5432) → PROXY-{1,2,3} (OJP:5432) → DB
+**Connection path:** LG → OJP JDBC driver (client-side LB) → PROXY-{1,2,3} (OJP:5432) → DB
 
 **Configuration file:** `configs/t4-ojp.yaml`
 
 ```yaml
 database:
-  # Point to HAProxy load balancer, not directly to an OJP instance
-  jdbcUrl: "jdbc:postgresql://<LB_IP>:5432/benchdb"
+  # Multi-host OJP JDBC URL — the driver distributes connections across all three OJP instances
+  jdbcUrl: "jdbc:ojp://<PROXY1_IP>:5432,<PROXY2_IP>:5432,<PROXY3_IP>:5432/benchdb"
   username: "benchuser"
   password: "benchpass"
 
@@ -1043,8 +1056,8 @@ instance for T3/T4, or a single pool of 300 for T1):
 |-----|-------------------------------|--------------------------------------|
 | T1 HIKARI_DIRECT | baseline | baseline |
 | T2 HIKARI_DISCIPLINED (K=16) | +5 to +20% higher latency per replica | ≈ aggregate baseline |
-| T3 PGBOUNCER (3 instances) | +2 to +10% higher latency (LB hop + proxy) | ≈ baseline |
-| T4 OJP (3 instances) | +2 to +15% higher latency (LB hop + proxy) | ≈ baseline |
+| T3 PGBOUNCER (3 instances + HAProxy) | +2 to +10% higher latency (LB hop + proxy) | ≈ baseline |
+| T4 OJP (3 instances, client-side LB) | +2 to +15% higher latency (proxy hop only) | ≈ baseline |
 
 The proxy-hop overhead is expected to be 0.1–0.5 ms per request on a 10 GbE LAN, contributing
 less than 1 ms to median latency but potentially more to tail latency under load due to queueing
@@ -1052,18 +1065,18 @@ at the proxy.
 
 ### 11.2 Capacity (T5)
 
-**Hypothesis H2:** The maximum sustainable throughput of T3 (3 × PgBouncer) is within 10% of T1
-(HIKARI_DIRECT) when the total backend connection count is held constant at 300. The load balancer
-adds a fixed and symmetric overhead to both T3 and T4 and does not affect the PgBouncer-vs-OJP
-comparison. PgBouncer's transaction-mode multiplexing is designed precisely to avoid the
-connection serialisation that limits throughput; if connection establishment cost is low
-(cache-warm, no SSL), the overhead should be minimal.
+**Hypothesis H2:** The maximum sustainable throughput of T3 (3 × PgBouncer behind HAProxy) is
+within 10% of T1 (HIKARI_DIRECT) when the total backend connection count is held constant at 300.
+PgBouncer's transaction-mode multiplexing is designed precisely to avoid the connection
+serialisation that limits throughput; if connection establishment cost is low (cache-warm, no
+SSL), the overhead should be minimal.
 
-**Hypothesis H3:** The maximum sustainable throughput of T4 (3 × OJP) is within 10% of T3
-(3 × PgBouncer) when each proxy instance is configured with equal backend pool sizes (100 per
-instance). Both are transaction-mode multiplexers running behind the same load balancer.
-Differences, if observed, are attributable to implementation-specific overheads (protocol
-translation, queue management, JVM overhead in OJP if applicable).
+**Hypothesis H3:** The maximum sustainable throughput of T4 (3 × OJP with client-side JDBC load
+balancing) is within 10% of T3 (3 × PgBouncer) when each proxy instance is configured with equal
+backend pool sizes (100 per instance). Both are transaction-mode multiplexers.
+T4 avoids the HAProxy network hop present in T3; any latency difference is attributable to
+implementation-specific proxy overheads (protocol handling, queue management, JVM overhead in OJP
+if applicable).
 
 ### 11.3 Overload and Recovery (T6)
 
@@ -1072,8 +1085,8 @@ translation, queue management, JVM overhead in OJP if applicable).
 | SUT | Predicted recovery time |
 |-----|------------------------|
 | T1 HIKARI_DIRECT | 5–30 s (HikariCP connection queue drains quickly after load drops) |
-| T3 PGBOUNCER (3 instances) | 5–60 s (PgBouncer `cl_waiting` queue drains across 3 instances; total queue = 3 × reserve_pool_size) |
-| T4 OJP (3 instances) | 5–60 s (OJP queue drains across 3 instances; depends on `queueLimit` per instance) |
+| T3 PGBOUNCER (3 instances + HAProxy) | 5–60 s (PgBouncer `cl_waiting` queue drains across 3 instances; total queue = 3 × reserve_pool_size) |
+| T4 OJP (3 instances, client-side LB) | 5–60 s (OJP queue drains across 3 instances; depends on `queueLimit` per instance) |
 
 Recovery time is expected to correlate with the length of the request queue at the moment load is
 reduced. A system with large queue buffers (high `max_client_conn` in PgBouncer or high
