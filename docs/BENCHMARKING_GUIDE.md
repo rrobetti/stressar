@@ -223,7 +223,14 @@ to 8 GB and document this deviation.
 
 ## 3. Software Installation
 
+> **Detailed installation guides** for each component are available in
+> [docs/install/](install/README.md). This section summarises the commands needed for the benchmark
+> environment; consult the linked guides for troubleshooting and alternative installation methods.
+
 ### 3.1 Build the Benchmark Tool
+
+> **Prerequisites:** [Java 11+](install/JAVA.md) must be installed. Gradle is downloaded
+> automatically by the `./gradlew` wrapper — see [install/GRADLE.md](install/GRADLE.md).
 
 On LG (and APP if used for multi-replica tests):
 
@@ -241,6 +248,8 @@ $BENCH --version
 
 ### 3.2 Install PostgreSQL 16 on DB
 
+> Full installation and configuration instructions: [install/POSTGRESQL.md](install/POSTGRESQL.md)
+
 ```bash
 sudo apt-get install -y postgresql-16 postgresql-16-contrib
 ```
@@ -251,6 +260,8 @@ psql --version   # Must report 16.x
 ```
 
 ### 3.3 Install HAProxy on LB (T3 only)
+
+> Full installation and configuration instructions: [install/HAPROXY.md](install/HAPROXY.md)
 
 The load balancer is only needed for the T3 (PgBouncer) scenario. Skip this section for T4.
 
@@ -289,12 +300,16 @@ sudo systemctl reload haproxy
 
 ### 3.4 Install PgBouncer on PROXY-1, PROXY-2, PROXY-3
 
+> Full installation and configuration instructions: [install/PGBOUNCER.md](install/PGBOUNCER.md)
+
 ```bash
 sudo apt-get install -y pgbouncer
 pgbouncer --version  # Must report 1.21 or later
 ```
 
 ### 3.5 Install OJP on PROXY-1, PROXY-2, PROXY-3
+
+> Full installation and configuration instructions: [install/OJP.md](install/OJP.md)
 
 Follow the OJP project installation instructions on each of PROXY-1, PROXY-2, and PROXY-3. OJP
 must be reachable on port 5432 on each machine.

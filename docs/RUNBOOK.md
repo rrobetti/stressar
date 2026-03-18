@@ -3,6 +3,7 @@
 Complete guide for running benchmarks with exact commands and configurations.
 
 ## Table of Contents
+- [Installation Guides](#installation-guides)
 - [Prerequisites](#prerequisites)
 - [PostgreSQL Setup](#postgresql-setup)
 - [Database Initialization](#database-initialization)
@@ -14,14 +15,37 @@ Complete guide for running benchmarks with exact commands and configurations.
 
 ---
 
+## Installation Guides
+
+Quick links to component installation documentation:
+
+| Component | Guide |
+|---|---|
+| Java 11+ (required) | [install/JAVA.md](install/JAVA.md) |
+| Gradle 7+ (included via wrapper) | [install/GRADLE.md](install/GRADLE.md) |
+| PostgreSQL 12+ (required) | [install/POSTGRESQL.md](install/POSTGRESQL.md) |
+| pgBouncer (T3 / PGBOUNCER mode) | [install/PGBOUNCER.md](install/PGBOUNCER.md) |
+| HAProxy load balancer (T3 only) | [install/HAPROXY.md](install/HAPROXY.md) |
+| OJP server + JDBC driver (T4 / OJP mode) | [install/OJP.md](install/OJP.md) |
+
+See also: [install/README.md](install/README.md) for a guided setup overview.
+
+---
+
 ## Prerequisites
 
 ### Required Software
-- **Java 11 or later** (verify with `java -version`)
-- **PostgreSQL 12+** (tested with PostgreSQL 14, 15, 16)
-- **Gradle 7+** (included via `./gradlew`)
+- **[Java 11 or later](install/JAVA.md)** (verify with `java -version`) — see [install/JAVA.md](install/JAVA.md)
+- **[PostgreSQL 12+](install/POSTGRESQL.md)** (tested with PostgreSQL 14, 15, 16) — see [install/POSTGRESQL.md](install/POSTGRESQL.md)
+- **[Gradle 7+](install/GRADLE.md)** (included via `./gradlew`) — see [install/GRADLE.md](install/GRADLE.md)
 - At least **4GB RAM** available for the benchmark tool
 - At least **8GB RAM** for PostgreSQL (adjust `shared_buffers` accordingly)
+
+For additional components used in multi-scenario benchmarks, see the
+[installation guides index](install/README.md):
+- **[pgBouncer](install/PGBOUNCER.md)** — required for the PGBOUNCER / T3 scenario
+- **[HAProxy](install/HAPROXY.md)** — load balancer required for the T3 scenario
+- **[OJP](install/OJP.md)** — required for the OJP / T4 scenario
 
 ### System Setup
 ```bash
@@ -120,6 +144,9 @@ EOF
 ## Database Initialization
 
 ### Build the Tool
+
+> **Prerequisites:** [Java 11+](install/JAVA.md) and [Gradle 7+](install/GRADLE.md) must be installed.
+> The `./gradlew` wrapper downloads Gradle automatically on first use.
 
 ```bash
 cd ojp-performance-tester-tool
@@ -323,7 +350,7 @@ database:
 ```
 
 **Prerequisites:**
-- OJP gateway must be running and configured
+- OJP gateway must be running and configured — see [install/OJP.md](install/OJP.md)
 - Database URL should point to OJP gateway (not directly to PostgreSQL)
 
 **Use Case:** Testing server-side connection pooling
@@ -346,7 +373,7 @@ database:
 ```
 
 **Prerequisites:**
-- PgBouncer must be running and configured
+- PgBouncer must be running and configured — see [install/PGBOUNCER.md](install/PGBOUNCER.md)
 - Database URL should point to PgBouncer (not directly to PostgreSQL)
 
 **PgBouncer Setup Example:**
