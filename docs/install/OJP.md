@@ -1,21 +1,18 @@
-# Installing OJP (Open JDBC Pooler)
+# Installing OJP Server
 
-OJP (Open JDBC Pooler) is a server-side PostgreSQL connection pooler with a built-in client-side
-load-balancing JDBC driver. It is used in the **T4 scenario** of this benchmark as an alternative
-to pgBouncer + HAProxy.
+OJP Server (Open JDBC Proxy) is a gRPC-based connection pool server used in the **T4 scenario**
+as an alternative to the pgBouncer + HAProxy stack. It is installed on the **PROXY** nodes.
 
-OJP's key advantage is that its JDBC driver supports a **multi-host URL**, which eliminates the
-need for an external load balancer (HAProxy). The driver distributes new connections across
-multiple OJP server instances automatically.
+> The OJP JDBC Driver (installed on the **Load Generator**) is covered separately in
+> [OJP_JDBC_DRIVER.md](OJP_JDBC_DRIVER.md).
 
-Both the OJP server and the OJP JDBC driver are published to **Maven Central** and can be
-downloaded as ready-to-run JARs — no build step is required.
+Both artefacts are published to **Maven Central** — no source checkout or build tools are needed.
 
-**Current release:** `0.4.0-beta`
+**Current release:** `0.4.0-beta` &nbsp;|&nbsp; **Server gRPC port:** `1059`
 
 | Artifact | Maven Central URL |
 |---|---|
-| OJP Server | <https://repo1.maven.org/maven2/org/openjproxy/ojp-server/0.4.0-beta/ojp-server-0.4.0-beta.jar> |
+| OJP Server (shaded) | <https://repo1.maven.org/maven2/org/openjproxy/ojp-server/0.4.0-beta/ojp-server-0.4.0-beta-shaded.jar> |
 | OJP JDBC Driver | <https://repo1.maven.org/maven2/org/openjproxy/ojp-jdbc-driver/0.4.0-beta/ojp-jdbc-driver-0.4.0-beta.jar> |
 
 ---
@@ -24,60 +21,106 @@ downloaded as ready-to-run JARs — no build step is required.
 
 - [Prerequisites](#prerequisites)
 - [Download OJP server JAR](#download-ojp-server-jar)
-- [Download OJP JDBC driver JAR](#download-ojp-jdbc-driver-jar)
-- [Verify installation](#verify-installation)
-- [Configuration for benchmarking](#configuration-for-benchmarking)
+- [Download PostgreSQL native JDBC driver](#download-postgresql-native-jdbc-driver)
 - [Start OJP server](#start-ojp-server)
-- [Add OJP JDBC driver to the benchmark tool](#add-ojp-jdbc-driver-to-the-benchmark-tool)
-- [Verify connectivity](#verify-connectivity)
-- [Benchmark JDBC URL syntax](#benchmark-jdbc-url-syntax)
+- [Verify installation](#verify-installation)
+- [Further reading](#further-reading)
 
 ---
 
 ## Prerequisites
 
-- **Java 11+** — see [JAVA.md](JAVA.md)
-- **PostgreSQL 12+** must be running and accessible from the OJP host — see [POSTGRESQL.md](POSTGRESQL.md)
+- **Java 21 or higher** (OJP Server requirement) — see [JAVA.md](JAVA.md)
+- **PostgreSQL 12+** must be running and accessible from each proxy node — see [POSTGRESQL.md](POSTGRESQL.md)
 
-No build tools are required; the JARs are downloaded directly from Maven Central.
+> The OJP JDBC Driver (load-generator side) requires **Java 11 or higher** — see
+> [OJP_JDBC_DRIVER.md](OJP_JDBC_DRIVER.md).
 
 ---
 
 ## Download OJP server JAR
 
-Run the following commands on each of **PROXY-1**, **PROXY-2**, and **PROXY-3**:
+Run the following commands on each of **PROXY-1**, **PROXY-2**, and **PROXY-3**.
+
+The server is distributed as a **shaded** (self-contained, ~20 MB) JAR that bundles all
+server-side dependencies except the database drivers (downloaded separately below).
 
 ```bash
-# Create a directory for OJP
-sudo mkdir -p /opt/ojp/bin
+# Create the OJP directories
+sudo mkdir -p /opt/ojp/bin /opt/ojp/ojp-libs
 
-# Download the OJP server JAR
+# Download the self-contained server JAR
 sudo curl -L \
-  https://repo1.maven.org/maven2/org/openjproxy/ojp-server/0.4.0-beta/ojp-server-0.4.0-beta.jar \
-  -o /opt/ojp/bin/ojp-server.jar
-
-# Make it executable via a wrapper script
-sudo tee /usr/local/bin/ojp-server > /dev/null <<'EOF'
-#!/bin/sh
-exec java $JAVA_OPTS -jar /opt/ojp/bin/ojp-server.jar "$@"
-EOF
-sudo chmod +x /usr/local/bin/ojp-server
+  https://repo1.maven.org/maven2/org/openjproxy/ojp-server/0.4.0-beta/ojp-server-0.4.0-beta-shaded.jar \
+  -o /opt/ojp/bin/ojp-server-0.4.0-beta-shaded.jar
 ```
 
 ---
 
-## Download OJP JDBC driver JAR
+## Download PostgreSQL native JDBC driver
 
-Run the following command on the **Load Generator (LG)** machine (and APP if used):
+OJP Server **does not bundle database drivers**. Place the driver JAR(s) in an `ojp-libs`
+directory before starting the server.
+
+### Option A — use the OJP helper script (downloads H2, PostgreSQL, MySQL, MariaDB)
 
 ```bash
-# Create a lib directory inside the benchmark tool checkout
-mkdir -p /path/to/ojp-performance-tester-tool/lib
+curl -LO https://raw.githubusercontent.com/Open-J-Proxy/ojp/main/ojp-server/download-drivers.sh
+sudo bash download-drivers.sh /opt/ojp/ojp-libs
+```
 
-# Download the OJP JDBC driver JAR
-curl -L \
-  https://repo1.maven.org/maven2/org/openjproxy/ojp-jdbc-driver/0.4.0-beta/ojp-jdbc-driver-0.4.0-beta.jar \
-  -o /path/to/ojp-performance-tester-tool/lib/ojp-jdbc-driver-0.4.0-beta.jar
+### Option B — download the PostgreSQL driver only
+
+```bash
+sudo curl -L \
+  https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.8/postgresql-42.7.8.jar \
+  -o /opt/ojp/ojp-libs/postgresql-42.7.8.jar
+```
+
+Verify the driver is in place:
+
+```bash
+ls -lh /opt/ojp/ojp-libs/
+```
+
+---
+
+## Start OJP server
+
+OJP Server is configured entirely through **JVM system properties** — there is no separate
+configuration file. The most important properties are:
+
+| JVM property | Default | Description |
+|---|---|---|
+| `ojp.server.port` | `1059` | gRPC server port |
+| `ojp.libs.path` | `./ojp-libs` | Directory containing the JDBC driver JARs |
+| `ojp.server.threadPoolSize` | `200` | gRPC thread pool size |
+| `user.timezone` | — | **Always set to `UTC`** for correct date/time handling |
+
+Repeat on **PROXY-1**, **PROXY-2**, and **PROXY-3**.
+
+### Foreground (testing / debugging)
+
+```bash
+java -Duser.timezone=UTC \
+     -Dojp.libs.path=/opt/ojp/ojp-libs \
+     -jar /opt/ojp/bin/ojp-server-0.4.0-beta-shaded.jar
+```
+
+### Background (benchmark runs)
+
+```bash
+nohup java -Duser.timezone=UTC \
+     -Dojp.libs.path=/opt/ojp/ojp-libs \
+     -jar /opt/ojp/bin/ojp-server-0.4.0-beta-shaded.jar \
+     > /var/log/ojp-server.log 2>&1 &
+```
+
+The server binds to port **1059** (gRPC). You should see output similar to:
+
+```
+[main] INFO  GrpcServer - Starting OJP gRPC Server on port 1059
+[main] INFO  GrpcServer - OJP gRPC Server started successfully and awaiting termination
 ```
 
 ---
@@ -85,144 +128,23 @@ curl -L \
 ## Verify installation
 
 ```bash
-# Confirm the server JAR is present and executable
-ojp-server --version
-
-# Confirm the JDBC driver JAR is present
-ls -lh /path/to/ojp-performance-tester-tool/lib/ojp-jdbc-driver-0.4.0-beta.jar
+# Confirm the server is listening on port 1059 (gRPC)
+ss -tlnp | grep 1059
 ```
 
----
+Expected output includes a line showing a process listening on `0.0.0.0:1059`.
 
-## Configuration for benchmarking
-
-Each OJP server instance is configured via a YAML file. Apply the following configuration
-identically on **PROXY-1**, **PROXY-2**, and **PROXY-3**.
-
-### `/etc/ojp/ojp.yaml`
-
-```yaml
-server:
-  listen_address: "0.0.0.0"
-  listen_port: 5432
-
-backend:
-  host: "<DB_IP>"
-  port: 5432
-  database: benchdb
-  username: benchuser
-  password: benchpass
-
-pool:
-  max_connections: 100        # Backend connections per instance; 3 × 100 = 300 total
-  min_connections: 10
-  connection_timeout_ms: 5000
-
-logging:
-  level: info
-```
-
-Replace `<DB_IP>` with the IP address of the PostgreSQL server.
-
-**Key settings:**
-
-| Setting | Value | Explanation |
-|---|---|---|
-| `listen_port` | `5432` | OJP presents itself as a PostgreSQL server on the standard port |
-| `max_connections` | `100` | Backend connections maintained per OJP instance |
-| `3 × 100 = 300` | — | Total backend connections across three instances, matching the pgBouncer T3 scenario for a fair comparison |
-
----
-
-## Start OJP server
-
-```bash
-# Create config directory
-sudo mkdir -p /etc/ojp
-
-# Edit /etc/ojp/ojp.yaml (see Configuration section above)
-
-# Start the server in the foreground (for debugging)
-ojp-server --config /etc/ojp/ojp.yaml
-
-# Or run directly with the JAR
-java -jar /opt/ojp/bin/ojp-server.jar --config /etc/ojp/ojp.yaml
-
-# Verify it is accepting connections
-pg_isready -h 127.0.0.1 -p 5432
-```
-
----
-
-## Add OJP JDBC driver to the benchmark tool
-
-The OJP JDBC driver JAR (downloaded above) must be on the classpath when the benchmark tool
-runs in OJP mode.
-
-Add it as a `files()` dependency in `build.gradle` before building the tool:
-
-```groovy
-dependencies {
-    implementation files('lib/ojp-jdbc-driver-0.4.0-beta.jar')
-    // ... other dependencies
-}
-```
-
-Then rebuild:
-
-```bash
-cd ojp-performance-tester-tool
-./gradlew installDist
-```
-
----
-
-## Verify connectivity
-
-From the **Load Generator (LG)** machine, verify that each OJP instance is reachable via the
-standard PostgreSQL client:
-
-```bash
-psql -h <PROXY1_IP> -p 5432 -U benchuser -d benchdb -c "SELECT 1;"
-psql -h <PROXY2_IP> -p 5432 -U benchuser -d benchdb -c "SELECT 1;"
-psql -h <PROXY3_IP> -p 5432 -U benchuser -d benchdb -c "SELECT 1;"
-```
-
-Each command should return `1` without error.
-
----
-
-## Benchmark JDBC URL syntax
-
-When using the OJP JDBC driver the connection URL lists all three proxy hosts separated by
-commas. The driver distributes connections across them automatically:
-
-```
-jdbc:ojp://<PROXY1_IP>:5432,<PROXY2_IP>:5432,<PROXY3_IP>:5432/benchdb
-```
-
-In the benchmark configuration file (`ojp-mode.yaml`):
-
-```yaml
-database:
-  jdbcUrl: "jdbc:ojp://<PROXY1_IP>:5432,<PROXY2_IP>:5432,<PROXY3_IP>:5432/benchdb"
-  username: "benchuser"
-  password: "benchpass"
-
-connectionMode: OJP
-poolSize: 20
-```
-
-Consult the OJP JDBC driver documentation for additional URL parameters and load-balancing
-configuration properties.
+Repeat on all three proxy nodes before proceeding to the JDBC driver setup.
 
 ---
 
 ## Further reading
 
-- OJP artifacts on Maven Central: <https://central.sonatype.com/search?q=org.openjproxy>
-- OJP JDBC driver: consult the driver repository for URL syntax and driver properties
-- PostgreSQL JDBC driver comparison: [RATIONALE.md](../RATIONALE.md)
+- OJP project: <https://github.com/Open-J-Proxy/ojp>
+- OJP Server configuration reference: <https://github.com/Open-J-Proxy/ojp/blob/main/documents/configuration/ojp-server-configuration.md>
+- OJP Runnable JAR guide: <https://github.com/Open-J-Proxy/ojp/blob/main/documents/runnable-jar/README.md>
+- OJP JDBC Driver setup: [OJP_JDBC_DRIVER.md](OJP_JDBC_DRIVER.md)
+- PostgreSQL driver comparison: [RATIONALE.md](../RATIONALE.md)
 
 ---
 

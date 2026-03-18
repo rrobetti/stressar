@@ -26,7 +26,7 @@ Quick links to component installation documentation:
 | PostgreSQL 12+ (required) | [install/POSTGRESQL.md](install/POSTGRESQL.md) |
 | pgBouncer (T3 / PGBOUNCER mode) | [install/PGBOUNCER.md](install/PGBOUNCER.md) |
 | HAProxy load balancer (T3 only) | [install/HAPROXY.md](install/HAPROXY.md) |
-| OJP server + JDBC driver (T4 / OJP mode) | [install/OJP.md](install/OJP.md) |
+| OJP server + JDBC driver (T4 / OJP mode) | [install/OJP.md](install/OJP.md) · [install/OJP_JDBC_DRIVER.md](install/OJP_JDBC_DRIVER.md) |
 
 See also: [install/README.md](install/README.md) for a guided setup overview.
 
@@ -45,7 +45,7 @@ For additional components used in multi-scenario benchmarks, see the
 [installation guides index](install/README.md):
 - **[pgBouncer](install/PGBOUNCER.md)** — required for the PGBOUNCER / T3 scenario
 - **[HAProxy](install/HAPROXY.md)** — load balancer required for the T3 scenario
-- **[OJP](install/OJP.md)** — required for the OJP / T4 scenario
+- **[OJP](install/OJP.md)** — OJP Server required for the OJP / T4 scenario; **[OJP JDBC Driver](install/OJP_JDBC_DRIVER.md)** — required on the load generator for T4
 
 ### System Setup
 ```bash
@@ -340,18 +340,17 @@ Connects through OJP server-side connection pooler. Client uses minimal connecti
 **Configuration:**
 ```yaml
 connectionMode: OJP
-poolSize: 2  # Minimal client-side connections
 
-# OJP endpoint URL (in jdbcUrl)
+# OJP endpoint URL — use the OJP JDBC URL format (port 1059 = gRPC, not 5432)
 database:
-  jdbcUrl: "jdbc:postgresql://ojp-gateway:5432/benchdb"
+  jdbcUrl: "jdbc:ojp[<PROXY1_IP>:1059,<PROXY2_IP>:1059,<PROXY3_IP>:1059]_postgresql://<DB_IP>:5432/benchdb"
   username: "benchuser"
   password: "benchpass"
 ```
 
 **Prerequisites:**
-- OJP gateway must be running and configured — see [install/OJP.md](install/OJP.md)
-- Database URL should point to OJP gateway (not directly to PostgreSQL)
+- OJP Server must be running on each proxy node — see [install/OJP.md](install/OJP.md)
+- OJP JDBC Driver must be on the benchmark tool classpath — see [install/OJP_JDBC_DRIVER.md](install/OJP_JDBC_DRIVER.md)
 
 **Use Case:** Testing server-side connection pooling
 

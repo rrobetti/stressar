@@ -10,7 +10,8 @@ Benchmark Tool.
 | [PostgreSQL](POSTGRESQL.md) | All scenarios — database under test | [POSTGRESQL.md](POSTGRESQL.md) |
 | [pgBouncer](PGBOUNCER.md) | T3 scenario only — external connection pooler | [PGBOUNCER.md](PGBOUNCER.md) |
 | [HAProxy](HAPROXY.md) | T3 scenario only — load balancer in front of pgBouncer | [HAPROXY.md](HAPROXY.md) |
-| [OJP](OJP.md) | T4 scenario only — server-side pooler with JDBC driver | [OJP.md](OJP.md) |
+| [OJP Server](OJP.md) | T4 scenario only — server-side pooler (proxy nodes) | [OJP.md](OJP.md) |
+| [OJP JDBC Driver](OJP_JDBC_DRIVER.md) | T4 scenario only — JDBC driver (load generator) | [OJP_JDBC_DRIVER.md](OJP_JDBC_DRIVER.md) |
 
 ## Quick start
 
