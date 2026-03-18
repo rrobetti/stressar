@@ -8,13 +8,23 @@ OJP's key advantage is that its JDBC driver supports a **multi-host URL**, which
 need for an external load balancer (HAProxy). The driver distributes new connections across
 multiple OJP server instances automatically.
 
+Both the OJP server and the OJP JDBC driver are published to **Maven Central** and can be
+downloaded as ready-to-run JARs — no build step is required.
+
+**Current release:** `0.4.0-beta`
+
+| Artifact | Maven Central URL |
+|---|---|
+| OJP Server | <https://repo1.maven.org/maven2/org/openjproxy/ojp-server/0.4.0-beta/ojp-server-0.4.0-beta.jar> |
+| OJP JDBC Driver | <https://repo1.maven.org/maven2/org/openjproxy/ojp-jdbc-driver/0.4.0-beta/ojp-jdbc-driver-0.4.0-beta.jar> |
+
 ---
 
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
-- [Clone and build OJP server](#clone-and-build-ojp-server)
-- [Clone and build OJP JDBC driver](#clone-and-build-ojp-jdbc-driver)
+- [Download OJP server JAR](#download-ojp-server-jar)
+- [Download OJP JDBC driver JAR](#download-ojp-jdbc-driver-jar)
 - [Verify installation](#verify-installation)
 - [Configuration for benchmarking](#configuration-for-benchmarking)
 - [Start OJP server](#start-ojp-server)
@@ -27,42 +37,47 @@ multiple OJP server instances automatically.
 ## Prerequisites
 
 - **Java 11+** — see [JAVA.md](JAVA.md)
-- **Gradle 7+** or Maven 3.8+ — see [GRADLE.md](GRADLE.md)
 - **PostgreSQL 12+** must be running and accessible from the OJP host — see [POSTGRESQL.md](POSTGRESQL.md)
+
+No build tools are required; the JARs are downloaded directly from Maven Central.
 
 ---
 
-## Clone and build OJP server
+## Download OJP server JAR
 
-> **Note:** OJP is a research prototype. Consult the project's own README for the authoritative
-> build and deployment instructions. The steps below are illustrative and may need to be adapted.
+Run the following commands on each of **PROXY-1**, **PROXY-2**, and **PROXY-3**:
 
 ```bash
-# Clone the OJP server repository
-git clone https://github.com/your-org/ojp-server.git
-cd ojp-server
+# Create a directory for OJP
+sudo mkdir -p /opt/ojp/bin
 
-# Build the server
-./gradlew installDist
+# Download the OJP server JAR
+sudo curl -L \
+  https://repo1.maven.org/maven2/org/openjproxy/ojp-server/0.4.0-beta/ojp-server-0.4.0-beta.jar \
+  -o /opt/ojp/bin/ojp-server.jar
 
-# The server binary will be under build/install/ojp-server/bin/ojp-server
+# Make it executable via a wrapper script
+sudo tee /usr/local/bin/ojp-server > /dev/null <<'EOF'
+#!/bin/sh
+exec java $JAVA_OPTS -jar /opt/ojp/bin/ojp-server.jar "$@"
+EOF
+sudo chmod +x /usr/local/bin/ojp-server
 ```
 
 ---
 
-## Clone and build OJP JDBC driver
+## Download OJP JDBC driver JAR
+
+Run the following command on the **Load Generator (LG)** machine (and APP if used):
 
 ```bash
-# Clone the OJP JDBC driver repository
-git clone https://github.com/your-org/ojp-jdbc-driver.git
-cd ojp-jdbc-driver
+# Create a lib directory inside the benchmark tool checkout
+mkdir -p /path/to/ojp-performance-tester-tool/lib
 
-# Build and publish to local Maven repository
-./gradlew publishToMavenLocal
-
-# Alternatively, produce a standalone JAR
-./gradlew jar
-# The JAR will be at build/libs/ojp-jdbc-driver-*.jar
+# Download the OJP JDBC driver JAR
+curl -L \
+  https://repo1.maven.org/maven2/org/openjproxy/ojp-jdbc-driver/0.4.0-beta/ojp-jdbc-driver-0.4.0-beta.jar \
+  -o /path/to/ojp-performance-tester-tool/lib/ojp-jdbc-driver-0.4.0-beta.jar
 ```
 
 ---
@@ -70,11 +85,11 @@ cd ojp-jdbc-driver
 ## Verify installation
 
 ```bash
-# Start one OJP server instance (see Configuration section below for the config file)
-ojp-server --config /etc/ojp/ojp.yaml
+# Confirm the server JAR is present and executable
+ojp-server --version
 
-# Confirm it is listening on port 5432
-ss -tlnp | grep 5432
+# Confirm the JDBC driver JAR is present
+ls -lh /path/to/ojp-performance-tester-tool/lib/ojp-jdbc-driver-0.4.0-beta.jar
 ```
 
 ---
@@ -122,12 +137,16 @@ Replace `<DB_IP>` with the IP address of the PostgreSQL server.
 ## Start OJP server
 
 ```bash
+# Create config directory
+sudo mkdir -p /etc/ojp
+
+# Edit /etc/ojp/ojp.yaml (see Configuration section above)
+
 # Start the server in the foreground (for debugging)
 ojp-server --config /etc/ojp/ojp.yaml
 
-# Start as a systemd service (if a unit file is provided)
-sudo systemctl start ojp-server
-sudo systemctl enable ojp-server
+# Or run directly with the JAR
+java -jar /opt/ojp/bin/ojp-server.jar --config /etc/ojp/ojp.yaml
 
 # Verify it is accepting connections
 pg_isready -h 127.0.0.1 -p 5432
@@ -137,25 +156,23 @@ pg_isready -h 127.0.0.1 -p 5432
 
 ## Add OJP JDBC driver to the benchmark tool
 
-The OJP JDBC driver JAR must be on the classpath when the benchmark tool runs in OJP mode.
+The OJP JDBC driver JAR (downloaded above) must be on the classpath when the benchmark tool
+runs in OJP mode.
 
-Place the driver JAR in the `lib/` directory of the benchmark tool before building:
-
-```bash
-cp /path/to/ojp-jdbc-driver-*.jar \
-   /path/to/ojp-performance-tester-tool/lib/
-
-cd ojp-performance-tester-tool
-./gradlew installDist
-```
-
-Or add it as a `files()` dependency in `build.gradle`:
+Add it as a `files()` dependency in `build.gradle` before building the tool:
 
 ```groovy
 dependencies {
-    implementation files('lib/ojp-jdbc-driver-1.0.0.jar')
+    implementation files('lib/ojp-jdbc-driver-0.4.0-beta.jar')
     // ... other dependencies
 }
+```
+
+Then rebuild:
+
+```bash
+cd ojp-performance-tester-tool
+./gradlew installDist
 ```
 
 ---
@@ -203,7 +220,7 @@ configuration properties.
 
 ## Further reading
 
-- OJP project repository: consult the official OJP project page for the latest documentation
+- OJP artifacts on Maven Central: <https://central.sonatype.com/search?q=org.openjproxy>
 - OJP JDBC driver: consult the driver repository for URL syntax and driver properties
 - PostgreSQL JDBC driver comparison: [RATIONALE.md](../RATIONALE.md)
 
