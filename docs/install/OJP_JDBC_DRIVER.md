@@ -10,14 +10,13 @@ application tier nodes if used).
 
 **Current release:** `0.4.0-beta` &nbsp;|&nbsp; **Minimum Java:** `11`
 
-**Maven Central:** <https://repo1.maven.org/maven2/org/openjproxy/ojp-jdbc-driver/0.4.0-beta/ojp-jdbc-driver-0.4.0-beta.jar>
+**Maven Central coordinates:** `org.openjproxy:ojp-jdbc-driver:0.4.0-beta`
 
 ---
 
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
-- [Download OJP JDBC driver JAR](#download-ojp-jdbc-driver-jar)
 - [Add to benchmark tool classpath](#add-to-benchmark-tool-classpath)
 - [JDBC URL syntax](#jdbc-url-syntax)
 - [Client-side configuration (ojp.properties)](#client-side-configuration-ojpproperties)
@@ -42,40 +41,25 @@ application tier nodes if used).
 
 ---
 
-## Download OJP JDBC driver JAR
-
-Run the following on the **Load Generator (LG)** machine:
-
-```bash
-# Create a lib directory inside the benchmark tool checkout
-mkdir -p /path/to/ojp-performance-tester-tool/lib
-
-# Download the OJP JDBC driver JAR (~16 MB, includes all driver dependencies)
-curl -L \
-  https://repo1.maven.org/maven2/org/openjproxy/ojp-jdbc-driver/0.4.0-beta/ojp-jdbc-driver-0.4.0-beta.jar \
-  -o /path/to/ojp-performance-tester-tool/lib/ojp-jdbc-driver-0.4.0-beta.jar
-```
-
-Verify the download:
-
-```bash
-ls -lh /path/to/ojp-performance-tester-tool/lib/ojp-jdbc-driver-0.4.0-beta.jar
-```
-
----
-
 ## Add to benchmark tool classpath
 
-Add the OJP JDBC driver as a dependency in the benchmark tool's `build.gradle`:
+The OJP JDBC driver is already declared as a dependency in the benchmark tool's `build.gradle`
+(resolved from Maven Central automatically):
 
 ```groovy
 dependencies {
-    implementation files('lib/ojp-jdbc-driver-0.4.0-beta.jar')
+    implementation 'org.openjproxy:ojp-jdbc-driver:0.4.0-beta'
     // ... other dependencies
 }
 ```
 
-The driver JAR is resolved from the local `lib/` directory at build time.
+Build (or rebuild) the tool to pull in the driver:
+
+```bash
+cd ojp-performance-tester-tool
+./gradlew installDist
+```
+
 See [GRADLE.md](GRADLE.md) for full build instructions.
 
 ---
