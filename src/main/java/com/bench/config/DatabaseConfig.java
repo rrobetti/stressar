@@ -11,8 +11,12 @@ public class DatabaseConfig {
     private String password;
     private Properties properties;
 
+    /** Optional SSL/TLS settings applied to every connection. */
+    private SslConfig ssl;
+
     public DatabaseConfig() {
         this.properties = new Properties();
+        this.ssl = new SslConfig();
     }
 
     public DatabaseConfig(String jdbcUrl, String username, String password) {
@@ -20,6 +24,7 @@ public class DatabaseConfig {
         this.username = username;
         this.password = password;
         this.properties = new Properties();
+        this.ssl = new SslConfig();
     }
 
     public String getJdbcUrl() {
@@ -56,5 +61,29 @@ public class DatabaseConfig {
 
     public String getProperty(String key) {
         return properties.getProperty(key);
+    }
+
+    public SslConfig getSsl() {
+        return ssl;
+    }
+
+    public void setSsl(SslConfig ssl) {
+        this.ssl = ssl;
+    }
+
+    /**
+     * Returns a merged {@link Properties} object that combines
+     * {@link #getProperties()} with any SSL properties derived from
+     * {@link #getSsl()}.  SSL properties take precedence.
+     *
+     * @return merged properties (never {@code null})
+     */
+    public Properties getMergedProperties() {
+        Properties merged = new Properties();
+        merged.putAll(properties);
+        if (ssl != null) {
+            merged.putAll(ssl.buildSslProperties());
+        }
+        return merged;
     }
 }

@@ -10,6 +10,7 @@ Complete guide for running benchmarks with exact commands and configurations.
 - [Running Benchmarks](#running-benchmarks)
 - [SUT Modes](#sut-modes)
 - [Example Scenarios](#example-scenarios)
+- [SSL/TLS Setup](#ssltls-setup)
 - [Results Collection](#results-collection)
 - [Interpreting Results](#interpreting-results)
 
@@ -615,6 +616,140 @@ bench overload \
 
 ---
 
+## SSL/TLS Setup
+
+Enabling SSL is strongly recommended for production-equivalent benchmarks.
+See [SSL_ANALYSIS.md](SSL_ANALYSIS.md) for an in-depth performance analysis and
+the rationale behind each recommendation.
+
+### Quick Setup — HIKARI_DIRECT with SSL
+
+1. **Enable SSL on PostgreSQL** (edit `postgresql.conf`):
+
+```
+ssl = on
+ssl_cert_file = 'server.crt'
+ssl_key_file  = 'server.key'
+```
+
+2. **Enforce SSL in `pg_hba.conf`**:
+
+```
+hostssl  benchdb  benchuser  0.0.0.0/0  scram-sha-256
+```
+
+3. **Generate a self-signed CA (dev/staging only)**:
+
+```bash
+openssl genrsa -out ca.key 4096
+openssl req -new -x509 -days 3650 -key ca.key -subj "/CN=BenchCA" -out ca.crt
+
+openssl genrsa -out server.key 2048
+openssl req -new -key server.key -subj "/CN=db.example.com" -out server.csr
+openssl x509 -req -days 365 -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt
+
+# Install on PostgreSQL host
+sudo cp server.crt server.key /etc/postgresql/15/main/
+sudo chown postgres: /etc/postgresql/15/main/server.{crt,key}
+
+# Deploy CA cert to load generator
+cp ca.crt /etc/ssl/certs/db-ca.pem
+```
+
+4. **Configure the bench tool** (`ssl-hikari-direct.yaml`):
+
+```yaml
+database:
+  jdbcUrl: "jdbc:postgresql://db.example.com:5432/benchdb"
+  username: "benchuser"
+  password: "${DB_PASSWORD}"
+  ssl:
+    enabled: true
+    mode: VERIFY_FULL
+    rootCertPath: "/etc/ssl/certs/db-ca.pem"
+
+connectionMode: HIKARI_DIRECT
+poolSize: 20
+workload:
+  type: W1_READ_ONLY
+  openLoop: true
+  targetRps: 1000
+```
+
+5. **Run with SSL**:
+
+```bash
+bench run \
+  --config examples/ssl-hikari-direct.yaml \
+  --output results/ssl-run1
+```
+
+### Comparing Plaintext vs SSL Performance
+
+Always run both plaintext and SSL sweeps to measure overhead:
+
+```bash
+# Step 1: plaintext baseline
+bench sweep \
+  --config examples/w1-read-only.yaml \
+  --output results/sweep-plaintext
+
+# Step 2: SSL (production-equivalent)
+bench sweep \
+  --config examples/ssl-hikari-direct.yaml \
+  --output results/sweep-ssl
+
+# Step 3: compare
+bench aggregate \
+  --input-dir results/sweep-plaintext \
+  --input-dir results/sweep-ssl \
+  --output-dir results/ssl-comparison
+```
+
+### OJP Mode with SSL
+
+For OJP, the `ssl` block in the YAML secures the OJP server → PostgreSQL connection.
+Securing the load-generator → OJP gRPC connection requires OJP server-side TLS configuration.
+
+```yaml
+database:
+  jdbcUrl: "jdbc:postgresql://ojp-gateway:5432/benchdb"
+  ssl:
+    enabled: true
+    mode: VERIFY_FULL
+    rootCertPath: "/etc/ssl/certs/db-ca.pem"
+
+connectionMode: OJP
+```
+
+See [examples/ssl-ojp-mode.yaml](../examples/ssl-ojp-mode.yaml) and
+[SSL_ANALYSIS.md](SSL_ANALYSIS.md) for full details.
+
+### PgBouncer Mode with SSL
+
+```yaml
+database:
+  jdbcUrl: "jdbc:postgresql://pgbouncer-host:6432/benchdb"
+  ssl:
+    enabled: true
+    mode: REQUIRE
+
+connectionMode: PGBOUNCER
+```
+
+PgBouncer `pgbouncer.ini` also requires client TLS enabled:
+
+```ini
+client_tls_sslmode = require
+client_tls_cert_file = /etc/pgbouncer/pgbouncer.crt
+client_tls_key_file  = /etc/pgbouncer/pgbouncer.key
+```
+
+See [examples/ssl-pgbouncer-mode.yaml](../examples/ssl-pgbouncer-mode.yaml) for a
+complete runnable example.
+
+---
+
 ## Results Collection
 
 ### Environment Snapshot
@@ -927,4 +1062,5 @@ bench env-snapshot --output results/
 
 - Review [CONFIG.md](CONFIG.md) for complete configuration reference
 - Review [RESULTS_FORMAT.md](RESULTS_FORMAT.md) for detailed results schemas
+- Review [SSL_ANALYSIS.md](SSL_ANALYSIS.md) for SSL/TLS performance analysis and recommendations
 - See `examples/` directory for more configuration templates

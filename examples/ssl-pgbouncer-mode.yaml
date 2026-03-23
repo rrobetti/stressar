@@ -1,0 +1,66 @@
+# SSL/TLS – PgBouncer Mode Example
+#
+# PgBouncer introduces two security layers to consider:
+#
+#   Load-generator → PgBouncer  (PostgreSQL wire protocol, port 6432)
+#   PgBouncer      → PostgreSQL (PostgreSQL wire protocol, port 5432)
+#
+# The `ssl` block below secures the FIRST leg (load-generator → PgBouncer).
+# The PostgreSQL JDBC driver properties are forwarded to PgBouncer, which
+# must be configured to accept TLS connections.
+#
+# To secure the SECOND leg (PgBouncer → PostgreSQL), set these options in
+# pgbouncer.ini:
+#   server_tls_sslmode = verify-full
+#   server_tls_ca_file = /etc/ssl/certs/db-ca.pem
+#
+# See docs/SSL_ANALYSIS.md and docs/install/PGBOUNCER.md for full details.
+#
+# Prerequisites (PgBouncer side):
+#   client_tls_sslmode = require        # or verify-full for mTLS
+#   client_tls_cert_file = /etc/ssl/certs/pgbouncer.crt
+#   client_tls_key_file  = /etc/ssl/private/pgbouncer.key
+#
+# Run with:
+#   bench run --config ssl-pgbouncer-mode.yaml --output results/ssl-pgbouncer/
+
+database:
+  # URL points to PgBouncer endpoint (default port 6432)
+  jdbcUrl: "jdbc:postgresql://pgbouncer-host:6432/benchdb"
+  username: "benchuser"
+  password: "${DB_PASSWORD}"
+
+  # ── SSL configuration (load-generator → PgBouncer leg) ───────────────────
+  ssl:
+    enabled: true
+    mode: REQUIRE
+    # Upgrade to VERIFY_FULL when a CA cert is available for PgBouncer:
+    # mode: VERIFY_FULL
+    # rootCertPath: "/etc/ssl/certs/pgbouncer-ca.pem"
+    # certPath: "/etc/ssl/certs/client.pem"   # only needed for mTLS
+    # keyPath:  "/etc/ssl/private/client.key"
+  # ─────────────────────────────────────────────────────────────────────────
+
+connectionMode: PGBOUNCER
+
+workload:
+  type: W1_READ_ONLY
+  openLoop: true
+  targetRps: 2000
+  warmupSeconds: 300
+  durationSeconds: 600
+  cooldownSeconds: 120
+  repeatCount: 5
+  queryAPercent: 0.30
+  useZipf: false
+  seed: 42
+
+numAccounts: 10000
+numItems: 5000
+numOrders: 50000
+metricsIntervalSeconds: 1
+outputDir: "results"
+
+sweepIncrementPercent: 15.0
+sloP95Ms: 50
+errorRateThreshold: 0.001

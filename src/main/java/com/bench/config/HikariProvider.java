@@ -42,14 +42,19 @@ public class HikariProvider implements ConnectionProvider {
         config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
         config.addDataSourceProperty("useServerPrepStmts", "true");
         
-        // Add any additional properties
-        dbConfig.getProperties().forEach((key, value) -> 
+        // Add any additional properties (including SSL)
+        dbConfig.getMergedProperties().forEach((key, value) -> 
             config.addDataSourceProperty(key.toString(), value)
         );
         
         this.dataSource = new HikariDataSource(config);
         
-        logger.info("Initialized {} with pool size: {}", modeName, poolSize);
+        if (dbConfig.getSsl() != null && dbConfig.getSsl().isEnabled()) {
+            logger.info("Initialized {} with pool size: {} [{}]", modeName, poolSize,
+                    dbConfig.getSsl().toLogString());
+        } else {
+            logger.info("Initialized {} with pool size: {}", modeName, poolSize);
+        }
     }
     
     @Override

@@ -1,0 +1,74 @@
+# SSL/TLS – OJP (Open JDBC Pooler) Mode Example
+#
+# OJP involves TWO distinct network legs, each with its own security posture:
+#
+#   Load-generator → OJP server  (gRPC over TCP, port 1059)
+#   OJP server     → PostgreSQL  (PostgreSQL wire protocol, port 5432)
+#
+# The `ssl` block below secures the SECOND leg (OJP → PostgreSQL).
+# The SSL properties are forwarded via OJP JDBC driver properties so that
+# the server-side pool opens TLS connections to the PostgreSQL backend.
+#
+# To secure the FIRST leg (load-generator → OJP), configure TLS on the
+# OJP server using the JVM properties described in docs/SSL_ANALYSIS.md.
+#
+# Prerequisites (PostgreSQL server side):
+#   See ssl-hikari-direct.yaml or docs/SSL_ANALYSIS.md for PostgreSQL setup.
+#
+# Run with:
+#   bench run --config ssl-ojp-mode.yaml --output results/ssl-ojp/
+
+database:
+  # URL points to the OJP gateway, NOT directly to PostgreSQL.
+  # OJP opens SSL connections to the backend PostgreSQL on your behalf.
+  jdbcUrl: "jdbc:postgresql://ojp-gateway:5432/benchdb"
+  username: "benchuser"
+  password: "${DB_PASSWORD}"
+
+  # ── SSL configuration (OJP → PostgreSQL leg) ─────────────────────────────
+  ssl:
+    enabled: true
+    mode: VERIFY_FULL
+    rootCertPath: "/etc/ssl/certs/db-ca.pem"
+    # certPath: "/etc/ssl/certs/client.pem"
+    # keyPath:  "/etc/ssl/private/client.key"
+  # ─────────────────────────────────────────────────────────────────────────
+
+# Connection mode: OJP (NO client-side pooling)
+connectionMode: OJP
+
+# Database connection budget for disciplined pooling equivalence
+dbConnectionBudget: 100
+replicas: 1
+
+# OJP-specific configuration
+ojp:
+  virtualConnectionMode: PER_WORKER
+  poolSharing: PER_INSTANCE
+  minConnections: 5
+  connectionTimeoutMs: 30000
+  idleTimeoutMs: 600000
+  maxLifetimeMs: 1800000
+  queueLimit: 1000
+  slowQueryThresholdMs: 1000
+
+workload:
+  type: W2_READ_WRITE
+  openLoop: true
+  targetRps: 1000
+  warmupSeconds: 300
+  durationSeconds: 600
+  cooldownSeconds: 120
+  repeatCount: 5
+  useZipf: false
+  seed: 42
+
+numAccounts: 10000
+numItems: 5000
+numOrders: 50000
+metricsIntervalSeconds: 1
+outputDir: "results"
+
+sweepIncrementPercent: 15.0
+sloP95Ms: 50
+errorRateThreshold: 0.001
