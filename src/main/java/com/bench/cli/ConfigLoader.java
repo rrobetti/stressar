@@ -24,43 +24,11 @@ public class ConfigLoader {
             
             // Database configuration
             if (data.containsKey("database")) {
-                Map<String, Object> dbData = (Map<String, Object>) data.get("database");
+                Map<String, String> dbData = (Map<String, String>) data.get("database");
                 DatabaseConfig dbConfig = new DatabaseConfig();
-                dbConfig.setJdbcUrl((String) dbData.get("jdbcUrl"));
-                dbConfig.setUsername((String) dbData.get("username"));
-                dbConfig.setPassword((String) dbData.get("password"));
-                
-                // SSL configuration (optional)
-                if (dbData.containsKey("ssl")) {
-                    Map<String, Object> sslData = (Map<String, Object>) dbData.get("ssl");
-                    com.bench.config.SslConfig sslConfig = new com.bench.config.SslConfig();
-                    
-                    if (sslData.containsKey("enabled")) {
-                        sslConfig.setEnabled((Boolean) sslData.get("enabled"));
-                    }
-                    if (sslData.containsKey("mode")) {
-                        Object modeVal = sslData.get("mode");
-                        if (modeVal == null) {
-                            throw new IllegalArgumentException(
-                                "database.ssl.mode is present but has no value; " +
-                                "valid values: DISABLE, ALLOW, PREFER, REQUIRE, VERIFY_CA, VERIFY_FULL");
-                        }
-                        sslConfig.setMode(com.bench.config.SslMode.valueOf(
-                                modeVal.toString().toUpperCase().replace('-', '_')));
-                    }
-                    if (sslData.containsKey("certPath")) {
-                        sslConfig.setCertPath((String) sslData.get("certPath"));
-                    }
-                    if (sslData.containsKey("keyPath")) {
-                        sslConfig.setKeyPath((String) sslData.get("keyPath"));
-                    }
-                    if (sslData.containsKey("rootCertPath")) {
-                        sslConfig.setRootCertPath((String) sslData.get("rootCertPath"));
-                    }
-                    
-                    dbConfig.setSsl(sslConfig);
-                }
-                
+                dbConfig.setJdbcUrl(dbData.get("jdbcUrl"));
+                dbConfig.setUsername(dbData.get("username"));
+                dbConfig.setPassword(dbData.get("password"));
                 config.setDatabase(dbConfig);
             }
             

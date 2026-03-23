@@ -39,19 +39,14 @@ public class PgbouncerProvider implements ConnectionProvider {
         config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
         config.addDataSourceProperty("useServerPrepStmts", "true");
         
-        // Add any additional properties (including SSL)
-        dbConfig.getMergedProperties().forEach((key, value) -> 
+        // Add any additional properties
+        dbConfig.getProperties().forEach((key, value) -> 
             config.addDataSourceProperty(key.toString(), value)
         );
         
         this.dataSource = new HikariDataSource(config);
         
-        if (dbConfig.getSsl() != null && dbConfig.getSsl().isEnabled()) {
-            logger.info("Initialized PgBouncer provider with minimal pool size: {} [{}]",
-                    MINIMAL_POOL_SIZE, dbConfig.getSsl().toLogString());
-        } else {
-            logger.info("Initialized PgBouncer provider with minimal pool size: {}", MINIMAL_POOL_SIZE);
-        }
+        logger.info("Initialized PgBouncer provider with minimal pool size: {}", MINIMAL_POOL_SIZE);
     }
     
     @Override
