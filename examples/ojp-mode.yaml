@@ -1,4 +1,4 @@
-# OJP (Open JDBC Pooler) Configuration
+# OJP (Open J Proxy) Configuration
 # IMPORTANT: OJP does NOT use client-side connection pooling.
 # The application creates virtual JDBC connections that map to a server-side pool.
 # Pool configuration is passed via OJP JDBC driver properties.

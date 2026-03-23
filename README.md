@@ -1,6 +1,6 @@
 # OJP Performance Benchmark Tool
 
-Comprehensive tooling to assess the performance of OJP (Open JDBC Pooler) and compare it with other connection pooling approaches including direct JDBC (HikariCP) and PgBouncer.
+Comprehensive tooling to assess the performance of OJP (Open J Proxy) and compare it with other connection pooling approaches including direct JDBC (HikariCP) and PgBouncer.
 
 ---
 
@@ -101,7 +101,7 @@ Comprehensive documentation is available in the `docs/` directory:
   - [PostgreSQL](docs/install/POSTGRESQL.md) — database (required)
   - [pgBouncer](docs/install/PGBOUNCER.md) — connection pooler (PgBouncer scenario)
   - [HAProxy](docs/install/HAPROXY.md) — load balancer (PgBouncer scenario)
-  - [OJP](docs/install/OJP.md) — Open JDBC Pooler (OJP scenario)
+  - [OJP](docs/install/OJP.md) — Open J Proxy (OJP scenario)
 
 - **[RATIONALE.md](docs/RATIONALE.md)** - Why this tool was built
   - Absence of JDBC-client benchmarks for PgBouncer

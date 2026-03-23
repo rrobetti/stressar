@@ -1,4 +1,4 @@
-# SSL/TLS – OJP (Open JDBC Pooler) Mode Example
+# SSL/TLS – OJP (Open J Proxy) Mode Example
 #
 # OJP involves TWO distinct network legs, each with its own security posture:
 #
