@@ -78,28 +78,8 @@ The topology differences between SUTs are on the **proxy tier**, not the client 
 
 ```mermaid
 graph TD
-    subgraph LG1 ["LG-1 — 8 bench JVM processes"]
-        L0["JVM-0"]
-        L1["JVM-1"]
-        L2["JVM-2"]
-        L3["JVM-3"]
-        L4["JVM-4"]
-        L5["JVM-5"]
-        L6["JVM-6"]
-        L7["JVM-7"]
-    end
-
-    subgraph LG2 ["LG-2 — 8 bench JVM processes"]
-        A0["JVM-8"]
-        A1["JVM-9"]
-        A2["JVM-10"]
-        A3["JVM-11"]
-        A4["JVM-12"]
-        A5["JVM-13"]
-        A6["JVM-14"]
-        A7["JVM-15"]
-    end
-
+    LG1["LG-1 — 8 × bench JVM replicas (0–7)"]
+    LG2["LG-2 — 8 × bench JVM replicas (8–15)"]
     LB["LB — HAProxy :6432"]
 
     subgraph PROXY_TIER ["Proxy Tier — 3 × PgBouncer"]
@@ -110,37 +90,22 @@ graph TD
 
     DB[("PostgreSQL (DB)")]
 
-    L0 & L1 & L2 & L3 & L4 & L5 & L6 & L7 -- "JDBC via HAProxy" --> LB
-    A0 & A1 & A2 & A3 & A4 & A5 & A6 & A7 -- "JDBC via HAProxy" --> LB
-    LB -- "leastconn" --> P1 & P2 & P3
-    P1 & P2 & P3 --> DB
+    LG1 -- "JDBC via HAProxy" --> LB
+    LG2 -- "JDBC via HAProxy" --> LB
+    LB -- "leastconn" --> P1
+    LB -- "leastconn" --> P2
+    LB -- "leastconn" --> P3
+    P1 --> DB
+    P2 --> DB
+    P3 --> DB
 ```
 
 ### SUT-B — OJP Topology (Client-Side Load Balancing, gRPC/HTTP2)
 
 ```mermaid
 graph TD
-    subgraph LG1 ["LG-1 — 8 bench JVM processes (OJP driver)"]
-        L0["JVM-0"]
-        L1["JVM-1"]
-        L2["JVM-2"]
-        L3["JVM-3"]
-        L4["JVM-4"]
-        L5["JVM-5"]
-        L6["JVM-6"]
-        L7["JVM-7"]
-    end
-
-    subgraph LG2 ["LG-2 — 8 bench JVM processes (OJP driver)"]
-        A0["JVM-8"]
-        A1["JVM-9"]
-        A2["JVM-10"]
-        A3["JVM-11"]
-        A4["JVM-12"]
-        A5["JVM-13"]
-        A6["JVM-14"]
-        A7["JVM-15"]
-    end
+    LG1["LG-1 — 8 × bench JVM replicas (0–7)\nOJP JDBC driver (client-side LB)"]
+    LG2["LG-2 — 8 × bench JVM replicas (8–15)\nOJP JDBC driver (client-side LB)"]
 
     subgraph PROXY_TIER ["Proxy Tier — 3 × OJP Server (gRPC/HTTP2)"]
         P1["PROXY-1\nOJP :1059 (gRPC)"]
@@ -150,9 +115,15 @@ graph TD
 
     DB[("PostgreSQL (DB)")]
 
-    L0 & L1 & L2 & L3 & L4 & L5 & L6 & L7 -- "gRPC/HTTP2 (driver balances)" --> P1 & P2 & P3
-    A0 & A1 & A2 & A3 & A4 & A5 & A6 & A7 -- "gRPC/HTTP2 (driver balances)" --> P1 & P2 & P3
-    P1 & P2 & P3 --> DB
+    LG1 -- "gRPC/HTTP2" --> P1
+    LG1 -. "driver selects per connection" .-> P2
+    LG1 -. "driver selects per connection" .-> P3
+    LG2 -- "gRPC/HTTP2" --> P1
+    LG2 -. "driver selects per connection" .-> P2
+    LG2 -. "driver selects per connection" .-> P3
+    P1 --> DB
+    P2 --> DB
+    P3 --> DB
 ```
 
 > **Note on OJP port:** The OJP gRPC server listens on port **1059** by default (not 5432).
@@ -163,32 +134,12 @@ graph TD
 
 ```mermaid
 graph TD
-    subgraph LG1 ["LG-1 — 8 bench JVM processes (HikariCP, 19 conns each)"]
-        L0["JVM-0"]
-        L1["JVM-1"]
-        L2["JVM-2"]
-        L3["JVM-3"]
-        L4["JVM-4"]
-        L5["JVM-5"]
-        L6["JVM-6"]
-        L7["JVM-7"]
-    end
-
-    subgraph LG2 ["LG-2 — 8 bench JVM processes (HikariCP, 19 conns each)"]
-        A0["JVM-8"]
-        A1["JVM-9"]
-        A2["JVM-10"]
-        A3["JVM-11"]
-        A4["JVM-12"]
-        A5["JVM-13"]
-        A6["JVM-14"]
-        A7["JVM-15"]
-    end
-
+    LG1["LG-1 — 8 × bench JVM replicas (0–7)\nHikariCP pool (19 conns each)"]
+    LG2["LG-2 — 8 × bench JVM replicas (8–15)\nHikariCP pool (19 conns each)"]
     DB[("PostgreSQL (DB)")]
 
-    L0 & L1 & L2 & L3 & L4 & L5 & L6 & L7 -- "direct JDBC (~19 conns each)" --> DB
-    A0 & A1 & A2 & A3 & A4 & A5 & A6 & A7 -- "direct JDBC (~19 conns each)" --> DB
+    LG1 -- "direct JDBC (~19 conns each)" --> DB
+    LG2 -- "direct JDBC (~19 conns each)" --> DB
 ```
 
 **Machine roles — all scenarios:**
