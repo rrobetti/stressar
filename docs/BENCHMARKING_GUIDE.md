@@ -78,14 +78,26 @@ The topology differences between SUTs are on the **proxy tier**, not the client 
 
 ```mermaid
 graph TD
-    subgraph LG1 ["LG-1 (Load Generator 1) — 8 bench JVM processes"]
-        L0["JVM-0"] L1["JVM-1"] L2["JVM-2"] L3["JVM-3"]
-        L4["JVM-4"] L5["JVM-5"] L6["JVM-6"] L7["JVM-7"]
+    subgraph LG1 ["LG-1 — 8 bench JVM processes"]
+        L0["JVM-0"]
+        L1["JVM-1"]
+        L2["JVM-2"]
+        L3["JVM-3"]
+        L4["JVM-4"]
+        L5["JVM-5"]
+        L6["JVM-6"]
+        L7["JVM-7"]
     end
 
-    subgraph LG2 ["LG-2 (Load Generator 2) — 8 bench JVM processes"]
-        A0["JVM-8"]  A1["JVM-9"]  A2["JVM-10"] A3["JVM-11"]
-        A4["JVM-12"] A5["JVM-13"] A6["JVM-14"] A7["JVM-15"]
+    subgraph LG2 ["LG-2 — 8 bench JVM processes"]
+        A0["JVM-8"]
+        A1["JVM-9"]
+        A2["JVM-10"]
+        A3["JVM-11"]
+        A4["JVM-12"]
+        A5["JVM-13"]
+        A6["JVM-14"]
+        A7["JVM-15"]
     end
 
     LB["LB — HAProxy :6432"]
@@ -108,14 +120,26 @@ graph TD
 
 ```mermaid
 graph TD
-    subgraph LG1 ["LG-1 (Load Generator 1) — 8 bench JVM processes (OJP driver)"]
-        L0["JVM-0"] L1["JVM-1"] L2["JVM-2"] L3["JVM-3"]
-        L4["JVM-4"] L5["JVM-5"] L6["JVM-6"] L7["JVM-7"]
+    subgraph LG1 ["LG-1 — 8 bench JVM processes (OJP driver)"]
+        L0["JVM-0"]
+        L1["JVM-1"]
+        L2["JVM-2"]
+        L3["JVM-3"]
+        L4["JVM-4"]
+        L5["JVM-5"]
+        L6["JVM-6"]
+        L7["JVM-7"]
     end
 
-    subgraph LG2 ["LG-2 (Load Generator 2) — 8 bench JVM processes (OJP driver)"]
-        A0["JVM-8"]  A1["JVM-9"]  A2["JVM-10"] A3["JVM-11"]
-        A4["JVM-12"] A5["JVM-13"] A6["JVM-14"] A7["JVM-15"]
+    subgraph LG2 ["LG-2 — 8 bench JVM processes (OJP driver)"]
+        A0["JVM-8"]
+        A1["JVM-9"]
+        A2["JVM-10"]
+        A3["JVM-11"]
+        A4["JVM-12"]
+        A5["JVM-13"]
+        A6["JVM-14"]
+        A7["JVM-15"]
     end
 
     subgraph PROXY_TIER ["Proxy Tier — 3 × OJP Server (gRPC/HTTP2)"]
@@ -126,8 +150,8 @@ graph TD
 
     DB[("PostgreSQL (DB)")]
 
-    L0 & L1 & L2 & L3 & L4 & L5 & L6 & L7 -- "gRPC/HTTP2\n(driver balances)" --> P1 & P2 & P3
-    A0 & A1 & A2 & A3 & A4 & A5 & A6 & A7 -- "gRPC/HTTP2\n(driver balances)" --> P1 & P2 & P3
+    L0 & L1 & L2 & L3 & L4 & L5 & L6 & L7 -- "gRPC/HTTP2 (driver balances)" --> P1 & P2 & P3
+    A0 & A1 & A2 & A3 & A4 & A5 & A6 & A7 -- "gRPC/HTTP2 (driver balances)" --> P1 & P2 & P3
     P1 & P2 & P3 --> DB
 ```
 
@@ -139,20 +163,32 @@ graph TD
 
 ```mermaid
 graph TD
-    subgraph LG1 ["LG-1 (Load Generator 1) — 8 bench JVM processes (HikariCP, 19 conns each)"]
-        L0["JVM-0"] L1["JVM-1"] L2["JVM-2"] L3["JVM-3"]
-        L4["JVM-4"] L5["JVM-5"] L6["JVM-6"] L7["JVM-7"]
+    subgraph LG1 ["LG-1 — 8 bench JVM processes (HikariCP, 19 conns each)"]
+        L0["JVM-0"]
+        L1["JVM-1"]
+        L2["JVM-2"]
+        L3["JVM-3"]
+        L4["JVM-4"]
+        L5["JVM-5"]
+        L6["JVM-6"]
+        L7["JVM-7"]
     end
 
-    subgraph LG2 ["LG-2 (Load Generator 2) — 8 bench JVM processes (HikariCP, 19 conns each)"]
-        A0["JVM-8"]  A1["JVM-9"]  A2["JVM-10"] A3["JVM-11"]
-        A4["JVM-12"] A5["JVM-13"] A6["JVM-14"] A7["JVM-15"]
+    subgraph LG2 ["LG-2 — 8 bench JVM processes (HikariCP, 19 conns each)"]
+        A0["JVM-8"]
+        A1["JVM-9"]
+        A2["JVM-10"]
+        A3["JVM-11"]
+        A4["JVM-12"]
+        A5["JVM-13"]
+        A6["JVM-14"]
+        A7["JVM-15"]
     end
 
     DB[("PostgreSQL (DB)")]
 
-    L0 & L1 & L2 & L3 & L4 & L5 & L6 & L7 -- "direct JDBC\n(~19 conns each)" --> DB
-    A0 & A1 & A2 & A3 & A4 & A5 & A6 & A7 -- "direct JDBC\n(~19 conns each)" --> DB
+    L0 & L1 & L2 & L3 & L4 & L5 & L6 & L7 -- "direct JDBC (~19 conns each)" --> DB
+    A0 & A1 & A2 & A3 & A4 & A5 & A6 & A7 -- "direct JDBC (~19 conns each)" --> DB
 ```
 
 **Machine roles — all scenarios:**
