@@ -13,11 +13,13 @@ in the experimental report along with a justification.
 
 **Core design constraints (non-negotiable):**
 
-1. **TLS is mandatory on every network leg.** OJP uses gRPC over HTTP/2; TLS is required for HTTP/2
-   multiplexing to function as intended. PgBouncer and direct-PostgreSQL connections use the
-   PostgreSQL wire-protocol TLS extension. Plaintext connections are not accepted in any scenario
-   because they do not represent production-realistic conditions and because HTTP/2 multiplexing
-   performance improvements are only realised over TLS.
+1. **No TLS on any network leg.** All benchmark traffic runs as plaintext inside a trusted,
+   isolated network (dedicated benchmark VLAN or cloud VPC with no public routing). This is a
+   deliberate choice: many internal service-to-service architectures operate without TLS on
+   low-latency, trusted paths (e.g., within a single availability zone). Excluding TLS removes
+   handshake overhead and cipher-suite CPU cost as confounding variables, keeping the comparison
+   focused purely on connection-pooling and proxy overhead. Any difference in results observed
+   when TLS is added is a separate measurement concern and is outside the scope of this study.
 
 2. **All scenarios use multiple client JVM processes.** A single-process benchmark does not model
    the connection-fragmentation pattern of a real microservice deployment. Every scenario runs
@@ -57,14 +59,17 @@ machines** (LG and APP) run 16 independent `bench` JVM processes (8 per machine)
 This is the key difference from a single-client design: 16 processes simulate 16 microservice
 replicas, each maintaining its own connection pool or OJP virtual connections.
 
+**No TLS is used on any network leg** in any scenario. All traffic is plaintext inside an isolated
+benchmark network. This keeps the comparison focused on connection-pooling and proxy overhead.
+
 The topology differences between SUTs are on the **proxy tier**, not the client tier:
 
 - **SUT-A (HikariCP Baseline)**: no proxy tier — each of the 16 client processes connects directly
-  to PostgreSQL over TLS. Total backend connections = 16 × 19 ≈ 300.
+  to PostgreSQL (plaintext). Total backend connections = 16 × 19 ≈ 300.
 - **SUT-B (OJP)**: no external load balancer — the OJP JDBC driver performs client-side load
-  balancing across three OJP servers using a multi-host URL. TLS is used on both legs.
+  balancing across three OJP servers using a multi-host URL. All traffic is plaintext.
 - **SUT-C (PgBouncer)**: an HAProxy load balancer distributes connections from the 16 client
-  processes across three PgBouncer instances. TLS is used on both legs.
+  processes across three PgBouncer instances. All traffic is plaintext.
 
 ### SUT-C — PgBouncer Topology (HAProxy Load Balancer)
 
@@ -72,61 +77,55 @@ The topology differences between SUTs are on the **proxy tier**, not the client 
 graph TD
     LG["Load Generator (LG)\n8 × bench JVM replicas 0–7"]
     APP["Application Tier (APP)\n8 × bench JVM replicas 8–15"]
-    LB["Load Balancer (LB)\nHAProxy :6432 (TLS passthrough)"]
+    LB["Load Balancer (LB)\nHAProxy :6432"]
 
-    subgraph PROXY_TIER ["Proxy Tier — 3 × PgBouncer (TLS)"]
+    subgraph PROXY_TIER ["Proxy Tier — 3 × PgBouncer"]
         P1["PROXY-1\nPgBouncer :6432"]
         P2["PROXY-2\nPgBouncer :6432"]
         P3["PROXY-3\nPgBouncer :6432"]
     end
 
-    DB[("PostgreSQL (DB)\nTLS enabled")]
+    DB[("PostgreSQL (DB)")]
 
-    LG -- "JDBC over TLS via HAProxy" --> LB
-    APP -- "JDBC over TLS via HAProxy" --> LB
+    LG -- "JDBC via HAProxy" --> LB
+    APP -- "JDBC via HAProxy" --> LB
     LB -- "leastconn" --> P1
     LB -- "leastconn" --> P2
     LB -- "leastconn" --> P3
-    P1 -- "TLS" --> DB
-    P2 -- "TLS" --> DB
-    P3 -- "TLS" --> DB
+    P1 --> DB
+    P2 --> DB
+    P3 --> DB
 ```
 
-### SUT-B — OJP Topology (Client-Side Load Balancing, gRPC/HTTP2 over TLS)
+### SUT-B — OJP Topology (Client-Side Load Balancing, gRPC/HTTP2)
 
 ```mermaid
 graph TD
     LG["Load Generator (LG)\n8 × bench JVM replicas 0–7\nOJP JDBC driver (client-side LB)"]
     APP["Application Tier (APP)\n8 × bench JVM replicas 8–15\nOJP JDBC driver (client-side LB)"]
 
-    subgraph PROXY_TIER ["Proxy Tier — 3 × OJP Server (gRPC/HTTP2 over TLS)"]
-        P1["PROXY-1\nOJP :1059 (gRPC/TLS)"]
-        P2["PROXY-2\nOJP :1059 (gRPC/TLS)"]
-        P3["PROXY-3\nOJP :1059 (gRPC/TLS)"]
+    subgraph PROXY_TIER ["Proxy Tier — 3 × OJP Server (gRPC/HTTP2)"]
+        P1["PROXY-1\nOJP :1059 (gRPC)"]
+        P2["PROXY-2\nOJP :1059 (gRPC)"]
+        P3["PROXY-3\nOJP :1059 (gRPC)"]
     end
 
-    DB[("PostgreSQL (DB)\nTLS enabled")]
+    DB[("PostgreSQL (DB)")]
 
-    LG -- "gRPC/HTTP2 over TLS" --> P1
+    LG -- "gRPC/HTTP2" --> P1
     LG -. "driver selects per connection" .-> P2
     LG -. "driver selects per connection" .-> P3
-    APP -- "gRPC/HTTP2 over TLS" --> P1
+    APP -- "gRPC/HTTP2" --> P1
     APP -. "driver selects per connection" .-> P2
     APP -. "driver selects per connection" .-> P3
-    P1 -- "TLS" --> DB
-    P2 -- "TLS" --> DB
-    P3 -- "TLS" --> DB
+    P1 --> DB
+    P2 --> DB
+    P3 --> DB
 ```
 
 > **Note on OJP port:** The OJP gRPC server listens on port **1059** by default (not 5432).
 > The OJP JDBC URL uses the format `jdbc:ojp[host:1059,...]_postgresql://dbhost:5432/db`.
 > See [install/OJP.md](install/OJP.md) for the exact driver URL syntax.
-
-> **Why gRPC over HTTP/2 with TLS is faster:** HTTP/2 multiplexes many virtual streams over a
-> single TCP connection, eliminating the per-query connection setup cost that HTTP/1.1 incurs.
-> This multiplexing benefit is only available when TLS is enabled; without TLS, most HTTP/2
-> implementations fall back to the less efficient HTTP/1.1 upgrade mechanism. This is a primary
-> reason TLS is mandatory in this benchmark.
 
 ### SUT-A — Baseline Topology (HikariCP Disciplined, 16 clients, no proxy)
 
@@ -134,10 +133,10 @@ graph TD
 graph TD
     LG["Load Generator (LG)\n8 × bench JVM replicas 0–7\nHikariCP pool (19 conns each)"]
     APP["Application Tier (APP)\n8 × bench JVM replicas 8–15\nHikariCP pool (19 conns each)"]
-    DB[("PostgreSQL (DB)\nTLS enabled")]
+    DB[("PostgreSQL (DB)")]
 
-    LG -- "TLS (16 × 19 ≈ 300 total conns)" --> DB
-    APP -- "TLS" --> DB
+    LG -- "16 × 19 ≈ 300 total conns" --> DB
+    APP --> DB
 ```
 
 **Machine roles — all scenarios:**
@@ -146,7 +145,7 @@ graph TD
 |-------|------|-----------|
 | LG    | Load generator — runs 8 bench JVM replicas (0–7); issues JDBC requests | All |
 | APP   | Second load generator — runs 8 bench JVM replicas (8–15) | All |
-| LB    | HAProxy load balancer — distributes connections to 3 × PgBouncer over TLS | SUT-C only |
+| LB    | HAProxy load balancer — distributes connections to 3 × PgBouncer | SUT-C only |
 | PROXY-1 | Connection proxy (instance 1) — runs PgBouncer or OJP | SUT-B, SUT-C |
 | PROXY-2 | Connection proxy (instance 2) — runs PgBouncer or OJP | SUT-B, SUT-C |
 | PROXY-3 | Connection proxy (instance 3) — runs PgBouncer or OJP | SUT-B, SUT-C |
@@ -204,8 +203,8 @@ hardware variation.
 | OS | Ubuntu 22.04 LTS, kernel 5.15 or later |
 
 PgBouncer is single-threaded; a single core at 3 GHz can sustain approximately 50,000 simple
-transactions per second. The 8-core specification allows headroom for TLS termination, OS
-network interrupt handling, and the OJP JVM (which is multi-threaded and uses Netty event loops).
+transactions per second. The 8-core specification allows headroom for the OS and network interrupt
+handling. OJP is multi-threaded (Netty event loops) and benefits from additional cores.
 
 ### 2.4 Load Balancer (LB) — SUT-C only
 
@@ -221,8 +220,7 @@ client-side load balancing via the OJP JDBC driver; no dedicated LB machine is n
 | OS | Ubuntu 22.04 LTS, kernel 5.15 or later |
 | Software | HAProxy 2.8 or later |
 
-HAProxy in TCP passthrough mode (TLS is terminated at PgBouncer, not at HAProxy) adds less than
-0.05 ms round-trip overhead on a 10 GbE LAN.
+HAProxy in TCP mode adds less than 0.05 ms round-trip overhead on a 10 GbE LAN.
 
 ### 2.5 Database Server (DB)
 
@@ -352,34 +350,7 @@ GRANT ALL ON SCHEMA public TO benchuser;
 EOF
 ```
 
-### 4.2 TLS Certificate Setup on DB
-
-TLS is mandatory. Generate or deploy server certificates before starting PostgreSQL:
-
-```bash
-# Self-signed CA and server certificate (for testing; use a proper CA in production)
-openssl genrsa -out /etc/postgresql/16/main/ca.key 4096
-openssl req -new -x509 -days 3650 -key /etc/postgresql/16/main/ca.key \
-  -out /etc/postgresql/16/main/ca.crt -subj "/CN=bench-ca"
-
-openssl genrsa -out /etc/postgresql/16/main/server.key 4096
-openssl req -new -key /etc/postgresql/16/main/server.key \
-  -out /etc/postgresql/16/main/server.csr -subj "/CN=db.bench.local"
-openssl x509 -req -days 3650 \
-  -CA /etc/postgresql/16/main/ca.crt \
-  -CAkey /etc/postgresql/16/main/ca.key -CAcreateserial \
-  -in /etc/postgresql/16/main/server.csr \
-  -out /etc/postgresql/16/main/server.crt
-
-chown postgres:postgres /etc/postgresql/16/main/server.key
-chmod 600 /etc/postgresql/16/main/server.key
-
-# Copy the CA certificate to all client machines (LG, APP, PROXY-1, PROXY-2, PROXY-3)
-scp /etc/postgresql/16/main/ca.crt <LG_IP>:/etc/ssl/certs/db-ca.pem
-# (repeat for APP, PROXY-1, PROXY-2, PROXY-3)
-```
-
-### 4.3 postgresql.conf — Recommended Settings
+### 4.2 postgresql.conf — Recommended Settings
 
 Edit `/etc/postgresql/16/main/postgresql.conf`:
 
@@ -407,13 +378,6 @@ max_connections           = 400
 # The proxy tier uses 3 × 100 = 300 backend connections.
 # Remaining 90 connections provide headroom for monitoring and maintenance.
 
-# TLS — mandatory for all client connections
-ssl                       = on
-ssl_cert_file             = 'server.crt'
-ssl_key_file              = 'server.key'
-ssl_ca_file               = 'ca.crt'
-ssl_min_protocol_version  = 'TLSv1.2'
-
 # Statistics
 shared_preload_libraries  = 'pg_stat_statements'
 pg_stat_statements.track  = all
@@ -426,33 +390,28 @@ random_page_cost          = 1.1     # NVMe SSD
 effective_io_concurrency  = 256
 ```
 
-### 4.4 pg_hba.conf — Enforce TLS (hostssl)
+### 4.3 pg_hba.conf
 
-Use `hostssl` instead of `host` to **reject plaintext connections** from all benchmark machines:
+Allow password authentication from all load-generator and proxy machines (plaintext connections
+are used — `host`, not `hostssl`):
 
 ```
-# TYPE   DATABASE  USER       ADDRESS          METHOD
-hostssl  benchdb   benchuser  <LG_IP>/32       scram-sha-256
-hostssl  benchdb   benchuser  <APP_IP>/32      scram-sha-256
-hostssl  benchdb   benchuser  <PROXY1_IP>/32   scram-sha-256
-hostssl  benchdb   benchuser  <PROXY2_IP>/32   scram-sha-256
-hostssl  benchdb   benchuser  <PROXY3_IP>/32   scram-sha-256
+# TYPE  DATABASE  USER       ADDRESS          METHOD
+host    benchdb   benchuser  <LG_IP>/32       scram-sha-256
+host    benchdb   benchuser  <APP_IP>/32      scram-sha-256
+host    benchdb   benchuser  <PROXY1_IP>/32   scram-sha-256
+host    benchdb   benchuser  <PROXY2_IP>/32   scram-sha-256
+host    benchdb   benchuser  <PROXY3_IP>/32   scram-sha-256
 # Allow superuser access from localhost for maintenance
-local    all       postgres                    peer
+local   all       postgres                    peer
 ```
 
-The `hostssl` keyword means PostgreSQL will refuse the connection if the client does not negotiate
-TLS. This guarantees that no benchmark run accidentally produces plaintext results.
-
-### 4.5 Restart and Verify
+### 4.4 Restart and Verify
 
 ```bash
 sudo systemctl restart postgresql
 psql -U benchuser -d benchdb -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
 psql -U benchuser -d benchdb -c "SELECT version();"
-# Verify TLS is active:
-psql "host=<DB_IP> user=benchuser dbname=benchdb sslmode=verify-full sslrootcert=/etc/ssl/certs/db-ca.pem" \
-  -c "SELECT ssl, version FROM pg_stat_ssl WHERE pid = pg_backend_pid();"
 ```
 
 ---
@@ -460,35 +419,11 @@ psql "host=<DB_IP> user=benchuser dbname=benchdb sslmode=verify-full sslrootcert
 ## 5. PgBouncer Configuration
 
 The following configuration is applied identically to PROXY-1, PROXY-2, and PROXY-3. Each
-instance connects directly to the PostgreSQL server and maintains an independent backend pool of
-100 connections. The aggregate backend-connection count across the three instances is 300, which
-matches `max_connections - 100` reserved on the DB server.
+instance connects directly to the PostgreSQL server (plaintext) and maintains an independent
+backend pool of 100 connections. The aggregate backend-connection count across the three instances
+is 300, which matches `max_connections - 100` reserved on the DB server.
 
-### 5.1 TLS Certificate Setup for PgBouncer
-
-Each PgBouncer instance needs its own TLS certificate (for the client-facing leg) and the DB's
-CA certificate (for the server-facing leg). Run on each PROXY machine:
-
-```bash
-# Generate PgBouncer server certificate signed by the same CA used for PostgreSQL
-openssl genrsa -out /etc/pgbouncer/pgbouncer.key 4096
-openssl req -new -key /etc/pgbouncer/pgbouncer.key \
-  -out /etc/pgbouncer/pgbouncer.csr -subj "/CN=proxy-$(hostname)"
-# Sign with the bench CA (run on DB, copy CSR and signed cert back):
-openssl x509 -req -days 3650 \
-  -CA /etc/postgresql/16/main/ca.crt \
-  -CAkey /etc/postgresql/16/main/ca.key -CAcreateserial \
-  -in /etc/pgbouncer/pgbouncer.csr \
-  -out /etc/pgbouncer/pgbouncer.crt
-
-chown postgres:postgres /etc/pgbouncer/pgbouncer.key
-chmod 600 /etc/pgbouncer/pgbouncer.key
-
-# Copy DB CA cert to each proxy machine (if not already present)
-cp /etc/ssl/certs/db-ca.pem /etc/pgbouncer/db-ca.pem
-```
-
-### 5.2 /etc/pgbouncer/pgbouncer.ini (apply on each of PROXY-1, PROXY-2, PROXY-3)
+### 5.1 /etc/pgbouncer/pgbouncer.ini (apply on each of PROXY-1, PROXY-2, PROXY-3)
 
 ```ini
 [databases]
@@ -511,17 +446,6 @@ log_disconnections   = 0
 log_pooler_errors    = 1
 stats_period         = 60
 ignore_startup_parameters = extra_float_digits
-
-# TLS — client-facing leg (load-generator → PgBouncer)
-client_tls_sslmode   = require
-client_tls_cert_file = /etc/pgbouncer/pgbouncer.crt
-client_tls_key_file  = /etc/pgbouncer/pgbouncer.key
-# For VERIFY_FULL from clients, add:
-# client_tls_ca_file  = /etc/pgbouncer/db-ca.pem
-
-# TLS — server-facing leg (PgBouncer → PostgreSQL)
-server_tls_sslmode   = verify-full
-server_tls_ca_file   = /etc/pgbouncer/db-ca.pem
 ```
 
 **Parameter rationale:**
@@ -533,21 +457,17 @@ server_tls_ca_file   = /etc/pgbouncer/db-ca.pem
   instances behind the load balancer, the total backend connection count is 300.
 - `max_client_conn = 2000`: Allows up to 2000 concurrent client-side TCP connections per
   PgBouncer instance, which is more than sufficient for all test scenarios in this benchmark.
-- `client_tls_sslmode = require`: Forces TLS on the client-facing leg. The benchmark JDBC driver
-  connects with `sslmode=require`, so this setting and the driver setting are consistent.
-- `server_tls_sslmode = verify-full`: Verifies PostgreSQL's certificate against the CA and
-  verifies the hostname; prevents man-in-the-middle attacks on the proxy→DB leg.
 - `ignore_startup_parameters = extra_float_digits`: Required for the PostgreSQL JDBC driver ≥42.2,
   which sends `extra_float_digits=3` in the startup message; PgBouncer rejects unknown parameters
   by default.
 
-### 5.3 userlist.txt (apply on each of PROXY-1, PROXY-2, PROXY-3)
+### 5.2 userlist.txt (apply on each of PROXY-1, PROXY-2, PROXY-3)
 
 ```
 "benchuser" "benchpass"
 ```
 
-### 5.4 Start PgBouncer on All Three Instances
+### 5.3 Start PgBouncer on All Three Instances
 
 ```bash
 # Run on PROXY-1, PROXY-2, and PROXY-3 (in parallel or sequentially)
@@ -555,17 +475,17 @@ sudo systemctl start pgbouncer
 sudo systemctl enable pgbouncer
 ```
 
-Verify each instance from LG (TLS required):
+Verify each instance from LG:
 ```bash
-psql "host=<PROXY1_IP> port=6432 user=benchuser dbname=benchdb sslmode=require" -c "SELECT 1;"
-psql "host=<PROXY2_IP> port=6432 user=benchuser dbname=benchdb sslmode=require" -c "SELECT 1;"
-psql "host=<PROXY3_IP> port=6432 user=benchuser dbname=benchdb sslmode=require" -c "SELECT 1;"
+psql -h <PROXY1_IP> -p 6432 -U benchuser -d benchdb -c "SELECT 1;"
+psql -h <PROXY2_IP> -p 6432 -U benchuser -d benchdb -c "SELECT 1;"
+psql -h <PROXY3_IP> -p 6432 -U benchuser -d benchdb -c "SELECT 1;"
 ```
 
-Verify via load balancer (TLS passthrough — HAProxy does not terminate TLS):
+Verify via load balancer:
 ```bash
 # Repeat several times to confirm least-connections distribution across instances
-psql "host=<LB_IP> port=6432 user=benchuser dbname=benchdb sslmode=require" -c "SELECT 1;"
+psql -h <LB_IP> -p 6432 -U benchuser -d benchdb -c "SELECT 1;"
 ```
 
 ---
@@ -577,46 +497,24 @@ three OJP server addresses; the driver distributes new connections across the in
 requiring an external load balancer. No HAProxy or LB machine is needed for the SUT-B scenario.
 
 The following configuration is applied identically to PROXY-1, PROXY-2, and PROXY-3. Each OJP
-instance connects directly to the PostgreSQL server over TLS and maintains an independent backend
-pool of 100 connections. The aggregate backend-connection count across the three instances is 300.
+instance connects directly to the PostgreSQL server (plaintext) and maintains an independent
+backend pool of 100 connections. The aggregate backend-connection count across the three instances
+is 300.
 
-### 6.1 TLS Setup for OJP
-
-OJP uses gRPC over HTTP/2, which requires TLS for full multiplexing benefits. Follow the OJP
-server documentation to configure TLS certificates. The gRPC server must present a certificate
-signed by a CA trusted by the bench JVM on LG and APP.
-
-```bash
-# Copy the DB CA cert to the proxy machines (if not already present)
-cp /etc/ssl/certs/db-ca.pem /etc/ojp/db-ca.pem
-
-# Generate OJP gRPC server certificate (same CA as PostgreSQL for simplicity)
-openssl genrsa -out /etc/ojp/ojp.key 4096
-openssl req -new -key /etc/ojp/ojp.key \
-  -out /etc/ojp/ojp.csr -subj "/CN=proxy-$(hostname)"
-# Sign and deploy the signed cert at /etc/ojp/ojp.crt
-
-# Add to OJP JVM startup properties (exact flag names depend on OJP version):
-# -Dojp.grpc.tls.enabled=true
-# -Dojp.grpc.tls.cert=/etc/ojp/ojp.crt
-# -Dojp.grpc.tls.key=/etc/ojp/ojp.key
-```
-
-### 6.2 OJP Server Startup (each of PROXY-1, PROXY-2, PROXY-3)
+### 6.1 OJP Server Startup (each of PROXY-1, PROXY-2, PROXY-3)
 
 Follow the OJP project installation instructions on each of PROXY-1, PROXY-2, and PROXY-3.
 Each OJP instance must:
 
-- Accept **gRPC/TLS** connections on `<PROXYn_IP>:1059` (OJP default gRPC port)
-- Proxy to `<DB_IP>:5432` over TLS, database `benchdb`, user `benchuser`
+- Accept **gRPC** connections (plaintext) on `<PROXYn_IP>:1059` (OJP default gRPC port)
+- Proxy to `<DB_IP>:5432` (plaintext), database `benchdb`, user `benchuser`
 - Be configured with a maximum backend connection count of 100
-- Have TLS enabled on the gRPC listener (required for HTTP/2 multiplexing)
 
 Verify each instance from LG using the OJP JDBC driver:
 
 ```bash
-# Using the bench tool's built-in connectivity check (adjust port to OJP gRPC port 1059)
-$BENCH run --config examples/ta-ojp-tls.yaml --dry-run
+# Using the bench tool's built-in connectivity check
+$BENCH run --config examples/ta-ojp.yaml --dry-run
 ```
 
 The JDBC URL used by the benchmark lists all three hosts so the OJP driver distributes connections
@@ -627,7 +525,7 @@ jdbc:ojp[<PROXY1_IP>:1059,<PROXY2_IP>:1059,<PROXY3_IP>:1059]_postgresql://<DB_IP
 ```
 
 Consult the OJP JDBC driver documentation at [install/OJP_JDBC_DRIVER.md](install/OJP_JDBC_DRIVER.md)
-for the exact URL syntax and TLS driver properties.
+for the exact URL syntax and driver properties.
 
 ---
 
@@ -639,7 +537,7 @@ to run both cache-resident and I/O-bound variants by changing only `shared_buffe
 
 ```bash
 $BENCH init-db \
-  --jdbc-url "jdbc:postgresql://<DB_IP>:5432/benchdb?ssl=true&sslmode=verify-full&sslrootcert=/etc/ssl/certs/db-ca.pem" \
+  --jdbc-url "jdbc:postgresql://<DB_IP>:5432/benchdb" \
   --username benchuser \
   --password benchpass \
   --accounts 1000000 \
@@ -787,8 +685,7 @@ finds each SUT's true maximum.
 For the capacity sweep, the DB CPU bottleneck predicts a maximum sustainable throughput of
 **10,000–20,000 TPS** before the SLO (p95 < 50 ms) is violated. The sweep will confirm this
 empirically. If the measured MST is substantially lower (< 5,000 TPS), investigate whether the
-proxy tier or TLS overhead has become the bottleneck by checking proxy CPU and connection
-wait times.
+proxy tier has become the bottleneck by checking proxy CPU and connection wait times.
 
 ### Concurrency Budget per Client
 
@@ -824,8 +721,7 @@ All test scenarios share the following global parameters unless explicitly overr
 | `metricsIntervalSeconds` | 1 | Per-second timeseries resolution |
 | `sloP95Ms` | 50 | SLO threshold: 50 ms at p95 |
 | `errorRateThreshold` | 0.001 | Maximum tolerated error rate: 0.1 % |
-| `ssl.enabled` | true | **Mandatory** — TLS on every network leg |
-| `ssl.mode` | VERIFY_FULL | Certificate and hostname verified |
+| TLS / SSL | **not used** | All legs are plaintext; TLS overhead is excluded as a variable |
 
 The `warmupSeconds: 300` warm-up phase primes PostgreSQL's buffer pool and the JIT compiler. The
 warm-up window is not included in any reported metric. The `repeatCount: 5` repetitions at each
@@ -834,25 +730,21 @@ anomalous run.
 
 ---
 
-### SUT-A — Baseline: HikariCP Disciplined (16 clients, direct, TLS)
+### SUT-A — Baseline: HikariCP Disciplined (16 clients, direct)
 
 **Purpose:** Establish the upper-bound performance of direct JDBC connection pooling across 16
 independent microservice replicas, with no proxy. Each replica holds 19 HikariCP connections
-(300 ÷ 16 ≈ 19). All connections use TLS (ssl.mode = VERIFY_FULL).
+(300 ÷ 16 ≈ 19). All connections are plaintext.
 
-**Connection path:** 16 × `bench` replica (8 on LG, 8 on APP) → DB (direct TLS)
+**Connection path:** 16 × `bench` replica (8 on LG, 8 on APP) → DB (direct, plaintext)
 
-**Configuration file:** `examples/ta-baseline-hikari-tls.yaml`
+**Configuration file:** `examples/ta-baseline-hikari.yaml`
 
 ```yaml
 database:
   jdbcUrl: "jdbc:postgresql://<DB_IP>:5432/benchdb"
   username: "benchuser"
   password: "${DB_PASSWORD}"
-  ssl:
-    enabled: true
-    mode: VERIFY_FULL
-    rootCertPath: "/etc/ssl/certs/db-ca.pem"
 
 connectionMode: HIKARI_DISCIPLINED
 dbConnectionBudget: 300
@@ -885,13 +777,13 @@ errorRateThreshold: 0.001
 ```bash
 # On LG (replicas 0–7)
 for i in {0..7}; do
-  $BENCH run --config examples/ta-baseline-hikari-tls.yaml --instance-id $i \
+  $BENCH run --config examples/ta-baseline-hikari.yaml --instance-id $i \
     --output results/sut-a-baseline/ &
 done
 
 # On APP (replicas 8–15) — execute in parallel with the LG command above
 for i in {8..15}; do
-  $BENCH run --config examples/ta-baseline-hikari-tls.yaml --instance-id $i \
+  $BENCH run --config examples/ta-baseline-hikari.yaml --instance-id $i \
     --output results/sut-a-baseline/ &
 done
 
@@ -903,17 +795,17 @@ error rate. Aggregate: sum `achievedThroughputRps` across all 16 `summary.json` 
 
 ---
 
-### SUT-B — OJP (3 nodes, 16 clients, gRPC/TLS)
+### SUT-B — OJP (3 nodes, 16 clients, gRPC)
 
 **Purpose:** Measure the throughput and latency of 16 microservice replicas routing queries
-through three OJP nodes via gRPC over HTTP/2 with TLS. Each OJP node maintains 100 backend
+through three OJP nodes via gRPC over HTTP/2 (plaintext). Each OJP node maintains 100 backend
 connections (300 total). The OJP JDBC driver performs client-side load balancing — no external
 load balancer is required.
 
-**Connection path:** 16 × `bench` replica → OJP JDBC driver (client-side LB, gRPC/TLS) →
-PROXY-{1,2,3} (OJP:1059) → DB (TLS)
+**Connection path:** 16 × `bench` replica → OJP JDBC driver (client-side LB, gRPC) →
+PROXY-{1,2,3} (OJP:1059) → DB (plaintext)
 
-**Configuration file:** `examples/ta-ojp-tls.yaml`
+**Configuration file:** `examples/ta-ojp.yaml`
 
 ```yaml
 database:
@@ -921,10 +813,6 @@ database:
   jdbcUrl: "jdbc:ojp[<PROXY1_IP>:1059,<PROXY2_IP>:1059,<PROXY3_IP>:1059]_postgresql://<DB_IP>:5432/benchdb"
   username: "benchuser"
   password: "${DB_PASSWORD}"
-  ssl:
-    enabled: true
-    mode: VERIFY_FULL
-    rootCertPath: "/etc/ssl/certs/db-ca.pem"
 
 connectionMode: OJP
 dbConnectionBudget: 19   # Per-replica virtual connection budget (300 / 16 ≈ 19)
@@ -965,13 +853,13 @@ errorRateThreshold: 0.001
 ```bash
 # On LG (replicas 0–7)
 for i in {0..7}; do
-  $BENCH run --config examples/ta-ojp-tls.yaml --instance-id $i \
+  $BENCH run --config examples/ta-ojp.yaml --instance-id $i \
     --output results/sut-b-ojp/ &
 done
 
 # On APP (replicas 8–15) — execute in parallel
 for i in {8..15}; do
-  $BENCH run --config examples/ta-ojp-tls.yaml --instance-id $i \
+  $BENCH run --config examples/ta-ojp.yaml --instance-id $i \
     --output results/sut-b-ojp/ &
 done
 
@@ -980,17 +868,16 @@ wait
 
 ---
 
-### SUT-C — PgBouncer (3 nodes + HAProxy, 16 clients, TLS)
+### SUT-C — PgBouncer (3 nodes + HAProxy, 16 clients)
 
 **Purpose:** Measure the throughput and latency of 16 microservice replicas routing queries
 through an HAProxy load balancer to three PgBouncer instances in transaction pooling mode.
-Each PgBouncer node maintains 100 backend connections (300 total). HAProxy passes TLS through
-without terminating it; TLS is terminated at PgBouncer.
+Each PgBouncer node maintains 100 backend connections (300 total). All traffic is plaintext.
 
-**Connection path:** 16 × `bench` replica (TLS) → LB (HAProxy:6432, TLS passthrough) →
-PROXY-{1,2,3} (PgBouncer:6432, TLS) → DB (TLS)
+**Connection path:** 16 × `bench` replica → LB (HAProxy:6432) →
+PROXY-{1,2,3} (PgBouncer:6432) → DB (plaintext)
 
-**Configuration file:** `examples/ta-pgbouncer-tls.yaml`
+**Configuration file:** `examples/ta-pgbouncer.yaml`
 
 ```yaml
 database:
@@ -998,12 +885,6 @@ database:
   jdbcUrl: "jdbc:postgresql://<LB_IP>:6432/benchdb"
   username: "benchuser"
   password: "${DB_PASSWORD}"
-  ssl:
-    enabled: true
-    mode: VERIFY_FULL
-    rootCertPath: "/etc/ssl/certs/db-ca.pem"
-    # Fall back to REQUIRE only if a CA cert for PgBouncer is not yet available:
-    # mode: REQUIRE
 
 connectionMode: PGBOUNCER
 poolSize: 2    # Minimal client-side pool; PgBouncer holds the real backend pool
@@ -1034,13 +915,13 @@ errorRateThreshold: 0.001
 ```bash
 # On LG (replicas 0–7)
 for i in {0..7}; do
-  $BENCH run --config examples/ta-pgbouncer-tls.yaml --instance-id $i \
+  $BENCH run --config examples/ta-pgbouncer.yaml --instance-id $i \
     --output results/sut-c-pgbouncer/ &
 done
 
 # On APP (replicas 8–15) — execute in parallel
 for i in {8..15}; do
-  $BENCH run --config examples/ta-pgbouncer-tls.yaml --instance-id $i \
+  $BENCH run --config examples/ta-pgbouncer.yaml --instance-id $i \
     --output results/sut-c-pgbouncer/ &
 done
 
@@ -1065,8 +946,8 @@ highest per-client RPS level at which median p95 latency across all five repetit
 below the SLO threshold (50 ms) and the error rate remains below 0.1 %.
 
 The sweep starts at 200 RPS aggregate (≈ 13 RPS per client) and increments by 15 % at each step
-until two consecutive steps violate the SLO. This test uses the same 16-client setup and TLS
-configuration as the SUT sections above.
+until two consecutive steps violate the SLO. This test uses the same 16-client setup as the SUT
+sections above.
 
 **Run the sweep for each SUT:**
 
@@ -1074,7 +955,7 @@ configuration as the SUT sections above.
 # SUT-A: HikariCP baseline sweep
 # On LG (replicas 0–7) and APP (replicas 8–15) simultaneously:
 for i in {0..7}; do
-  $BENCH sweep --config examples/ta-baseline-hikari-tls.yaml --instance-id $i \
+  $BENCH sweep --config examples/ta-baseline-hikari.yaml --instance-id $i \
     --sweep-start-rps 13 --sweep-increment-percent 15 \
     --output results/sweep-sut-a/ &
 done
@@ -1083,7 +964,7 @@ wait
 
 # SUT-B: OJP sweep (same pattern)
 for i in {0..7}; do
-  $BENCH sweep --config examples/ta-ojp-tls.yaml --instance-id $i \
+  $BENCH sweep --config examples/ta-ojp.yaml --instance-id $i \
     --sweep-start-rps 13 --sweep-increment-percent 15 \
     --output results/sweep-sut-b/ &
 done
@@ -1092,7 +973,7 @@ wait
 
 # SUT-C: PgBouncer sweep (same pattern)
 for i in {0..7}; do
-  $BENCH sweep --config examples/ta-pgbouncer-tls.yaml --instance-id $i \
+  $BENCH sweep --config examples/ta-pgbouncer.yaml --instance-id $i \
     --sweep-start-rps 13 --sweep-increment-percent 15 \
     --output results/sweep-sut-c/ &
 done
@@ -1129,7 +1010,7 @@ satisfies the SLO. If p95 never recovers within 600 s, record recovery time as >
 ```bash
 # SUT-A baseline — on LG (replicas 0–7) and APP (replicas 8–15) simultaneously:
 for i in {0..7}; do
-  $BENCH overload --config examples/ta-baseline-hikari-tls.yaml --instance-id $i \
+  $BENCH overload --config examples/ta-baseline-hikari.yaml --instance-id $i \
     --overload-rps <1.30 * R_CLIENT_MAX_A>  \
     --recovery-rps <0.70 * R_CLIENT_MAX_A>  \
     --overload-seconds 300 --recovery-seconds 600 \
@@ -1140,7 +1021,7 @@ wait
 
 # SUT-B OJP
 for i in {0..7}; do
-  $BENCH overload --config examples/ta-ojp-tls.yaml --instance-id $i \
+  $BENCH overload --config examples/ta-ojp.yaml --instance-id $i \
     --overload-rps <1.30 * R_CLIENT_MAX_B>  \
     --recovery-rps <0.70 * R_CLIENT_MAX_B>  \
     --overload-seconds 300 --recovery-seconds 600 \
@@ -1151,7 +1032,7 @@ wait
 
 # SUT-C PgBouncer
 for i in {0..7}; do
-  $BENCH overload --config examples/ta-pgbouncer-tls.yaml --instance-id $i \
+  $BENCH overload --config examples/ta-pgbouncer.yaml --instance-id $i \
     --overload-rps <1.30 * R_CLIENT_MAX_C>  \
     --recovery-rps <0.70 * R_CLIENT_MAX_C>  \
     --overload-seconds 300 --recovery-seconds 600 \
@@ -1224,7 +1105,7 @@ Reset PostgreSQL statistics to ensure that `pg_stat_statements` data is not poll
 runs:
 
 ```bash
-psql "host=<DB_IP> user=benchuser dbname=benchdb sslmode=verify-full sslrootcert=/etc/ssl/certs/db-ca.pem" <<'EOF'
+psql -h <DB_IP> -U benchuser -d benchdb <<'EOF'
 SELECT pg_stat_statements_reset();
 SELECT pg_stat_reset();
 EOF
@@ -1235,7 +1116,7 @@ EOF
 Collect PostgreSQL statistics:
 
 ```bash
-psql "host=<DB_IP> user=benchuser dbname=benchdb sslmode=verify-full sslrootcert=/etc/ssl/certs/db-ca.pem" <<'EOF'
+psql -h <DB_IP> -U benchuser -d benchdb <<'EOF'
 \copy (
   SELECT query, calls, mean_exec_time, stddev_exec_time, rows,
          total_exec_time, blk_read_time, blk_write_time
@@ -1280,12 +1161,11 @@ of 300:
 | SUT | Predicted p95 relative to SUT-A | Predicted throughput |
 |-----|----------------------------------|----------------------|
 | SUT-A HikariCP Disciplined (baseline) | baseline | baseline |
-| SUT-B OJP (3 nodes, gRPC/TLS, client-side LB) | +2 to +15% higher latency (gRPC hop + proxy) | ≈ baseline |
-| SUT-C PgBouncer (3 nodes + HAProxy, TLS) | +2 to +10% higher latency (LB hop + proxy) | ≈ baseline |
+| SUT-B OJP (3 nodes, gRPC, client-side LB) | +2 to +15% higher latency (gRPC hop + proxy) | ≈ baseline |
+| SUT-C PgBouncer (3 nodes + HAProxy) | +2 to +10% higher latency (LB hop + proxy) | ≈ baseline |
 
-The proxy-hop overhead is expected to be 0.1–0.5 ms per request on a 10 GbE LAN. Under TLS,
-the handshake cost is amortised over many requests on persistent connections; per-query overhead
-is expected to be < 0.1 ms once the connection is established.
+The proxy-hop overhead is expected to be 0.1–0.5 ms per request on a 10 GbE LAN.
+Per-query overhead above the baseline is attributable to proxy protocol processing and queueing.
 
 ### 12.2 Capacity (Test A)
 
@@ -1323,7 +1203,7 @@ SUT-C; any latency difference is attributable to implementation-specific proxy o
 
 | Resource | Expected value |
 |----------|---------------|
-| CPU | < 0.5 cores (TCP passthrough; TLS is NOT terminated at HAProxy) |
+| CPU | < 0.5 cores (TCP mode, plaintext) |
 | Memory | < 200 MB |
 | Network TX + RX | ≈ same as aggregate LG traffic |
 
@@ -1333,8 +1213,8 @@ Per instance (× 3 identical machines):
 
 | Resource | Expected value |
 |----------|---------------|
-| CPU | 0.5–2 cores (TLS termination adds ~0.5 cores vs plaintext; PgBouncer is single-threaded) |
-| Memory | 80–200 MB (TLS context state + 100 backend + up to 2,000 client connections) |
+| CPU | 0.5–1.5 cores (PgBouncer is single-threaded; one core saturates at ~50k TPS) |
+| Memory | 50–150 MB (100 backend + up to 2,000 client connections) |
 | Network | ≈ LG-to-proxy traffic forwarded to DB; proportional to query payload size |
 
 #### Proxy Tier — OJP Server (SUT-B)
@@ -1343,7 +1223,7 @@ Per instance (× 3 identical machines):
 
 | Resource | Expected value |
 |----------|---------------|
-| CPU | 1–4 cores (Netty event loops + TLS handshake; scales with in-flight gRPC streams) |
+| CPU | 1–3 cores (Netty event loops; scales with in-flight gRPC streams) |
 | Heap committed | 300–512 MB |
 | Off-heap / native (NMT) | 250–490 MB |
 | **Total RSS** | **600 MB–1.1 GB** |
@@ -1365,9 +1245,9 @@ Reduce `targetRps` until DB CPU drops below 70% before comparing proxy SUTs.
 | Node | CPU (expected) | Memory (expected) | Notes |
 |------|---------------|-------------------|-------|
 | LG / APP | 2–4 cores | ~4 GB JVM heap | Bottleneck if CPU > 75% |
-| LB (HAProxy, SUT-C only) | < 0.5 cores | < 200 MB | TCP passthrough only; TLS NOT terminated here |
-| PROXY ×3 — PgBouncer (SUT-C) | 0.5–2 cores | 80–200 MB | Single-threaded + TLS; saturates at 1 core |
-| PROXY ×3 — OJP (SUT-B) | 1–4 cores | 600 MB–1.1 GB RSS | Heap 300–512 MB + off-heap 250–490 MB; collect NMT |
+| LB (HAProxy, SUT-C only) | < 0.5 cores | < 200 MB | Plaintext TCP mode |
+| PROXY ×3 — PgBouncer (SUT-C) | 0.5–1.5 cores | 50–150 MB | Single-threaded; saturates at 1 core |
+| PROXY ×3 — OJP (SUT-B) | 1–3 cores | 600 MB–1.1 GB RSS | Heap 300–512 MB + off-heap 250–490 MB; collect NMT |
 | DB | 4–10 cores | 65–70 GB | Bottleneck if CPU > 80% |
 
 ---

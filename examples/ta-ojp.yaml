@@ -1,25 +1,26 @@
-# Test A / Test B — OJP (3 nodes) with TLS
+# Test A / Test B — OJP (3 nodes, no TLS)
 #
 # 16 independent bench JVM processes (8 on LG, 8 on APP) connect to 3 OJP nodes
 # via the OJP JDBC driver.  The driver performs client-side load balancing using
 # the multi-host URL below — no external load balancer is required.
 #
-# Network legs:
-#   Client → OJP server  : gRPC over HTTP/2, TLS (port 1059)
-#   OJP server → PostgreSQL : PostgreSQL wire protocol, TLS (port 5432)
+# No TLS is used on any leg. All communication is plaintext inside a trusted
+# private network (e.g., a dedicated bench VLAN or a cloud VPC). This matches
+# the majority of internal service-to-service deployments and eliminates TLS
+# handshake cost as a variable, keeping the comparison focused on connection
+# pooling and proxy overhead.
 #
-# The ssl block below secures the OJP→PostgreSQL leg.  TLS on the
-# client→OJP leg is configured on the OJP server itself (see docs/SSL_ANALYSIS.md
-# and docs/install/OJP.md).
+# Network legs:
+#   Client → OJP server      : gRPC over HTTP/2, plaintext (port 1059)
+#   OJP server → PostgreSQL  : PostgreSQL wire protocol, plaintext (port 5432)
 #
 # Prerequisites:
-#   - Three OJP instances running with gRPC/TLS enabled on port 1059
-#   - PostgreSQL configured with ssl=on and pg_hba.conf using "hostssl"
-#   - CA certificate at /etc/ssl/certs/db-ca.pem on LG, APP, and each PROXY
+#   - Three OJP instances running on port 1059 (plaintext gRPC)
+#   - PostgreSQL configured with pg_hba.conf using "host" (not "hostssl")
 #
 # Run with (execute on LG and APP simultaneously):
 #   for i in {0..7}; do
-#     bench run --config ta-ojp-tls.yaml --instance-id $i \
+#     bench run --config ta-ojp.yaml --instance-id $i \
 #       --output results/sut-b-ojp/ &
 #   done
 #   wait
@@ -33,16 +34,6 @@ database:
   jdbcUrl: "jdbc:ojp[<PROXY1_IP>:1059,<PROXY2_IP>:1059,<PROXY3_IP>:1059]_postgresql://<DB_IP>:5432/benchdb"
   username: "benchuser"
   password: "${DB_PASSWORD}"
-
-  # ── TLS — OJP→PostgreSQL leg ─────────────────────────────────────────────────
-  ssl:
-    enabled: true
-    mode: VERIFY_FULL
-    rootCertPath: "/etc/ssl/certs/db-ca.pem"
-    # Uncomment for mTLS:
-    # certPath: "/etc/ssl/certs/client.pem"
-    # keyPath:  "/etc/ssl/private/client.key"
-  # ─────────────────────────────────────────────────────────────────────────────
 
 connectionMode: OJP
 dbConnectionBudget: 19       # Per-replica virtual connection budget (300 / 16 ≈ 19)

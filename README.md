@@ -6,7 +6,7 @@ Comprehensive tooling to assess the performance of OJP (Open JDBC Pooler) and co
 
 ## Test Results Summary
 
-All tests are executed with **TLS enabled** on every network leg, **16 independent client JVM processes** (8 on each of two load-generator machines), and a **total backend connection budget of 300** (100 per proxy node). Two test protocols are run for each of the three systems under test (SUTs).
+All tests are executed with **no TLS** (plaintext on all network legs inside a trusted benchmark network), **16 independent client JVM processes** (8 on each of two load-generator machines), and a **total backend connection budget of 300** (100 per proxy node). Two test protocols are run for each of the three systems under test (SUTs).
 
 See [Simplified Test List](#simplified-test-list) below for a plain-language description of what is run.
 See [BENCHMARKING_GUIDE.md](docs/BENCHMARKING_GUIDE.md) for the full protocol.
@@ -42,9 +42,9 @@ Two tests are run, each against three different systems under test (SUTs):
 
 The three systems under test (run in this order):
 
-1. **HikariCP Direct (baseline)** — 16 independent Java processes each holding a small HikariCP pool, connecting directly to PostgreSQL over TLS. No proxy. This is the upper-bound baseline.
-2. **OJP (3 nodes)** — The same 16 Java processes connect to 3 OJP server nodes via the OJP JDBC driver (built-in client-side load balancing). All traffic is encrypted with TLS / gRPC over HTTP/2.
-3. **PgBouncer (3 nodes + HAProxy)** — The same 16 Java processes connect through an HAProxy load balancer to 3 PgBouncer instances in transaction-pooling mode. All traffic is encrypted with TLS.
+1. **HikariCP Direct (baseline)** — 16 independent Java processes each holding a small HikariCP pool, connecting directly to PostgreSQL (plaintext). No proxy. This is the upper-bound baseline.
+2. **OJP (3 nodes)** — The same 16 Java processes connect to 3 OJP server nodes via the OJP JDBC driver (built-in client-side load balancing). All traffic is plaintext gRPC over HTTP/2.
+3. **PgBouncer (3 nodes + HAProxy)** — The same 16 Java processes connect through an HAProxy load balancer to 3 PgBouncer instances in transaction-pooling mode. All traffic is plaintext.
 
 **Key rule: no single-client tests.** Every scenario uses 16 bench-JVM replicas split across two machines to simulate a realistic microservice deployment (8 replicas × 2 machines). See [Section 2](docs/BENCHMARKING_GUIDE.md#2-hardware-specifications) for machine specs.
 
@@ -55,7 +55,7 @@ The three systems under test (run in this order):
 - **Multiple SUT Modes**: HIKARI_DISCIPLINED, OJP, PGBOUNCER
 - **Workload Types**: Read-only (W1), Read-Write (W2), Mixed, Slow Query (W3)
 - **Load Modes**: Open-loop (rate-based) and closed-loop (concurrency-based)
-- **TLS**: Required on every network leg for all benchmark scenarios
+- **Plaintext networking**: No TLS on any leg — TLS overhead is excluded as a variable
 - **Metrics**: Per-second timeseries, HDR histograms, system resource monitoring
 - **Multi-Instance**: 16 independent client JVM replicas simulating a microservice deployment
 - **Capacity Testing**: Automated sweep to find maximum sustainable throughput
@@ -111,7 +111,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[BENCHMARKING_GUIDE.md](docs/BENCHMARKING_GUIDE.md)** - Step-by-step benchmarking protocol
   - Deployment topology and hardware specifications
   - Software installation and configuration (PostgreSQL, PgBouncer, OJP)
-  - TLS configuration for every network leg (mandatory)
+  - No-TLS network design rationale
   - Little's Law capacity analysis
   - Two test protocols (Capacity Sweep, Overload & Recovery) across three SUTs
   - Expected outcomes stated as falsifiable hypotheses
@@ -135,21 +135,13 @@ Comprehensive documentation is available in the `docs/` directory:
   - HDR histogram logs
   - Metrics calculation methodology
 
-- **[SSL_ANALYSIS.md](docs/SSL_ANALYSIS.md)** - TLS performance impact analysis
-  - Why TLS is mandatory for these benchmarks
-  - gRPC / HTTP/2 multiplexing advantages over TLS
-  - Per-SUT TLS configuration guidance
-
 ## Example Configurations
 
 The `examples/` directory contains ready-to-use configuration files:
 
-- `ta-baseline-hikari-tls.yaml` — Capacity Sweep / Overload: 16-replica HikariCP direct with TLS (baseline)
-- `ta-ojp-tls.yaml` — Capacity Sweep / Overload: 16-replica OJP with TLS
-- `ta-pgbouncer-tls.yaml` — Capacity Sweep / Overload: 16-replica PgBouncer with TLS
-- `ssl-hikari-direct.yaml` — SSL reference example for HIKARI_DIRECT
-- `ssl-ojp-mode.yaml` — SSL reference example for OJP
-- `ssl-pgbouncer-mode.yaml` — SSL reference example for PgBouncer
+- `ta-baseline-hikari.yaml` — Capacity Sweep / Overload: 16-replica HikariCP direct (baseline)
+- `ta-ojp.yaml` — Capacity Sweep / Overload: 16-replica OJP (client-side LB)
+- `ta-pgbouncer.yaml` — Capacity Sweep / Overload: 16-replica PgBouncer via HAProxy
 - `w1-read-only.yaml` — Read-only workload
 - `w3-slow-query.yaml` — Slow query workload
 

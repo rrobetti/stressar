@@ -1,20 +1,24 @@
-# Test A / Test B — HikariCP Disciplined Baseline with TLS
+# Test A / Test B — HikariCP Disciplined Baseline (no TLS)
 #
 # This is the upper-bound baseline for the OJP vs PgBouncer comparison.
 # 16 independent bench JVM processes (8 on LG, 8 on APP) each simulate one
-# microservice replica.  Every connection uses TLS (VERIFY_FULL).
+# microservice replica connecting directly to PostgreSQL — no proxy, no TLS.
+#
+# No TLS is used on any leg. All communication is plaintext inside a trusted
+# private network (e.g., a dedicated bench VLAN or a cloud VPC). This matches
+# the majority of internal service-to-service deployments and eliminates TLS
+# handshake cost as a variable, keeping the comparison focused on connection
+# pooling and proxy overhead.
 #
 # Connection budget: 300 total / 16 replicas = 19 connections per replica.
 # Aggregate target: 16 × 63 RPS ≈ 1,000 RPS.
 #
 # Prerequisites:
-#   - PostgreSQL configured with ssl=on and a valid server certificate
-#   - pg_hba.conf uses "hostssl" (not "host") for benchuser
-#   - CA certificate deployed at /etc/ssl/certs/db-ca.pem on LG and APP
+#   - PostgreSQL configured with pg_hba.conf using "host" (not "hostssl")
 #
 # Run with (execute on LG and APP simultaneously):
 #   for i in {0..7}; do
-#     bench run --config ta-baseline-hikari-tls.yaml --instance-id $i \
+#     bench run --config ta-baseline-hikari.yaml --instance-id $i \
 #       --output results/sut-a-baseline/ &
 #   done
 #   wait
@@ -25,16 +29,6 @@ database:
   jdbcUrl: "jdbc:postgresql://<DB_IP>:5432/benchdb"
   username: "benchuser"
   password: "${DB_PASSWORD}"
-
-  # ── TLS — mandatory; must match pg_hba.conf hostssl entries ─────────────────
-  ssl:
-    enabled: true
-    mode: VERIFY_FULL
-    rootCertPath: "/etc/ssl/certs/db-ca.pem"
-    # Uncomment for mTLS (client certificate authentication):
-    # certPath: "/etc/ssl/certs/client.pem"
-    # keyPath:  "/etc/ssl/private/client.key"
-  # ─────────────────────────────────────────────────────────────────────────────
 
 connectionMode: HIKARI_DISCIPLINED
 dbConnectionBudget: 300      # Total connections across all 16 replicas
