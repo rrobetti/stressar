@@ -46,6 +46,14 @@ build/install/ojp-performance-tester/bin/bench run \
 
 Comprehensive documentation is available in the `docs/` directory:
 
+- **[install/README.md](docs/install/README.md)** - Installation guides index
+  - [Java](docs/install/JAVA.md) — JVM runtime (required)
+  - [Gradle](docs/install/GRADLE.md) — build tool (wrapper included)
+  - [PostgreSQL](docs/install/POSTGRESQL.md) — database (required)
+  - [pgBouncer](docs/install/PGBOUNCER.md) — connection pooler (T3 scenario)
+  - [HAProxy](docs/install/HAPROXY.md) — load balancer (T3 scenario)
+  - [OJP](docs/install/OJP.md) — Open JDBC Pooler (T4 scenario)
+
 - **[RATIONALE.md](docs/RATIONALE.md)** - Why this tool was built
   - Absence of JDBC-client benchmarks for PgBouncer
   - Limitations of closed-loop load generation
@@ -89,9 +97,12 @@ The `examples/` directory contains ready-to-use configuration files:
 
 ## Requirements
 
-- Java 11 or later
-- PostgreSQL 12+ (tested with 14, 15, 16)
-- Gradle 7+ (included via `./gradlew`)
+- [Java 11 or later](docs/install/JAVA.md)
+- [PostgreSQL 12+](docs/install/POSTGRESQL.md) (tested with 14, 15, 16)
+- [Gradle 7+](docs/install/GRADLE.md) (included via `./gradlew`)
+
+For multi-scenario benchmarks (pgBouncer, HAProxy, OJP), see the
+[installation guides index](docs/install/README.md).
 
 ## License
 
