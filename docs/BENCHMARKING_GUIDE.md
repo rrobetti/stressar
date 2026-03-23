@@ -23,7 +23,8 @@ in the experimental report along with a justification.
 
 2. **All scenarios use multiple client JVM processes.** A single-process benchmark does not model
    the connection-fragmentation pattern of a real microservice deployment. Every scenario runs
-   **16 independent `bench` JVM processes** (8 on each of two load-generator machines), each
+   **16 independent `bench` JVM processes** (8 on each of two identical load-generator machines,
+   LG-1 and LG-2), each
    representing one microservice replica.
 
 ---
@@ -55,9 +56,11 @@ in the experimental report along with a justification.
 ## 1. Test Environment Topology
 
 All three SUT scenarios share the same physical infrastructure. The **same two load-generator
-machines** (LG and APP) run 16 independent `bench` JVM processes (8 per machine) in every scenario.
-This is the key difference from a single-client design: 16 processes simulate 16 microservice
-replicas, each maintaining its own connection pool or OJP virtual connections.
+machines** (LG-1 and LG-2) run 16 independent `bench` JVM processes (8 per machine) in every
+scenario. Both machines are identical in role: they both run bench JVM processes issuing JDBC
+requests. The split exists purely to avoid CPU contention — 8 processes fit comfortably on an
+8-core machine. This is the key difference from a single-client design: 16 processes simulate
+16 microservice replicas, each maintaining its own connection pool or OJP virtual connections.
 
 **No TLS is used on any network leg** in any scenario. All traffic is plaintext inside an isolated
 benchmark network. This keeps the comparison focused on connection-pooling and proxy overhead.
@@ -75,9 +78,17 @@ The topology differences between SUTs are on the **proxy tier**, not the client 
 
 ```mermaid
 graph TD
-    LG["Load Generator (LG)\n8 × bench JVM replicas 0–7"]
-    APP["Application Tier (APP)\n8 × bench JVM replicas 8–15"]
-    LB["Load Balancer (LB)\nHAProxy :6432"]
+    subgraph LG1 ["LG-1 (Load Generator 1) — 8 bench JVM processes"]
+        L0["JVM-0"] L1["JVM-1"] L2["JVM-2"] L3["JVM-3"]
+        L4["JVM-4"] L5["JVM-5"] L6["JVM-6"] L7["JVM-7"]
+    end
+
+    subgraph LG2 ["LG-2 (Load Generator 2) — 8 bench JVM processes"]
+        A0["JVM-8"]  A1["JVM-9"]  A2["JVM-10"] A3["JVM-11"]
+        A4["JVM-12"] A5["JVM-13"] A6["JVM-14"] A7["JVM-15"]
+    end
+
+    LB["LB — HAProxy :6432"]
 
     subgraph PROXY_TIER ["Proxy Tier — 3 × PgBouncer"]
         P1["PROXY-1\nPgBouncer :6432"]
@@ -87,22 +98,25 @@ graph TD
 
     DB[("PostgreSQL (DB)")]
 
-    LG -- "JDBC via HAProxy" --> LB
-    APP -- "JDBC via HAProxy" --> LB
-    LB -- "leastconn" --> P1
-    LB -- "leastconn" --> P2
-    LB -- "leastconn" --> P3
-    P1 --> DB
-    P2 --> DB
-    P3 --> DB
+    L0 & L1 & L2 & L3 & L4 & L5 & L6 & L7 -- "JDBC via HAProxy" --> LB
+    A0 & A1 & A2 & A3 & A4 & A5 & A6 & A7 -- "JDBC via HAProxy" --> LB
+    LB -- "leastconn" --> P1 & P2 & P3
+    P1 & P2 & P3 --> DB
 ```
 
 ### SUT-B — OJP Topology (Client-Side Load Balancing, gRPC/HTTP2)
 
 ```mermaid
 graph TD
-    LG["Load Generator (LG)\n8 × bench JVM replicas 0–7\nOJP JDBC driver (client-side LB)"]
-    APP["Application Tier (APP)\n8 × bench JVM replicas 8–15\nOJP JDBC driver (client-side LB)"]
+    subgraph LG1 ["LG-1 (Load Generator 1) — 8 bench JVM processes (OJP driver)"]
+        L0["JVM-0"] L1["JVM-1"] L2["JVM-2"] L3["JVM-3"]
+        L4["JVM-4"] L5["JVM-5"] L6["JVM-6"] L7["JVM-7"]
+    end
+
+    subgraph LG2 ["LG-2 (Load Generator 2) — 8 bench JVM processes (OJP driver)"]
+        A0["JVM-8"]  A1["JVM-9"]  A2["JVM-10"] A3["JVM-11"]
+        A4["JVM-12"] A5["JVM-13"] A6["JVM-14"] A7["JVM-15"]
+    end
 
     subgraph PROXY_TIER ["Proxy Tier — 3 × OJP Server (gRPC/HTTP2)"]
         P1["PROXY-1\nOJP :1059 (gRPC)"]
@@ -112,15 +126,9 @@ graph TD
 
     DB[("PostgreSQL (DB)")]
 
-    LG -- "gRPC/HTTP2" --> P1
-    LG -. "driver selects per connection" .-> P2
-    LG -. "driver selects per connection" .-> P3
-    APP -- "gRPC/HTTP2" --> P1
-    APP -. "driver selects per connection" .-> P2
-    APP -. "driver selects per connection" .-> P3
-    P1 --> DB
-    P2 --> DB
-    P3 --> DB
+    L0 & L1 & L2 & L3 & L4 & L5 & L6 & L7 -- "gRPC/HTTP2\n(driver balances)" --> P1 & P2 & P3
+    A0 & A1 & A2 & A3 & A4 & A5 & A6 & A7 -- "gRPC/HTTP2\n(driver balances)" --> P1 & P2 & P3
+    P1 & P2 & P3 --> DB
 ```
 
 > **Note on OJP port:** The OJP gRPC server listens on port **1059** by default (not 5432).
@@ -131,20 +139,28 @@ graph TD
 
 ```mermaid
 graph TD
-    LG["Load Generator (LG)\n8 × bench JVM replicas 0–7\nHikariCP pool (19 conns each)"]
-    APP["Application Tier (APP)\n8 × bench JVM replicas 8–15\nHikariCP pool (19 conns each)"]
+    subgraph LG1 ["LG-1 (Load Generator 1) — 8 bench JVM processes (HikariCP, 19 conns each)"]
+        L0["JVM-0"] L1["JVM-1"] L2["JVM-2"] L3["JVM-3"]
+        L4["JVM-4"] L5["JVM-5"] L6["JVM-6"] L7["JVM-7"]
+    end
+
+    subgraph LG2 ["LG-2 (Load Generator 2) — 8 bench JVM processes (HikariCP, 19 conns each)"]
+        A0["JVM-8"]  A1["JVM-9"]  A2["JVM-10"] A3["JVM-11"]
+        A4["JVM-12"] A5["JVM-13"] A6["JVM-14"] A7["JVM-15"]
+    end
+
     DB[("PostgreSQL (DB)")]
 
-    LG -- "16 × 19 ≈ 300 total conns" --> DB
-    APP --> DB
+    L0 & L1 & L2 & L3 & L4 & L5 & L6 & L7 -- "direct JDBC\n(~19 conns each)" --> DB
+    A0 & A1 & A2 & A3 & A4 & A5 & A6 & A7 -- "direct JDBC\n(~19 conns each)" --> DB
 ```
 
 **Machine roles — all scenarios:**
 
 | Label | Role | Scenarios |
 |-------|------|-----------|
-| LG    | Load generator — runs 8 bench JVM replicas (0–7); issues JDBC requests | All |
-| APP   | Second load generator — runs 8 bench JVM replicas (8–15) | All |
+| LG-1  | Load generator machine 1 — runs 8 bench JVM replicas (JVM 0–7); identical role to LG-2 | All |
+| LG-2  | Load generator machine 2 — runs 8 bench JVM replicas (JVM 8–15); identical role to LG-1 | All |
 | LB    | HAProxy load balancer — distributes connections to 3 × PgBouncer | SUT-C only |
 | PROXY-1 | Connection proxy (instance 1) — runs PgBouncer or OJP | SUT-B, SUT-C |
 | PROXY-2 | Connection proxy (instance 2) — runs PgBouncer or OJP | SUT-B, SUT-C |
@@ -162,33 +178,30 @@ to the aggregate pool held by the 16 direct clients in SUT-A (16 × ≈19 ≈ 30
 The following specifications define the **minimum** hardware to be used for a study intended for
 publication. Using lower specifications is acceptable only if every SUT runs on identical hardware.
 
-**Ideal client configuration:** 16 bench JVM processes, 8 per machine (LG and APP), each
-representing one microservice replica. 8 processes fit on an 8-core machine without CPU
+**Ideal client configuration:** 16 bench JVM processes, 8 per machine (LG-1 and LG-2), each
+representing one microservice replica. Both machines are identical in role — "LG-1" and "LG-2"
+simply distinguish the two physical hosts. 8 processes fit on an 8-core machine without CPU
 contention; splitting across two identical machines also ensures the client tier is not the
-bottleneck. LG and APP are both required for **all scenarios** (SUT-A, SUT-B, SUT-C).
+bottleneck. LG-1 and LG-2 are both required for **all scenarios** (SUT-A, SUT-B, SUT-C).
 
-### 2.1 Load Generator (LG)
+### 2.1 Load Generator (LG-1 and LG-2)
 
 | Component | Specification |
 |-----------|---------------|
 | CPU | 8 physical cores, ≥3.0 GHz base clock (e.g., Intel Xeon E-2288G or AMD EPYC 7302P) |
 | RAM | 32 GB ECC DDR4-2666 |
 | Network | 10 GbE NIC (single port, direct-attached to switch) |
-| Storage | Any (not performance-critical for LG) |
+| Storage | Any (not performance-critical for LG-1/LG-2) |
 | OS | Ubuntu 22.04 LTS, kernel 5.15 or later |
 | JVM | OpenJDK 21.0.x, G1GC, `-Xms4g -Xmx8g -XX:+UseG1GC` |
 
-Runs 8 bench JVM replicas (instance IDs 0–7). Each replica uses approximately 500 MB heap,
+Both LG-1 and LG-2 use this identical specification. LG-1 runs bench JVM replicas (JVM 0–7) and
+LG-2 runs bench JVM replicas (JVM 8–15). Each replica uses approximately 500 MB heap,
 so 8 replicas total ≈ 4 GB heap, well within the 8 GB `-Xmx` limit. CPU utilisation at
 1,000 RPS aggregate (≈ 63 RPS per replica) is expected to be 1–2 cores per replica peak,
 leaving headroom on an 8-core machine.
 
-### 2.2 Application Tier (APP)
-
-Same specification as LG. Runs 8 bench JVM replicas (instance IDs 8–15). Required for **all
-scenarios** to achieve the full 16-replica multi-client workload.
-
-### 2.3 Proxy Tier (PROXY-1, PROXY-2, PROXY-3)
+### 2.2 Proxy Tier (PROXY-1, PROXY-2, PROXY-3)
 
 Three identical machines. The same machines are reused for both SUT-B (OJP) and SUT-C
 (PgBouncer) — stop one service and start the other between scenario runs to control for
@@ -206,7 +219,7 @@ PgBouncer is single-threaded; a single core at 3 GHz can sustain approximately 5
 transactions per second. The 8-core specification allows headroom for the OS and network interrupt
 handling. OJP is multi-threaded (Netty event loops) and benefits from additional cores.
 
-### 2.4 Load Balancer (LB) — SUT-C only
+### 2.3 Load Balancer (LB) — SUT-C only
 
 The load balancer is **only required for SUT-C (PgBouncer)**. OJP (SUT-B) performs
 client-side load balancing via the OJP JDBC driver; no dedicated LB machine is needed for SUT-B.
@@ -222,7 +235,7 @@ client-side load balancing via the OJP JDBC driver; no dedicated LB machine is n
 
 HAProxy in TCP mode adds less than 0.05 ms round-trip overhead on a 10 GbE LAN.
 
-### 2.5 Database Server (DB)
+### 2.4 Database Server (DB)
 
 | Component | Specification |
 |-----------|---------------|
@@ -252,7 +265,7 @@ to 8 GB and document this deviation.
 > **Prerequisites:** [Java 11+](install/JAVA.md) must be installed. Gradle is downloaded
 > automatically by the `./gradlew` wrapper — see [install/GRADLE.md](install/GRADLE.md).
 
-On LG (and APP if used for multi-replica tests):
+On LG-1 and LG-2 (run the same commands on both machines):
 
 ```bash
 git clone https://github.com/rrobetti/ojp-performance-tester-tool.git
@@ -397,8 +410,8 @@ are used — `host`, not `hostssl`):
 
 ```
 # TYPE  DATABASE  USER       ADDRESS          METHOD
-host    benchdb   benchuser  <LG_IP>/32       scram-sha-256
-host    benchdb   benchuser  <APP_IP>/32      scram-sha-256
+host    benchdb   benchuser  <LG1_IP>/32      scram-sha-256
+host    benchdb   benchuser  <LG2_IP>/32      scram-sha-256
 host    benchdb   benchuser  <PROXY1_IP>/32   scram-sha-256
 host    benchdb   benchuser  <PROXY2_IP>/32   scram-sha-256
 host    benchdb   benchuser  <PROXY3_IP>/32   scram-sha-256
@@ -475,7 +488,7 @@ sudo systemctl start pgbouncer
 sudo systemctl enable pgbouncer
 ```
 
-Verify each instance from LG:
+Verify each instance from LG-1:
 ```bash
 psql -h <PROXY1_IP> -p 6432 -U benchuser -d benchdb -c "SELECT 1;"
 psql -h <PROXY2_IP> -p 6432 -U benchuser -d benchdb -c "SELECT 1;"
@@ -510,7 +523,7 @@ Each OJP instance must:
 - Proxy to `<DB_IP>:5432` (plaintext), database `benchdb`, user `benchuser`
 - Be configured with a maximum backend connection count of 100
 
-Verify each instance from LG using the OJP JDBC driver:
+Verify each instance from LG-1 using the OJP JDBC driver:
 
 ```bash
 # Using the bench tool's built-in connectivity check
@@ -577,12 +590,12 @@ psql -h <DB_IP> -U benchuser -d benchdb -c "ANALYZE;"
 
 Before any benchmark run, capture the full environment on every machine:
 
-**On LG:**
+**On LG-1 and LG-2** (run on both machines, adjusting the label):
 ```bash
 $BENCH env-snapshot \
   --output results/env/ \
-  --label LG \
-  --postgres-conf-path /dev/null   # Not applicable on LG
+  --label LG-1 \            # Use LG-2 on the second machine
+  --postgres-conf-path /dev/null   # Not applicable on load generator machines
 ```
 
 **On DB:**
@@ -709,7 +722,7 @@ All test scenarios share the following global parameters unless explicitly overr
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
-| `clients` | 16 (8 on LG, 8 on APP) | Simulate 16 microservice replicas; realistic multi-tenant deployment |
+| `clients` | 16 (8 on LG-1, 8 on LG-2) | Simulate 16 microservice replicas; realistic multi-tenant deployment |
 | `dbConnectionBudget` | 300 (100 per proxy × 3; or 19 × 16 ≈ 304 for direct) | Equal backend connection budget across all SUTs for fair comparison |
 | `targetRpsPerClient` | 63 | 16 × 63 ≈ 1,000 RPS aggregate baseline |
 | `warmupSeconds` | 300 | Primes PostgreSQL buffer pool and JIT compiler |
@@ -736,7 +749,7 @@ anomalous run.
 independent microservice replicas, with no proxy. Each replica holds 19 HikariCP connections
 (300 ÷ 16 ≈ 19). All connections are plaintext.
 
-**Connection path:** 16 × `bench` replica (8 on LG, 8 on APP) → DB (direct, plaintext)
+**Connection path:** 16 × `bench` replica (8 on LG-1, 8 on LG-2) → DB (direct, plaintext)
 
 **Configuration file:** `examples/ta-baseline-hikari.yaml`
 
@@ -775,13 +788,13 @@ errorRateThreshold: 0.001
 
 **Run command (execute on both machines simultaneously, stagger starts by ≤2 seconds):**
 ```bash
-# On LG (replicas 0–7)
+# On LG-1 (JVMs 0–7)
 for i in {0..7}; do
   $BENCH run --config examples/ta-baseline-hikari.yaml --instance-id $i \
     --output results/sut-a-baseline/ &
 done
 
-# On APP (replicas 8–15) — execute in parallel with the LG command above
+# On LG-2 (JVMs 8–15) — execute in parallel with the LG-1 command above
 for i in {8..15}; do
   $BENCH run --config examples/ta-baseline-hikari.yaml --instance-id $i \
     --output results/sut-a-baseline/ &
@@ -851,13 +864,13 @@ errorRateThreshold: 0.001
 
 **Run command (execute on both machines simultaneously):**
 ```bash
-# On LG (replicas 0–7)
+# On LG-1 (JVMs 0–7)
 for i in {0..7}; do
   $BENCH run --config examples/ta-ojp.yaml --instance-id $i \
     --output results/sut-b-ojp/ &
 done
 
-# On APP (replicas 8–15) — execute in parallel
+# On LG-2 (JVMs 8–15) — execute in parallel
 for i in {8..15}; do
   $BENCH run --config examples/ta-ojp.yaml --instance-id $i \
     --output results/sut-b-ojp/ &
@@ -913,13 +926,13 @@ errorRateThreshold: 0.001
 
 **Run command (execute on both machines simultaneously):**
 ```bash
-# On LG (replicas 0–7)
+# On LG-1 (JVMs 0–7)
 for i in {0..7}; do
   $BENCH run --config examples/ta-pgbouncer.yaml --instance-id $i \
     --output results/sut-c-pgbouncer/ &
 done
 
-# On APP (replicas 8–15) — execute in parallel
+# On LG-2 (JVMs 8–15) — execute in parallel
 for i in {8..15}; do
   $BENCH run --config examples/ta-pgbouncer.yaml --instance-id $i \
     --output results/sut-c-pgbouncer/ &
@@ -953,13 +966,13 @@ sections above.
 
 ```bash
 # SUT-A: HikariCP baseline sweep
-# On LG (replicas 0–7) and APP (replicas 8–15) simultaneously:
+# On LG-1 (JVMs 0–7) and LG-2 (JVMs 8–15) simultaneously:
 for i in {0..7}; do
   $BENCH sweep --config examples/ta-baseline-hikari.yaml --instance-id $i \
     --sweep-start-rps 13 --sweep-increment-percent 15 \
     --output results/sweep-sut-a/ &
 done
-# (mirror on APP with instance IDs 8–15)
+# (mirror on LG-2 with instance IDs 8–15)
 wait
 
 # SUT-B: OJP sweep (same pattern)
@@ -968,7 +981,7 @@ for i in {0..7}; do
     --sweep-start-rps 13 --sweep-increment-percent 15 \
     --output results/sweep-sut-b/ &
 done
-# (mirror on APP with instance IDs 8–15)
+# (mirror on LG-2 with instance IDs 8–15)
 wait
 
 # SUT-C: PgBouncer sweep (same pattern)
@@ -977,7 +990,7 @@ for i in {0..7}; do
     --sweep-start-rps 13 --sweep-increment-percent 15 \
     --output results/sweep-sut-c/ &
 done
-# (mirror on APP with instance IDs 8–15)
+# (mirror on LG-2 with instance IDs 8–15)
 wait
 ```
 
@@ -1008,7 +1021,7 @@ satisfies the SLO. If p95 never recovers within 600 s, record recovery time as >
 **Run the overload test for each SUT:**
 
 ```bash
-# SUT-A baseline — on LG (replicas 0–7) and APP (replicas 8–15) simultaneously:
+# SUT-A baseline — on LG-1 (JVMs 0–7) and LG-2 (JVMs 8–15) simultaneously:
 for i in {0..7}; do
   $BENCH overload --config examples/ta-baseline-hikari.yaml --instance-id $i \
     --overload-rps <1.30 * R_CLIENT_MAX_A>  \
@@ -1016,7 +1029,7 @@ for i in {0..7}; do
     --overload-seconds 300 --recovery-seconds 600 \
     --output results/tb-overload-sut-a/ &
 done
-# (mirror on APP)
+# (mirror on LG-2)
 wait
 
 # SUT-B OJP
@@ -1027,7 +1040,7 @@ for i in {0..7}; do
     --overload-seconds 300 --recovery-seconds 600 \
     --output results/tb-overload-sut-b/ &
 done
-# (mirror on APP)
+# (mirror on LG-2)
 wait
 
 # SUT-C PgBouncer
@@ -1038,7 +1051,7 @@ for i in {0..7}; do
     --overload-seconds 300 --recovery-seconds 600 \
     --output results/tb-overload-sut-c/ &
 done
-# (mirror on APP)
+# (mirror on LG-2)
 wait
 ```
 
@@ -1190,7 +1203,7 @@ SUT-C; any latency difference is attributable to implementation-specific proxy o
 
 ### 12.4 Expected Resource Consumption
 
-#### Load Generator / Application Tier (LG and APP)
+#### Load Generator Machines (LG-1 and LG-2)
 
 | Resource | Expected value |
 |----------|---------------|
@@ -1205,7 +1218,7 @@ SUT-C; any latency difference is attributable to implementation-specific proxy o
 |----------|---------------|
 | CPU | < 0.5 cores (TCP mode, plaintext) |
 | Memory | < 200 MB |
-| Network TX + RX | ≈ same as aggregate LG traffic |
+| Network TX + RX | ≈ same as aggregate LG-1/LG-2 traffic |
 
 #### Proxy Tier — PgBouncer (SUT-C)
 
@@ -1215,7 +1228,7 @@ Per instance (× 3 identical machines):
 |----------|---------------|
 | CPU | 0.5–1.5 cores (PgBouncer is single-threaded; one core saturates at ~50k TPS) |
 | Memory | 50–150 MB (100 backend + up to 2,000 client connections) |
-| Network | ≈ LG-to-proxy traffic forwarded to DB; proportional to query payload size |
+| Network | ≈ LG-1/LG-2-to-proxy traffic forwarded to DB; proportional to query payload size |
 
 #### Proxy Tier — OJP Server (SUT-B)
 
@@ -1244,7 +1257,7 @@ Reduce `targetRps` until DB CPU drops below 70% before comparing proxy SUTs.
 
 | Node | CPU (expected) | Memory (expected) | Notes |
 |------|---------------|-------------------|-------|
-| LG / APP | 2–4 cores | ~4 GB JVM heap | Bottleneck if CPU > 75% |
+| LG-1 / LG-2 | 2–4 cores | ~4 GB JVM heap | Bottleneck if CPU > 75% |
 | LB (HAProxy, SUT-C only) | < 0.5 cores | < 200 MB | Plaintext TCP mode |
 | PROXY ×3 — PgBouncer (SUT-C) | 0.5–1.5 cores | 50–150 MB | Single-threaded; saturates at 1 core |
 | PROXY ×3 — OJP (SUT-B) | 1–3 cores | 600 MB–1.1 GB RSS | Heap 300–512 MB + off-heap 250–490 MB; collect NMT |
