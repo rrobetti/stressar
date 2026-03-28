@@ -50,21 +50,10 @@ public class OjpProvider implements ConnectionProvider {
         // Override maxConnections with calculated allocation
         ojpProperties.setProperty("ojp.maxConnections", String.valueOf(allocatedMaxConnections));
         
-        // Merge PostgreSQL-side SSL properties so that the OJP server uses
-        // SSL when connecting to the backend PostgreSQL instance.
-        // These are passed as standard JDBC properties; the OJP driver
-        // forwards them to the underlying PostgreSQL connection.
-        if (dbConfig.getSsl() != null && dbConfig.getSsl().isEnabled()) {
-            ojpProperties.putAll(dbConfig.getSsl().buildSslProperties());
-        }
-        
         logger.info("Initialized OJP provider (NO client-side pooling)");
         logger.info("  Virtual connection mode: {}", ojpConfig.getVirtualConnectionMode());
         logger.info("  Pool sharing: {}", ojpConfig.getPoolSharing());
         logger.info("  Server-side pool maxConnections: {}", allocatedMaxConnections);
-        if (dbConfig.getSsl() != null && dbConfig.getSsl().isEnabled()) {
-            logger.info("  Backend SSL: {}", dbConfig.getSsl().toLogString());
-        }
         logger.info("  OJP properties: {}", ojpConfig.getPropertiesForLogging());
     }
     
