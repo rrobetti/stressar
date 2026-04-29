@@ -114,7 +114,7 @@ Selects the System Under Test (SUT) type.
 **Values:**
 - `HIKARI_DIRECT`: Direct JDBC connections via HikariCP
 - `HIKARI_DISCIPLINED`: HikariCP with connection budget discipline
-- `OJP`: Open JDBC Pooler gateway
+- `OJP`: Open J Proxy gateway
 - `PGBOUNCER`: PgBouncer external pooler
 
 **Examples:**

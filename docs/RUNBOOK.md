@@ -333,7 +333,7 @@ results/disciplined/raw/{timestamp}/HIKARI_DISCIPLINED/{workload}/
 
 ---
 
-### 3. OJP (Open JDBC Pooler Gateway)
+### 3. OJP (Open J Proxy Gateway)
 
 Connects through OJP server-side connection pooler. Client uses minimal connections.
 

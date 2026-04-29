@@ -1,0 +1,61 @@
+# Test A / Test B — PgBouncer (3 nodes + HAProxy, no TLS)
+#
+# 16 independent bench JVM processes (8 on LG, 8 on APP) connect through an
+# HAProxy load balancer to 3 PgBouncer instances in transaction-pooling mode.
+#
+# No TLS is used on any leg. All communication is plaintext inside a trusted
+# private network (e.g., a dedicated bench VLAN or a cloud VPC). This matches
+# the majority of internal service-to-service deployments and eliminates TLS
+# handshake cost as a variable, keeping the comparison focused on connection
+# pooling and proxy overhead.
+#
+# Network legs:
+#   Client → HAProxy         : plaintext TCP (port 6432)
+#   HAProxy → PgBouncer      : plaintext TCP (port 6432)
+#   PgBouncer → PostgreSQL   : plaintext (port 5432)
+#
+# Prerequisites:
+#   - HAProxy configured in TCP mode (see docs/install/HAPROXY.md)
+#   - PgBouncer instances configured with pool_mode=transaction (no TLS settings)
+#   - PostgreSQL configured with pg_hba.conf using "host" (not "hostssl")
+#
+# Run with (execute on LG and APP simultaneously):
+#   for i in {0..7}; do
+#     bench run --config ta-pgbouncer.yaml --instance-id $i \
+#       --output results/sut-c-pgbouncer/ &
+#   done
+#   wait
+#
+# See docs/BENCHMARKING_GUIDE.md § SUT-C for full instructions.
+
+database:
+  # URL points to HAProxy load balancer (distributes across 3 × PgBouncer)
+  jdbcUrl: "jdbc:postgresql://<LB_IP>:6432/benchdb"
+  username: "benchuser"
+  password: "${DB_PASSWORD}"
+
+connectionMode: PGBOUNCER
+poolSize: 2    # Minimal client-side connections; PgBouncer holds the real backend pool
+
+workload:
+  type: W2_MIXED
+  openLoop: true
+  targetRps: 63              # Per-replica; 16 × 63 ≈ 1,000 RPS aggregate
+  warmupSeconds: 300
+  durationSeconds: 600
+  cooldownSeconds: 120
+  repeatCount: 5
+  writePercent: 0.20
+  useZipf: false
+  seed: 42
+
+numAccounts: 1000000
+numItems:    100000
+numOrders:   10000000
+
+metricsIntervalSeconds: 1
+outputDir: "results/sut-c-pgbouncer"
+
+sweepIncrementPercent: 15.0  # Used by 'bench sweep' for Test A (capacity sweep)
+sloP95Ms: 50
+errorRateThreshold: 0.001
