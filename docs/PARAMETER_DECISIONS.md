@@ -124,9 +124,9 @@ connection per DB CPU core per proxy node gives:
 ```
 
 At 48 connections and an average query time of 4 ms, Little's Law predicts a connection-limited
-maximum throughput of 48 / 0.004 = **12,000 TPS** — within the same range as the DB CPU limit of
-15,000–30,000 TPS. This means the connection budget is scaled to the DB's actual capacity, not
-over-provisioned.
+maximum throughput of 48 / 0.004 = **12,000 TPS** — below the lower bound of the DB CPU limit
+(15,000–30,000 TPS). This means the proxy tier's connection pool may become the binding
+constraint before DB CPU fully saturates at the highest sweep load levels.
 
 **Why 300 for SUT-A (HikariCP baseline):**
 The direct-pooling baseline cannot multiplex: each client replica holds its own dedicated pool.

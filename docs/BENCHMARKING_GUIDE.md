@@ -1214,8 +1214,11 @@ ceiling; any difference in MST reflects both this ceiling and proxy protocol ove
 
 **Hypothesis H3:** The maximum sustainable throughput of SUT-B (3 × OJP with client-side JDBC
 load balancing) is within 10% of SUT-C (3 × PgBouncer) when each proxy instance is configured
-with equal backend pool sizes (16 per instance). SUT-B avoids the HAProxy network hop present in
-SUT-C; any latency difference is attributable to implementation-specific proxy overheads.
+with equal backend pool sizes (16 per instance). Both proxy SUTs use the same 48-connection
+backend budget; the 10% tolerance covers implementation-specific overheads only (gRPC framing and
+client-side load balancing in SUT-B vs HAProxy TCP forwarding in SUT-C). SUT-B avoids the HAProxy
+network hop present in SUT-C; any latency difference is attributable solely to those
+implementation-specific proxy overheads.
 
 ### 12.3 Overload and Recovery (Test B)
 
