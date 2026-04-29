@@ -11,6 +11,11 @@ peer-reviewed venue.
 All instructions are prescriptive. Deviations from the specified configuration must be documented
 in the experimental report along with a justification.
 
+> **Why were these specific values chosen?** The reasoning behind every numeric constant in this
+> guide — 16 client processes, 300 connections, 63 RPS per replica, 300 s warmup, 50 ms SLO, and
+> all others — is documented in
+> **[PARAMETER_DECISIONS.md](PARAMETER_DECISIONS.md)**.
+
 **Core design constraints (non-negotiable):**
 
 1. **No TLS on any network leg.** All benchmark traffic runs as plaintext inside a trusted,
