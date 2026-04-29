@@ -16,8 +16,8 @@ accepted.
 
 1. [Client Tier — 16 JVM Processes](#1-client-tier--16-jvm-processes)
 2. [Client Split — 8 Processes per Machine](#2-client-split--8-processes-per-machine)
-3. [Connection Budget — 300 Total Backend Connections](#3-connection-budget--300-total-backend-connections)
-4. [Per-Proxy Pool — 100 Connections per Node](#4-per-proxy-pool--100-connections-per-node)
+3. [Connection Budget — Differentiated by SUT](#3-connection-budget--differentiated-by-sut)
+4. [Per-Proxy Pool — 16 Connections per Node](#4-per-proxy-pool--16-connections-per-node)
 5. [Per-Replica Pool — 19 Connections](#5-per-replica-pool--19-connections)
 6. [Proxy Tier — 3 Nodes](#6-proxy-tier--3-nodes)
 7. [Aggregate Baseline Load — 1,000 RPS](#7-aggregate-baseline-load--1000-rps)
@@ -99,54 +99,84 @@ load levels during the capacity sweep.
 
 ---
 
-## 3. Connection Budget — 300 Total Backend Connections
+## 3. Connection Budget — Differentiated by SUT
 
-**Value:** 300 backend connections held in aggregate across all replicas and all proxy nodes.
+**Values:**
+- **SUT-A (HikariCP Disciplined):** 300 backend connections to PostgreSQL
+  (16 replicas × 19 connections each ≈ 304, rounded to 300).
+- **SUT-B (OJP) and SUT-C (PgBouncer):** 48 backend connections to PostgreSQL
+  (3 proxy nodes × 16 connections each).
 
-**Reason:** The budget serves two purposes:
+**Reason:** A proxy's primary value proposition is *connection multiplexing* — many client-side
+connections share a much smaller number of server-side connections, reducing memory and
+context-switching overhead on the database. A benchmark that configures the proxy tier with the
+same 300 backend connections as the direct-pooling baseline does not exercise this capability and
+does not represent realistic proxy usage. The benchmark therefore uses the backend connection count
+that is *optimal for the database tier*, not the one that equals the client-side budget.
 
-1. **Fair comparison across SUTs.** All three systems under test (HikariCP Disciplined, OJP,
-   PgBouncer) are configured with the same total connection count to PostgreSQL. This makes
-   throughput and latency differences attributable to pooler overhead rather than to connection
-   count differences.
+**Why 48 backend connections for proxy SUTs:**
+The target is the minimum number of backend connections sufficient to keep the DB's CPU cores
+productively occupied. The database server has 16 physical CPU cores. Sizing one backend
+connection per DB CPU core per proxy node gives:
 
-2. **Practical fit within PostgreSQL's connection limit.** PostgreSQL is configured with
-   `max_connections = 400`. Reserving 100 connections for superuser maintenance and monitoring
-   leaves exactly 300 for the benchmark workload, with no wasted margin and no risk of running out
-   of connections during the test.
+```
+3 proxy nodes × 16 connections per node = 48 total backend connections
+```
 
-**Why 300 rather than, say, 200 or 500:**
-300 is the product of the natural proxy-tier size (3 nodes × 100 connections each), which
-simultaneously matches the client-tier budget (16 replicas × ≈19 connections each ≈ 304). Rounding
-to 300 keeps the numbers clean and is within the ≈1 % precision that matters for this study.
+At 48 connections and an average query time of 4 ms, Little's Law predicts a connection-limited
+maximum throughput of 48 / 0.004 = **12,000 TPS** — within the same range as the DB CPU limit of
+15,000–30,000 TPS. This means the connection budget is scaled to the DB's actual capacity, not
+over-provisioned.
 
-At 300 connections and an average query time of 3–5 ms, Little's Law predicts a
-connection-limited throughput of 60,000–100,000 RPS — far above the DB CPU limit of
-15,000–30,000 RPS. The connection count is therefore never the bottleneck; the bottleneck is always
-the database CPU or the proxy. This is the correct regime for studying proxy overhead.
+**Why 300 for SUT-A (HikariCP baseline):**
+The direct-pooling baseline cannot multiplex: each client replica holds its own dedicated pool.
+300 connections (16 × 19) is the natural outcome of 16 independent replicas each sized by the
+HikariCP formula (≈19 connections each). This represents the *un-optimised* direct-pooling
+scenario that the proxy is intended to improve upon.
+
+**The multiplexing ratio:**
+300 client-side virtual connections (OJP) or JDBC connections (PgBouncer) are served by 48
+backend connections — a **6.25× reduction** in server-side connections. This is the key metric of
+proxy effectiveness and the primary motivation for differentiating the connection budget between
+SUT-A and the proxy SUTs.
+
+**Practical fit within PostgreSQL's connection limit:**
+PostgreSQL is configured with `max_connections = 400`. SUT-A uses 300 backend connections; the
+proxy SUTs use only 48. The 400-connection ceiling is sized to accommodate SUT-A, and the surplus
+provides headroom for superuser maintenance, monitoring agents, and the `bench init-db` command
+(which connects directly outside the pooled path).
 
 ---
 
-## 4. Per-Proxy Pool — 100 Connections per Node
+## 4. Per-Proxy Pool — 16 Connections per Node
 
-**Value:** Each of the three proxy nodes (OJP or PgBouncer) maintains a pool of 100 backend
-connections to PostgreSQL.
+**Value:** Each of the three proxy nodes (OJP or PgBouncer) maintains a pool of **16 backend
+connections** to PostgreSQL, for a total of 48 across the proxy tier.
 
-**Reason:** 300 total connections divided equally among 3 nodes is 100. Equal distribution ensures
-that load-balancing decisions (HAProxy for PgBouncer; client-side round-robin for OJP) do not
-create an artificial hot-spot on any single proxy node. If one node held 200 connections and the
-others held 50 each, a routing imbalance would confound the comparison.
+**Reason:** 16 matches the number of physical CPU cores on the database server. A PostgreSQL
+backend process executing a query occupies one CPU core. With 16 backend connections per proxy
+node, the aggregate of 48 backend connections across the three nodes can keep all 16 DB cores busy
+at sustained peak load.
 
-100 backend connections per PgBouncer instance is also a widely cited practical sizing point (it
-appears in the official PgBouncer FAQ and multiple production configuration guides), making the
-choice recognisable to readers familiar with the ecosystem.
+Equal distribution across 3 nodes (16 per node) ensures that load-balancing decisions (HAProxy
+for PgBouncer; client-side round-robin for OJP) do not create an artificial hot-spot on any
+single proxy node.
+
+**Trade-off accepted:** With 48 total backend connections and an average query time of 4 ms, the
+connection-limited maximum throughput is 48 / 0.004 = 12,000 TPS. This falls within the DB CPU
+ceiling of 15,000–30,000 TPS. At the highest sweep load levels the proxy tier may become
+connection-limited before DB CPU fully saturates; this is an inherent and expected trade-off of
+reducing backend connections, and the sweep will reveal whether it manifests in practice.
 
 ---
 
 ## 5. Per-Replica Pool — 19 Connections
 
 **Value:** Each of the 16 client replicas holds a HikariCP pool of 19 connections in SUT-A
-(HikariCP Disciplined) and targets 19 virtual connections per replica in SUT-B (OJP).
+(HikariCP Disciplined). In SUT-B (OJP), each replica targets 19 *virtual* connections per replica
+on the client side; these are multiplexed onto the 48-connection backend pool by the OJP proxy
+tier. In SUT-C (PgBouncer), each replica holds only 2 JDBC connections to HAProxy; PgBouncer
+handles the server-side multiplexing against its 48-connection backend pool.
 
 **Reason:** 300 total connections ÷ 16 replicas = 18.75, rounded up to 19. The rounding gives a
 total of 304, which is within 1.3 % of the 300 target — an acceptable approximation.
@@ -190,11 +220,13 @@ At 1,000 TPS with a mean query time of 4 ms:
 L_active = λ × W = 1,000 × 0.004 = 4 connections actively executing queries
 ```
 
-With 300 connections available, only 4 (1.3 %) are busy at any instant. This is deliberately
-well below saturation: at the baseline load, each proxy operates with ample headroom, so any
-latency differences between SUTs reflect pure proxy-protocol overhead (serialisation, queueing,
-gRPC framing) rather than connection queue depth. The capacity sweep (Test A) then finds each
-SUT's true maximum, starting from this established low-load baseline.
+With 300 direct connections available (SUT-A), only 4 (1.3 %) are busy at any instant. For the
+proxy SUTs (SUT-B, SUT-C), which use 48 backend connections, 4 out of 48 (8.3 %) are active —
+still comfortably below saturation. This is deliberately well below saturation: at the baseline
+load, each proxy operates with ample headroom, so any latency differences between SUTs reflect
+pure proxy-protocol overhead (serialisation, queueing, gRPC framing) rather than connection queue
+depth. The capacity sweep (Test A) then finds each SUT's true maximum, starting from this
+established low-load baseline.
 
 1,000 is also a round, easily communicated number that fits into a common mental model of
 "thousands of requests per second" for database-backed services.
@@ -573,15 +605,14 @@ runaway client from exhausting OS file-descriptor limits.
 
 ## 27. PgBouncer — Reserve Pool (size = 10, timeout = 5 s)
 
-**Values:** `reserve_pool_size = 10`, `reserve_pool_timeout = 5` in `pgbouncer.ini`.
+**Values:** `reserve_pool_size = 4`, `reserve_pool_timeout = 5` in `pgbouncer.ini`.
 
 **Reason:** The reserve pool is a small set of additional server connections that PgBouncer can
-temporarily allow when the main pool is fully saturated. `reserve_pool_size = 10` adds 10
-temporary connections (10 % of the main pool size of 100) that can absorb brief traffic spikes
+temporarily allow when the main pool is fully saturated. `reserve_pool_size = 4` adds 4
+temporary connections (25 % of the main pool size of 16) that can absorb brief traffic spikes
 without causing client errors. `reserve_pool_timeout = 5` means a client will wait up to 5 seconds
-for a connection from the main pool before the reserve pool is opened. This matches the
-recommended PgBouncer documentation defaults and represents a conservative configuration that
-avoids penalising PgBouncer for short connection acquisition delays.
+for a connection from the main pool before the reserve pool is opened. This represents a
+conservative configuration that avoids penalising PgBouncer for short connection acquisition delays.
 
 ---
 
@@ -599,7 +630,7 @@ or two requests are in flight per replica at the baseline load.
 
 Using a larger client pool (e.g., 19, matching the HikariCP case) would obscure the multiplexing
 benefit of PgBouncer and would create an unfair comparison: the client would hold 19 persistent
-TCP connections to PgBouncer, and PgBouncer would map those to the same 100 backend connections,
+TCP connections to PgBouncer, and PgBouncer would map those to the same 16 backend connections,
 but the client-side overhead would not reflect typical PgBouncer usage.
 
 ---
@@ -660,8 +691,10 @@ polluting the error rate metric with false positives.
 **Value:** `max_connections = 400` in `postgresql.conf`.
 
 **Reason:**
-- 300 connections are reserved for the benchmark workload (3 proxy nodes × 100, matching the
-  client-side budget of 16 × 19 ≈ 304).
+- SUT-A (HikariCP Disciplined) uses up to 300 backend connections (16 client replicas × 19
+  connections each ≈ 304 ≈ 300). This drives the `max_connections = 400` choice.
+- Proxy SUTs (SUT-B OJP, SUT-C PgBouncer) use only 48 backend connections (3 nodes × 16 each).
+  The 400-connection ceiling is therefore more than sufficient for all three SUTs.
 - 10 connections are reserved for PostgreSQL superusers (`superuser_reserved_connections`
   default is 3; using 10 provides comfortable headroom for `psql` maintenance sessions,
   `pg_activity`, and `pgBadger` monitoring).

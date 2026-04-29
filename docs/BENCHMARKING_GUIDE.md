@@ -12,8 +12,8 @@ All instructions are prescriptive. Deviations from the specified configuration m
 in the experimental report along with a justification.
 
 > **Why were these specific values chosen?** The reasoning behind every numeric constant in this
-> guide — 16 client processes, 300 connections, 63 RPS per replica, 300 s warmup, 50 ms SLO, and
-> all others — is documented in
+> guide — 16 client processes, 300 direct connections / 48 proxy backend connections, 63 RPS per
+> replica, 300 s warmup, 50 ms SLO, and all others — is documented in
 > **[PARAMETER_DECISIONS.md](PARAMETER_DECISIONS.md)**.
 
 **Core design constraints (non-negotiable):**
@@ -159,9 +159,11 @@ graph TD
 | PROXY-3 | Connection proxy (instance 3) — runs PgBouncer or OJP | SUT-B, SUT-C |
 | DB    | Database server — runs PostgreSQL | All |
 
-Each of the three proxy instances maintains an independent backend connection pool of 100
-connections, giving a total of 300 backend connections to PostgreSQL across the proxy tier — equal
-to the aggregate pool held by the 16 direct clients in SUT-A (16 × ≈19 ≈ 304 ≈ 300).
+Each of the three proxy instances (SUT-B OJP, SUT-C PgBouncer) maintains an independent backend
+connection pool of **16 connections** to PostgreSQL, giving a total of **48 backend connections**
+across the proxy tier. This is a 6.25× reduction from the 300 backend connections held by the 16
+direct clients in SUT-A (16 × ≈19 = 304 ≈ 300), and is the principal value the proxy provides:
+many client-side connections share a smaller, more efficient set of server-side connections.
 
 ---
 
@@ -379,9 +381,9 @@ max_parallel_workers_per_gather = 4
 
 # Connections
 max_connections           = 400
-# Reserve 10 connections for superuser maintenance.
-# The proxy tier uses 3 × 100 = 300 backend connections.
-# Remaining 90 connections provide headroom for monitoring and maintenance.
+# SUT-A (HikariCP direct) uses up to 300 backend connections (16 × 19 ≈ 304).
+# Proxy SUTs (OJP, PgBouncer) use 48 backend connections (3 × 16).
+# Reserve 10 for superuser maintenance; remaining headroom for monitoring agents.
 
 # Statistics
 shared_preload_libraries  = 'pg_stat_statements'
@@ -425,8 +427,9 @@ psql -U benchuser -d benchdb -c "SELECT version();"
 
 The following configuration is applied identically to PROXY-1, PROXY-2, and PROXY-3. Each
 instance connects directly to the PostgreSQL server (plaintext) and maintains an independent
-backend pool of 100 connections. The aggregate backend-connection count across the three instances
-is 300, which matches `max_connections - 100` reserved on the DB server.
+backend pool of **16 connections**. The aggregate backend-connection count across the three
+instances is **48**, which is sized at one connection per DB CPU core per proxy node and
+represents a 6.25× reduction from the 300 connections used by SUT-A.
 
 ### 5.1 /etc/pgbouncer/pgbouncer.ini (apply on each of PROXY-1, PROXY-2, PROXY-3)
 
@@ -441,8 +444,8 @@ auth_type            = scram-sha-256
 auth_file            = /etc/pgbouncer/userlist.txt
 pool_mode            = transaction
 max_client_conn      = 2000
-default_pool_size    = 100
-reserve_pool_size    = 10
+default_pool_size    = 16
+reserve_pool_size    = 4
 reserve_pool_timeout = 5
 server_idle_timeout  = 600
 client_idle_timeout  = 0
@@ -458,8 +461,10 @@ ignore_startup_parameters = extra_float_digits
 - `pool_mode = transaction`: This is the only mode that achieves meaningful connection
   multiplexing. Session mode provides no multiplexing benefit over direct pooling; statement mode
   is incompatible with multi-statement transactions and explicit transaction boundaries.
-- `default_pool_size = 100`: Each PgBouncer instance holds 100 backend connections. With 3
-  instances behind the load balancer, the total backend connection count is 300.
+- `default_pool_size = 16`: Each PgBouncer instance holds 16 backend connections — one per DB
+  CPU core. With 3 instances behind the load balancer, the total backend connection count is 48.
+  This demonstrates connection multiplexing: up to 2,000 client-side TCP connections per instance
+  share just 16 server-side connections.
 - `max_client_conn = 2000`: Allows up to 2000 concurrent client-side TCP connections per
   PgBouncer instance, which is more than sufficient for all test scenarios in this benchmark.
 - `ignore_startup_parameters = extra_float_digits`: Required for the PostgreSQL JDBC driver ≥42.2,
@@ -503,8 +508,8 @@ requiring an external load balancer. No HAProxy or LB machine is needed for the 
 
 The following configuration is applied identically to PROXY-1, PROXY-2, and PROXY-3. Each OJP
 instance connects directly to the PostgreSQL server (plaintext) and maintains an independent
-backend pool of 100 connections. The aggregate backend-connection count across the three instances
-is 300.
+backend pool of **16 connections**. The aggregate backend-connection count across the three
+instances is **48**.
 
 ### 6.1 OJP Server Startup (each of PROXY-1, PROXY-2, PROXY-3)
 
@@ -649,62 +654,89 @@ Rearranged to find maximum throughput:
 
 ### Parameters for This Benchmark
 
-| Parameter | Value | Rationale |
-|-----------|-------|-----------|
-| `L_max` (backend connections) | **300** | 3 proxy nodes × 100 connections each. Matches `max_connections = 400` with 100 reserved for superusers and maintenance. |
-| `W_avg` (mean query time, cache-warm W2_MIXED) | **~3–5 ms = 0.003–0.005 s** | W2_MIXED workload on a 16-core NVMe-backed DB with 64 GB `shared_buffers`; the working set (≈22 GB) fits entirely in cache, so disk I/O is negligible. Simple indexed reads/writes complete in 1–3 ms; multi-row transactions in 5–10 ms; weighted average ≈ 3–5 ms. |
-| `λ_max` (connection-limited) | **60,000–100,000 TPS** | L / W = 300 / 0.005 to 300 / 0.003 |
-| DB CPU limit (16 cores, conservative mixed workload) | **~15,000–30,000 TPS** | A 16-core DB at 100 % CPU handling W2_MIXED (index-heavy reads + writes) can process roughly 1,000–2,000 TPS per core; realistic sustained throughput ≈ 15,000–30,000 TPS. |
+The backend connection count differs between SUT-A (direct pooling) and the proxy SUTs (SUT-B,
+SUT-C):
+
+| Parameter | SUT-A (HikariCP direct) | SUT-B / SUT-C (Proxy) | Notes |
+|-----------|------------------------|----------------------|-------|
+| `L_max` (backend connections) | **300** | **48** | SUT-A: 16 × 19 ≈ 304 ≈ 300 direct. Proxy: 3 nodes × 16 = 48 (one per DB CPU core per node). |
+| `W_avg` (mean query time) | **~3–5 ms** | **~3–5 ms** | W2_MIXED on 16-core NVMe-backed DB with 64 GB `shared_buffers`; working set ≈22 GB fits entirely in cache. |
+| `λ_max` (connection-limited) | **60,000–100,000 TPS** | **9,600–16,000 TPS** | L / W = 300 / 0.005–0.003 for SUT-A; 48 / 0.005–0.003 for proxy. |
+| DB CPU limit (16 cores, W2_MIXED) | **~15,000–30,000 TPS** | **~15,000–30,000 TPS** | Same hardware for all SUTs. |
 
 ### Bottleneck Identification
 
-The **DB CPU** saturates before the connection pool is exhausted:
+**SUT-A (300 direct connections):** The DB CPU saturates well before the connection pool is
+exhausted:
 
 ```
 λ_db_cpu ≈ 15,000–30,000 TPS  <<  λ_connections ≈ 60,000–100,000 TPS
 ```
 
-**Decision: The bottleneck is DB CPU, not connections.** This means:
+The bottleneck is DB CPU. The connection pool never limits throughput.
 
-1. The connection budget of 300 is more than sufficient for any load level we will test.
-2. The DB becomes the bottleneck at approximately 15,000–30,000 TPS (aggregate across all 16 clients).
-3. Our target load of **1,000 RPS** (≈ 1,000 TPS) is well below the DB CPU limit. This is
-   intentional — we want to measure proxy overhead, not DB saturation.
+**SUT-B / SUT-C (48 backend connections):** The connection-limited ceiling (9,600–16,000 TPS)
+overlaps with the DB CPU ceiling (15,000–30,000 TPS):
+
+```
+λ_connections ≈ 9,600–16,000 TPS  ≈  λ_db_cpu ≈ 15,000–30,000 TPS
+```
+
+Connections and DB CPU may co-constrain throughput at the highest sweep load levels. This is
+expected and reflects the proxy design: 48 connections is the minimum needed to approach the
+DB's capacity. The capacity sweep will determine empirically whether the proxy SUTs become
+connection-limited before DB CPU saturates.
 
 ### Why 1,000 RPS as the Starting Point?
 
 At 1,000 TPS and 4 ms average query time:
 
 ```
-L_active = λ × W = 1,000 × 0.004 = 4 active connections out of 300 available
+L_active = λ × W = 1,000 × 0.004 = 4 active connections at any instant
 ```
 
-This means 4 connections are actively executing queries at any instant — the rest are idle.
-With such low utilisation, each proxy should easily keep pace, and latency differences between
-SUTs will reflect pure proxy overhead (protocol handling, queueing, multiplexing), not connection
-exhaustion. 1,000 RPS is therefore the **baseline comparison point**; the capacity sweep (Test A)
-finds each SUT's true maximum.
+- **SUT-A:** 4 active out of 300 available (1.3 % utilisation)
+- **SUT-B / SUT-C:** 4 active out of 48 available (8.3 % utilisation)
+
+In both cases the system operates well below saturation. Latency differences between SUTs at this
+load level reflect pure proxy-protocol overhead (protocol handling, queueing, multiplexing), not
+connection exhaustion. 1,000 RPS is therefore the **baseline comparison point**; the capacity
+sweep (Test A) finds each SUT's true maximum.
 
 ### Maximum Sustainable Throughput Estimate
 
-For the capacity sweep, the DB CPU bottleneck predicts a maximum sustainable throughput of
-**10,000–20,000 TPS** before the SLO (p95 < 50 ms) is violated. The sweep will confirm this
-empirically. If the measured MST is substantially lower (< 5,000 TPS), investigate whether the
-proxy tier has become the bottleneck by checking proxy CPU and connection wait times.
+**SUT-A:** DB CPU is the bottleneck; predicted MST is **10,000–20,000 TPS** before the SLO
+(p95 < 50 ms) is violated.
+
+**SUT-B / SUT-C:** Both DB CPU and the 48-connection pool may limit throughput. The lower bound
+of the connection-limited range (9,600 TPS) is below the lower bound of the DB CPU range
+(15,000 TPS), so the proxy SUTs may reach their MST slightly before SUT-A. The sweep will confirm
+this empirically.
 
 ### Concurrency Budget per Client
 
-With 16 client JVM replicas and a 300-connection backend budget:
+**SUT-A (direct pooling):**
 
 ```
-Connections per replica = 300 / 16 = 18.75 ≈ 19 connections
+Connections per replica = 300 / 16 = 18.75 ≈ 19 connections (direct to PostgreSQL)
 Target RPS per replica  = 1,000 / 16 ≈ 63 RPS
 Active conns at 63 RPS, 4 ms avg = 63 × 0.004 ≈ 0.25 active connections per replica (at baseline)
 ```
 
-Each replica's 19-connection pool provides massive headroom at the baseline load of 63 RPS. Under
-the capacity sweep, the per-replica load increases proportionally until the DB becomes the
-bottleneck or the proxy's queue depth exceeds the SLO.
+Each replica's 19-connection pool provides ample headroom at the baseline load of 63 RPS.
+
+**SUT-B / SUT-C (proxy tier):**
+
+```
+Client-side virtual connections per replica = 19 (OJP) / 2 JDBC (PgBouncer) — mapped by the proxy
+Total proxy backend connections = 48 (3 nodes × 16)
+Target RPS per replica  = 1,000 / 16 ≈ 63 RPS
+Active backend conns at 1,000 RPS total, 4 ms avg = 1,000 × 0.004 = 4 out of 48 available
+```
+
+The proxy's 48 backend connections are shared across all 16 replicas. At baseline load only
+4 of those 48 are active; the proxy multiplexes the remaining idle client connections with
+negligible contention.
 
 ---
 
@@ -715,7 +747,7 @@ All test scenarios share the following global parameters unless explicitly overr
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
 | `clients` | 16 (8 on LG-1, 8 on LG-2) | Simulate 16 microservice replicas; realistic multi-tenant deployment |
-| `dbConnectionBudget` | 300 (100 per proxy × 3; or 19 × 16 ≈ 304 for direct) | Equal backend connection budget across all SUTs for fair comparison |
+| `dbConnectionBudget` | 300 (SUT-A: 19 × 16 ≈ 304 direct) / 48 (proxy SUTs: 3 × 16) | SUT-A uses full direct pool; proxy SUTs multiplex onto optimal backend pool |
 | `targetRpsPerClient` | 63 | 16 × 63 ≈ 1,000 RPS aggregate baseline |
 | `warmupSeconds` | 300 | Primes PostgreSQL buffer pool and JIT compiler |
 | `durationSeconds` | 600 | Steady-state measurement window |
@@ -803,9 +835,9 @@ error rate. Aggregate: sum `achievedThroughputRps` across all 16 `summary.json` 
 ### SUT-B — OJP (3 nodes, 16 clients, gRPC)
 
 **Purpose:** Measure the throughput and latency of 16 microservice replicas routing queries
-through three OJP nodes via gRPC over HTTP/2 (plaintext). Each OJP node maintains 100 backend
-connections (300 total). The OJP JDBC driver performs client-side load balancing — no external
-load balancer is required.
+through three OJP nodes via gRPC over HTTP/2 (plaintext). Each OJP node maintains **16 backend
+connections** (48 total), a 6.25× reduction from SUT-A's 300 direct connections. The OJP JDBC
+driver performs client-side load balancing — no external load balancer is required.
 
 **Connection path:** 16 × `bench` replica → OJP JDBC driver (client-side LB, gRPC) →
 PROXY-{1,2,3} (OJP:1059) → DB (plaintext)
@@ -877,7 +909,8 @@ wait
 
 **Purpose:** Measure the throughput and latency of 16 microservice replicas routing queries
 through an HAProxy load balancer to three PgBouncer instances in transaction pooling mode.
-Each PgBouncer node maintains 100 backend connections (300 total). All traffic is plaintext.
+Each PgBouncer node maintains **16 backend connections** (48 total), a 6.25× reduction from
+SUT-A's 300 direct connections. All traffic is plaintext.
 
 **Connection path:** 16 × `bench` replica → LB (HAProxy:6432) →
 PROXY-{1,2,3} (PgBouncer:6432) → DB (plaintext)
@@ -1160,8 +1193,8 @@ refutation is the scientific contribution of the study.
 
 ### 12.1 Steady-State Throughput at 1,000 RPS
 
-**Hypothesis H1:** At 1,000 RPS aggregate with 16 clients and a total backend connection budget
-of 300:
+**Hypothesis H1:** At 1,000 RPS aggregate with 16 clients (SUT-A: 300 direct connections;
+SUT-B/C: 48 backend connections via proxy):
 
 | SUT | Predicted p95 relative to SUT-A | Predicted throughput |
 |-----|----------------------------------|----------------------|
@@ -1174,13 +1207,14 @@ Per-query overhead above the baseline is attributable to proxy protocol processi
 
 ### 12.2 Capacity (Test A)
 
-**Hypothesis H2:** The maximum sustainable throughput of SUT-C (3 × PgBouncer behind HAProxy) is
-within 10% of SUT-A (HikariCP Disciplined) when the total backend connection count is held
-constant at 300.
+**Hypothesis H2:** The maximum sustainable throughput of SUT-C (3 × PgBouncer behind HAProxy,
+48 backend connections) is within 20% of SUT-A (HikariCP Disciplined, 300 direct connections).
+SUT-C uses fewer backend connections (6.25× fewer), which may reduce its connection-limited
+ceiling; any difference in MST reflects both this ceiling and proxy protocol overhead.
 
 **Hypothesis H3:** The maximum sustainable throughput of SUT-B (3 × OJP with client-side JDBC
 load balancing) is within 10% of SUT-C (3 × PgBouncer) when each proxy instance is configured
-with equal backend pool sizes (100 per instance). SUT-B avoids the HAProxy network hop present in
+with equal backend pool sizes (16 per instance). SUT-B avoids the HAProxy network hop present in
 SUT-C; any latency difference is attributable to implementation-specific proxy overheads.
 
 ### 12.3 Overload and Recovery (Test B)
@@ -1219,7 +1253,7 @@ Per instance (× 3 identical machines):
 | Resource | Expected value |
 |----------|---------------|
 | CPU | 0.5–1.5 cores (PgBouncer is single-threaded; one core saturates at ~50k TPS) |
-| Memory | 50–150 MB (100 backend + up to 2,000 client connections) |
+| Memory | 20–80 MB (16 backend + up to 2,000 client connections) |
 | Network | ≈ LG-1/LG-2-to-proxy traffic forwarded to DB; proportional to query payload size |
 
 #### Proxy Tier — OJP Server (SUT-B)
@@ -1251,7 +1285,7 @@ Reduce `targetRps` until DB CPU drops below 70% before comparing proxy SUTs.
 |------|---------------|-------------------|-------|
 | LG-1 / LG-2 | 2–4 cores | ~4 GB JVM heap | Bottleneck if CPU > 75% |
 | LB (HAProxy, SUT-C only) | < 0.5 cores | < 200 MB | Plaintext TCP mode |
-| PROXY ×3 — PgBouncer (SUT-C) | 0.5–1.5 cores | 50–150 MB | Single-threaded; saturates at 1 core |
+| PROXY ×3 — PgBouncer (SUT-C) | 0.5–1.5 cores | 20–80 MB | Single-threaded; saturates at 1 core |
 | PROXY ×3 — OJP (SUT-B) | 1–3 cores | 600 MB–1.1 GB RSS | Heap 300–512 MB + off-heap 250–490 MB; collect NMT |
 | DB | 4–10 cores | 65–70 GB | Bottleneck if CPU > 80% |
 
