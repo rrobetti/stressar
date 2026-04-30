@@ -363,7 +363,7 @@ exceeds 0.1 %.
 exhaustion, or proxy queue overflows cause JDBC calls to fail. A 0 % threshold would be too strict
 (individual transient timeouts would terminate the sweep prematurely). A 1 % threshold would be
 too lenient (a 1-in-100 error rate is unacceptable in production). 0.1 % (1 in 1,000) is the
-threshold used by several published OLTP benchmarks and is consistent with a four-nines (99.9 %)
+threshold used by several published OLTP benchmarks and is consistent with a three-nines (99.9 %)
 availability target.
 
 ---
