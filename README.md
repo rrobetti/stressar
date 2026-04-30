@@ -6,7 +6,7 @@ Comprehensive tooling to assess the performance of OJP (Open J Proxy) and compar
 
 ## Test Results Summary
 
-All tests are executed with **no TLS** (plaintext on all network legs inside a trusted benchmark network), **16 independent client JVM processes** (8 on each of two load-generator machines), and a **total backend connection budget of 300** (100 per proxy node). Two test protocols are run for each of the three systems under test (SUTs).
+All tests are executed with **no TLS** (plaintext on all network legs inside a trusted benchmark network) and **16 independent client JVM processes** (8 on each of two load-generator machines). The backend connection budget differs by SUT: **300 direct connections** for HikariCP (≈19 per replica) and **48 proxy backend connections** for OJP and PgBouncer (16 per proxy node). Two test protocols are run for each of the three systems under test (SUTs).
 
 See [Simplified Test List](#simplified-test-list) below for a plain-language description of what is run.
 See [BENCHMARKING_GUIDE.md](docs/BENCHMARKING_GUIDE.md) for the full protocol.
@@ -110,7 +110,7 @@ Comprehensive documentation is available in the `docs/` directory:
 
 - **[PARAMETER_DECISIONS.md](docs/PARAMETER_DECISIONS.md)** - Explainability: why every numeric constant was chosen
   - Why 16 client JVM processes (and why 8 per machine)
-  - Why 300 total backend connections, 19 per replica, 63 RPS per client
+  - Why 300 direct backend connections (19 per replica) vs 48 proxy backend connections (16 per proxy node), and 63 RPS per client
   - Why specific timing windows, SLO thresholds, dataset sizes, and infrastructure settings
 
 - **[BENCHMARKING_GUIDE.md](docs/BENCHMARKING_GUIDE.md)** - Step-by-step benchmarking protocol

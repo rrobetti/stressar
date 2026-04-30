@@ -40,7 +40,7 @@ accepted.
 24. [No TLS on Any Network Leg](#24-no-tls-on-any-network-leg)
 25. [PgBouncer — Transaction Pool Mode](#25-pgbouncer--transaction-pool-mode)
 26. [PgBouncer — Client Connections Cap (max_client_conn = 2,000)](#26-pgbouncer--client-connections-cap-max_client_conn--2000)
-27. [PgBouncer — Reserve Pool (size = 10, timeout = 5 s)](#27-pgbouncer--reserve-pool-size--10-timeout--5-s)
+27. [PgBouncer — Reserve Pool (size = 4, timeout = 5 s)](#27-pgbouncer--reserve-pool-size--10-timeout--5-s)
 28. [PgBouncer Client Pool Size — poolSize = 2](#28-pgbouncer-client-pool-size--poolsize--2)
 29. [HAProxy — Least-Connections Algorithm](#29-haproxy--least-connections-algorithm)
 30. [OJP — Minimum Connections (minConnections = 3)](#30-ojp--minimum-connections-minconnections--3)
@@ -603,7 +603,7 @@ runaway client from exhausting OS file-descriptor limits.
 
 ---
 
-## 27. PgBouncer — Reserve Pool (size = 10, timeout = 5 s)
+## 27. PgBouncer — Reserve Pool (size = 4, timeout = 5 s)
 
 **Values:** `reserve_pool_size = 4`, `reserve_pool_timeout = 5` in `pgbouncer.ini`.
 
