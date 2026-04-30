@@ -95,6 +95,8 @@ build/install/ojp-performance-tester/bin/bench run \
 
 Comprehensive documentation is available in the `docs/` directory:
 
+- **[DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** - Single control-node deployment guide (pre-provisioned machines, SSH-based setup, OJP 0.4.8-beta)
+
 - **[install/README.md](docs/install/README.md)** - Installation guides index
   - [Java](docs/install/JAVA.md) — JVM runtime (required)
   - [Gradle](docs/install/GRADLE.md) — build tool (wrapper included)
