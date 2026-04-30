@@ -12,6 +12,7 @@ Step-by-step instructions for deploying and running the OJP Performance Benchmar
 | 3 | Every machine has unrestricted outbound internet access (`curl`, `apt-get`, etc. work). |
 | 4 | OJP version **0.4.8-beta** is used for both the server and the JDBC driver. |
 | 5 | The `bench` tool is **built and run on the control node only**. No bench process is deployed on remote machines. |
+| 6 | The OJP Server requires **Java 21+** on each proxy node. The control node (bench tool) requires **Java 11+**. |
 
 ---
 
@@ -315,7 +316,7 @@ psql -h "${DB_IP}" -p 5432 -U benchuser -d benchdb \
       UNION ALL SELECT 'orders', COUNT(*) FROM orders;"
 ```
 
-Expected row counts: 10 000 / 5 000 / 50 000.
+Expected row counts: 10000 / 5000 / 50000.
 
 ---
 
