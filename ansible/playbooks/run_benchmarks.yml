@@ -1,0 +1,124 @@
+---
+# ansible/playbooks/run_benchmarks.yml
+#
+# Executes the full OJP benchmark suite from the control node:
+#   1. Renders a bench config from the Jinja2 template.
+#   2. Runs a warmup pass (single instance).
+#   3. Launches {{ bench_replica_count }} bench JVMs in parallel.
+#   4. Waits for all replicas to finish.
+#   5. Runs generate_report.sh to produce a Markdown report.
+#
+# Usage:
+#   ansible-playbook -i inventory.yml playbooks/run_benchmarks.yml
+#
+# Optional overrides:
+#   -e run_name=ojp-run-1          # subdirectory under results/
+#   -e bench_target_rps=500
+#   -e bench_duration_seconds=300
+#   -e bench_replica_count=4
+
+- name: Run OJP benchmark from control node
+  hosts: control
+  gather_facts: false
+
+  vars:
+    run_name:   "ojp-run-{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
+    db_host:    "{{ hostvars[groups['db'][0]]['ansible_host'] }}"
+    # Build the list of  PROXY_IP:PORT  strings from the proxy inventory group.
+    proxy_urls: >-
+      {{
+        groups['proxy']
+          | map('extract', hostvars, 'ansible_host')
+          | map('regex_replace', '^(.*)$', '\\1:' + (ojp_server_port | string))
+          | list
+      }}
+    bench_config_file: "/tmp/ojp-benchmark-{{ run_name }}.yaml"
+
+  tasks:
+    - name: Ensure results directory exists
+      ansible.builtin.file:
+        path: "{{ bench_results_dir }}/{{ run_name }}"
+        state: directory
+        mode: "0755"
+
+    # ── Render bench config ──────────────────────────────────────────────────
+    - name: Render benchmark configuration
+      ansible.builtin.template:
+        src: "{{ bench_repo_dir }}/ansible/templates/ojp-benchmark.yaml.j2"
+        dest: "{{ bench_config_file }}"
+        mode: "0644"
+
+    - name: Show rendered config path
+      ansible.builtin.debug:
+        msg: "Benchmark config written to {{ bench_config_file }}"
+
+    # ── Warmup ───────────────────────────────────────────────────────────────
+    - name: Run warmup pass
+      ansible.builtin.command: >
+        {{ bench_binary }} warmup --config {{ bench_config_file }}
+      register: warmup_out
+      changed_when: true
+
+    - name: Print warmup output
+      ansible.builtin.debug:
+        msg: "{{ warmup_out.stdout_lines[-10:] }}"
+
+    # ── Parallel benchmark replicas ──────────────────────────────────────────
+    - name: Launch {{ bench_replica_count }} bench replicas in parallel
+      ansible.builtin.shell: |
+        set -euo pipefail
+        mkdir -p "{{ bench_results_dir }}/{{ run_name }}"
+        pids=()
+        for ID in $(seq 0 $(( {{ bench_replica_count }} - 1 )) ); do
+          "{{ bench_binary }}" run \
+            --config     "{{ bench_config_file }}" \
+            --output     "{{ bench_results_dir }}/{{ run_name }}/replica-${ID}/" \
+            --instance-id "${ID}" \
+            > "{{ bench_results_dir }}/{{ run_name }}/replica-${ID}.log" 2>&1 &
+          pids+=($!)
+          echo "Started replica ${ID} (PID ${pids[-1]})"
+        done
+        echo "Waiting for all ${#pids[@]} replicas..."
+        failed=0
+        for pid in "${pids[@]}"; do
+          if ! wait "$pid"; then
+            echo "ERROR: replica PID ${pid} exited non-zero"
+            failed=$(( failed + 1 ))
+          fi
+        done
+        if [ "$failed" -gt 0 ]; then
+          echo "FAILED: ${failed} replica(s) did not complete successfully"
+          exit 1
+        fi
+        echo "All replicas finished successfully"
+      register: bench_run_out
+      changed_when: true
+      # Allow up to 45 minutes for a full run (warmup + duration + cooldown).
+      timeout: 2700
+
+    - name: Print bench run output
+      ansible.builtin.debug:
+        msg: "{{ bench_run_out.stdout_lines }}"
+
+    # ── Report ────────────────────────────────────────────────────────────────
+    - name: Generate Markdown report
+      ansible.builtin.command: >
+        {{ bench_repo_dir }}/ansible/scripts/generate_report.sh
+          "{{ bench_results_dir }}/{{ run_name }}"
+          "{{ bench_results_dir }}/{{ run_name }}/report.md"
+      register: report_out
+      changed_when: true
+
+    - name: Print report location
+      ansible.builtin.debug:
+        msg: "Report written to {{ bench_results_dir }}/{{ run_name }}/report.md"
+
+    - name: Print report summary
+      ansible.builtin.command: >
+        cat "{{ bench_results_dir }}/{{ run_name }}/report.md"
+      register: report_content
+      changed_when: false
+
+    - name: Show report
+      ansible.builtin.debug:
+        msg: "{{ report_content.stdout_lines }}"

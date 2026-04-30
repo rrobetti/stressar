@@ -1,0 +1,15 @@
+# {{ ansible_managed }}
+# /etc/postgresql/{{ pg_version }}/main/pg_hba.conf
+# Deployed by Ansible — OJP benchmark access rules
+
+# TYPE  DATABASE        USER            ADDRESS         METHOD
+
+# Local superuser access (required for Ansible community.postgresql tasks)
+local   all             postgres                        peer
+
+# Local user access
+local   all             all                             md5
+
+# Benchmark user — allow from any host (tighten to a CIDR in production)
+host    {{ db_name }}   {{ db_user }}   0.0.0.0/0       md5
+host    {{ db_name }}   {{ db_user }}   ::/0            md5

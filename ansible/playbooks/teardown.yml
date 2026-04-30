@@ -1,0 +1,45 @@
+---
+# ansible/playbooks/teardown.yml
+#
+# Gracefully stops OJP Server on every proxy node and resets PostgreSQL
+# statistics so the next run starts from a clean baseline.
+#
+# Usage:
+#   ansible-playbook -i inventory.yml playbooks/teardown.yml
+
+- name: Stop OJP Server on proxy nodes
+  hosts: proxy
+  gather_facts: false
+  tasks:
+    - name: Stop ojp-server service
+      ansible.builtin.systemd:
+        name: ojp-server
+        state: stopped
+      become: true
+      ignore_errors: true   # tolerate if already stopped
+
+    - name: Confirm OJP port {{ ojp_server_port }} is closed
+      ansible.builtin.wait_for:
+        port: "{{ ojp_server_port }}"
+        state: stopped
+        timeout: 15
+      ignore_errors: true
+
+- name: Reset PostgreSQL statistics on database server
+  hosts: db
+  gather_facts: false
+  tasks:
+    - name: Reset pg_stat_statements
+      become: true
+      become_user: postgres
+      community.postgresql.postgresql_query:
+        db: "{{ db_name }}"
+        query: "SELECT pg_stat_statements_reset();"
+      ignore_errors: true   # extension may not be loaded yet on first run
+
+    - name: Reset pg_stat_bgwriter / pg_stat_database counters
+      become: true
+      become_user: postgres
+      community.postgresql.postgresql_query:
+        db: "{{ db_name }}"
+        query: "SELECT pg_stat_reset();"

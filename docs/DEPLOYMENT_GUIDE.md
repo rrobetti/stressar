@@ -481,6 +481,7 @@ EOF
 
 | Document | Purpose |
 |----------|---------|
+| [../ansible/README.md](../ansible/README.md) | **Ansible automation** — one-command install, run, collect, report |
 | [BENCHMARKING_GUIDE.md](BENCHMARKING_GUIDE.md) | Full multi-machine protocol for publishable results |
 | [RUNBOOK.md](RUNBOOK.md) | Complete command reference for all SUT modes |
 | [CONFIG.md](CONFIG.md) | All benchmark configuration parameters |

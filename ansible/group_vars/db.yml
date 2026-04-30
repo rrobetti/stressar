@@ -1,0 +1,23 @@
+---
+# ansible/group_vars/db.yml
+# PostgreSQL-specific variables for the db host group.
+
+pg_version: 16
+
+# ── Performance tuning ────────────────────────────────────────────────────────
+# Adjust shared_buffers / effective_cache_size to roughly 25 % / 75 % of RAM.
+pg_shared_buffers:           "4GB"
+pg_effective_cache_size:     "12GB"
+pg_maintenance_work_mem:     "1GB"
+pg_work_mem:                 "32MB"
+pg_wal_buffers:              "16MB"
+pg_min_wal_size:             "2GB"
+pg_max_wal_size:             "8GB"
+pg_checkpoint_completion_target: "0.9"
+pg_default_statistics_target: 100
+pg_random_page_cost:         "1.1"
+pg_effective_io_concurrency: 200
+pg_max_worker_processes:     8
+pg_max_parallel_workers_per_gather: 4
+pg_max_parallel_workers:     8
+pg_max_connections:          400
