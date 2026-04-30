@@ -142,6 +142,13 @@ Comprehensive documentation is available in the `docs/` directory:
   - Workload types and load modes
   - Example configurations for common scenarios
 
+- **[METRICS.md](docs/METRICS.md)** - Metrics reference — what is measured and how
+  - Measurement scope (what the latency clock covers)
+  - Collection pipeline (two-histogram design for per-interval vs. cumulative)
+  - Full metric catalogue: latency, throughput, errors, open-loop correctness, OJP-specific, system
+  - Workload SQL (W1, W2, W3)
+  - Multi-replica aggregation methodology
+
 - **[RESULTS_FORMAT.md](docs/RESULTS_FORMAT.md)** - Data schemas and formats
   - Timeseries CSV format
   - Summary JSON schema

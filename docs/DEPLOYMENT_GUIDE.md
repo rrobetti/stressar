@@ -486,6 +486,7 @@ EOF
 | [RUNBOOK.md](RUNBOOK.md) | Complete command reference for all SUT modes |
 | [CONFIG.md](CONFIG.md) | All benchmark configuration parameters |
 | [RESULTS_FORMAT.md](RESULTS_FORMAT.md) | Output file schemas and metrics methodology |
+| [METRICS.md](METRICS.md) | What every metric is, how it is collected, workload SQL |
 | [install/OJP.md](install/OJP.md) | OJP Server installation reference |
 | [install/OJP_JDBC_DRIVER.md](install/OJP_JDBC_DRIVER.md) | OJP JDBC Driver reference |
 | [PARAMETER_DECISIONS.md](PARAMETER_DECISIONS.md) | Rationale for every numeric constant |
