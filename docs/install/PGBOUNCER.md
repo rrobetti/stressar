@@ -128,10 +128,10 @@ listen_addr          = *
 auth_type            = md5
 auth_file            = /etc/pgbouncer/userlist.txt
 pool_mode            = transaction
-default_pool_size    = 100
+default_pool_size    = 16
 max_client_conn      = 2000
-reserve_pool_size    = 10
-reserve_pool_timeout = 3
+reserve_pool_size    = 4
+reserve_pool_timeout = 5
 server_tls_sslmode   = disable
 ignore_startup_parameters = extra_float_digits
 ```
@@ -141,7 +141,7 @@ ignore_startup_parameters = extra_float_digits
 | Setting | Value | Explanation |
 |---|---|---|
 | `pool_mode` | `transaction` | Release server connection after each transaction (required for multiplexing) |
-| `default_pool_size` | `100` | Backend connections per database/user pair; 3 instances × 100 = 300 total |
+| `default_pool_size` | `16` | Backend connections per database/user pair; 3 instances × 16 = 48 total |
 | `max_client_conn` | `2000` | Maximum simultaneous client connections across all pools |
 | `ignore_startup_parameters` | `extra_float_digits` | Required when using the PostgreSQL JDBC driver |
 

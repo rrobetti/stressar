@@ -388,8 +388,8 @@ listen_port = 6432
 auth_type = md5
 auth_file = /etc/pgbouncer/userlist.txt
 pool_mode = transaction
-max_client_conn = 1000
-default_pool_size = 50
+max_client_conn = 2000
+default_pool_size = 16
 ```
 
 **Use Case:** Testing PgBouncer performance

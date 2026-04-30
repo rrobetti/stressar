@@ -518,7 +518,7 @@ Each OJP instance must:
 
 - Accept **gRPC** connections (plaintext) on `<PROXYn_IP>:1059` (OJP default gRPC port)
 - Proxy to `<DB_IP>:5432` (plaintext), database `benchdb`, user `benchuser`
-- Be configured with a maximum backend connection count of 100
+- Be configured with a maximum backend connection count of 16
 
 Verify each instance from LG-1 using the OJP JDBC driver:
 
