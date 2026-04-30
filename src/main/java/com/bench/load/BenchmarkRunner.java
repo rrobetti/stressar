@@ -6,6 +6,7 @@ import com.bench.config.ConnectionProviderFactory;
 import com.bench.metrics.MetricsCollector;
 import com.bench.metrics.MetricsSnapshot;
 import com.bench.metrics.SummaryWriter;
+import com.bench.metrics.SystemMetricsCollector;
 import com.bench.metrics.TimeseriesWriter;
 import com.bench.workloads.Workload;
 import com.bench.workloads.WorkloadFactory;
@@ -151,6 +152,9 @@ public class BenchmarkRunner {
                 loadGen.start();
             }
             
+            // Start in-process system metrics collection for the steady-state phase only
+            SystemMetricsCollector sysMetrics = new SystemMetricsCollector();
+
             // Steady-state phase
             logger.info("=== Steady-state phase: {} seconds ===", durationSec);
             long steadyStateStart = System.currentTimeMillis();
@@ -170,9 +174,16 @@ public class BenchmarkRunner {
             metricsScheduler.shutdown();
             metricsScheduler.awaitTermination(5, TimeUnit.SECONDS);
             timeseriesWriter.close();
+
+            // Stop system metrics collection and capture final values
+            sysMetrics.close();
             
             // Get final metrics
             MetricsSnapshot finalSnapshot = metrics.getSnapshot();
+
+            // Populate in-process system metrics fields on the snapshot
+            finalSnapshot.setAppCpuMedian(sysMetrics.getAppCpuMedian());
+            finalSnapshot.setGcPauseMsTotal(sysMetrics.getGcPauseMsTotal());
             
             // Write summary
             SummaryWriter.BenchmarkRunInfo runInfo = new SummaryWriter.BenchmarkRunInfo();
