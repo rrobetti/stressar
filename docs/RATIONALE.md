@@ -12,7 +12,7 @@ necessary to produce results that are valid for publication in a peer-reviewed v
 
 ## 1. Absence of Published JDBC-Client Benchmarks for PgBouncer
 
-PgBouncer is the most widely deployed PostgreSQL connection pooler. Its performance
+PgBouncer is the most widely deployed PostgreSQL connection pooler [4]. Its performance
 characteristics have been discussed in PostgreSQL community blogs and conference talks, but as of
 early 2026 no published study satisfies the following three conditions simultaneously:
 
@@ -65,7 +65,7 @@ occurs at realistic production loads.
 
 A proper throughput–latency curve requires open-loop scheduling: requests are issued at a
 configured arrival rate regardless of how long previous requests take. This is the model used by
-production traffic and is the only model under which Little's Law can be correctly applied to
+production traffic and is the only model under which Little's Law [1] can be correctly applied to
 derive connection-queue depth from latency observations. The harness implements open-loop
 scheduling via `ScheduledExecutorService.scheduleAtFixedRate`, which drives the load generator
 independently of workload completion.
@@ -115,11 +115,11 @@ Results intended for a peer-reviewed paper must satisfy three reproducibility cr
    assess whether results are environment-specific.
 
 2. **Deterministic data generation**: The schema and data generator use a seedable pseudorandom
-   number generator (Xoshiro256**). The same seed produces the same sequence of account IDs, item
+   number generator (Xoshiro256** [2]). The same seed produces the same sequence of account IDs, item
    IDs, and order amounts on any platform. Results are therefore fully reproducible from the same
    seed and dataset size.
 
-3. **Accurate latency measurement**: The tool uses HdrHistogram, which avoids the coordinated
+3. **Accurate latency measurement**: The tool uses HdrHistogram [3], which avoids the coordinated
    omission problem endemic to closed-loop measurements and provides accuracy to 0.1% across six
    orders of magnitude. Per-run histogram logs are written in the HdrHistogram binary format so
    that post-hoc reanalysis is possible without re-running the experiment.
@@ -162,3 +162,23 @@ This harness is designed to fill all of them.
 ---
 
 *Document version: 1.0 — February 2026*
+
+---
+
+## References
+
+[1] Little, J.D.C. (1961). A Proof for the Queueing Formula: L = λW. *Operations Research*,
+9(3), 383–387. <https://doi.org/10.1287/opre.9.3.383>
+
+[2] Blackman, D. and Vigna, S. (2021). Scrambled Linear Pseudorandom Number Generators. *ACM
+Transactions on Mathematical Software*, 47(4), Article 36.
+<https://doi.org/10.1145/3460772>
+
+[3] HdrHistogram Authors. *HdrHistogram: A High Dynamic Range Histogram*. GitHub repository:
+<https://github.com/HdrHistogram/HdrHistogram>. For the coordinated-omission problem, see also:
+G. Tene, "How NOT to Measure Latency", QCon San Francisco 2013.
+<https://www.infoq.com/presentations/latency-response-time/>
+
+[4] Tiger Data (formerly Timescale). *State of PostgreSQL 2024 Survey* (n = 688 respondents;
+PgBouncer identified as the leading connection pooler in the PostgreSQL ecosystem). Available at:
+<https://www.tigerdata.com/state-of-postgres/2024>
