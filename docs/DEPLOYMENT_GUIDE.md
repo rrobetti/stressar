@@ -12,7 +12,7 @@ Step-by-step instructions for deploying and running the OJP Performance Benchmar
 | 3 | Every machine has unrestricted outbound internet access (`curl`, `apt-get`, etc. work). |
 | 4 | OJP version **0.4.8-beta** is used for both the server and the JDBC driver. |
 | 5 | The `bench` tool is **built and run on the control node only**. No bench process is deployed on remote machines. |
-| 6 | The OJP Server requires **Java 21+** on each proxy node. The control node (bench tool) requires **Java 11+**. |
+| 6 | The OJP Server requires **Java 21+** on each proxy node. The control node requires **Java 26+** (bench tool + helper scripts). |
 
 ---
 
@@ -96,22 +96,23 @@ export SSH_USER=<your_ssh_username>   # e.g. ubuntu, ec2-user, root
 
 ## 3. Control Node Prerequisites
 
-The control node needs **Java 11+** and **Git** to build and run the benchmark tool.
+The control node needs **Java 26+** and **Git** to build and run the benchmark tool and the
+helper scripts (`scripts/PrettyJson.java` etc.).
 
-### Java 11+ (macOS)
+### Java 26+ (macOS)
 
 ```bash
 # Option A — SDKMAN (recommended)
 curl -s "https://get.sdkman.io" | bash
 source "$HOME/.sdkman/bin/sdkman-init.sh"
-sdk install java 21.0.3-tem
-sdk default java 21.0.3-tem
+sdk install java 26-tem
+sdk default java 26-tem
 
 # Option B — Homebrew
-brew install --cask temurin@21
+brew install --cask temurin@26
 ```
 
-### Java 11+ (Linux)
+### Java 26+ (Linux)
 
 ```bash
 sudo apt-get update
@@ -121,13 +122,13 @@ wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public \
 echo "deb https://packages.adoptium.net/artifactory/deb $(. /etc/os-release; echo $VERSION_CODENAME) main" \
     | sudo tee /etc/apt/sources.list.d/adoptium.list
 sudo apt-get update
-sudo apt-get install -y temurin-21-jdk
+sudo apt-get install -y temurin-26-jdk
 ```
 
 ### Verify
 
 ```bash
-java -version   # Must report 11 or higher
+java -version   # Must report 26 or higher
 git  --version
 ```
 
@@ -427,7 +428,7 @@ echo "All replicas finished"
 ls -lh results/ojp-run-1/
 
 # Quick summary
-cat results/ojp-run-1/summary.json | python3 -m json.tool
+cat results/ojp-run-1/summary.json | java scripts/PrettyJson.java
 ```
 
 Key files produced per run:
