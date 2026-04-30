@@ -14,17 +14,20 @@ interpret it.
    - [timeseries.csv — Per-second metrics](#timeseriescvs)
    - [summary.json — Aggregate metrics](#summaryjson)
    - [hdr.hlog — HDR histogram log](#hdrhlog)
-4. [Metric Catalogue](#4-metric-catalogue)
+4. [Metric Catalogue — Bench Client (Currently Collected)](#4-metric-catalogue)
    - [Latency metrics](#latency-metrics)
    - [Throughput metrics](#throughput-metrics)
    - [Error metrics](#error-metrics)
    - [Open-loop correctness metrics](#open-loop-correctness-metrics)
    - [OJP-specific metrics](#ojp-specific-metrics)
-   - [System metrics (optional)](#system-metrics-optional)
-5. [Workload Operations (What Generates Load)](#5-workload-operations)
-6. [Environment Snapshot](#6-environment-snapshot)
-7. [Multi-Replica Aggregation](#7-multi-replica-aggregation)
-8. [Limitations and Known Issues](#8-limitations-and-known-issues)
+5. [Node-Level Metrics — Collection Status and Gaps](#5-node-level-metrics)
+   - [Bench / control node](#bench--control-node)
+   - [OJP proxy node — JVM heap vs OS RSS](#ojp-proxy-node--jvm-heap-vs-os-rss)
+   - [PostgreSQL DB node](#postgresql-db-node)
+6. [Workload Operations (What Generates Load)](#6-workload-operations)
+7. [Environment Snapshot](#7-environment-snapshot)
+8. [Multi-Replica Aggregation](#8-multi-replica-aggregation)
+9. [Limitations and Known Issues](#9-limitations-and-known-issues)
 
 ---
 
@@ -185,7 +188,7 @@ Source: `LatencyRecorder.exportToLog()`, `HistogramAggregator.java`.
 
 ---
 
-## 4. Metric Catalogue
+## 4. Metric Catalogue — Bench Client (Currently Collected)
 
 ### Latency metrics
 
@@ -263,24 +266,153 @@ Source: `OjpProvider.java`, `BenchmarkRunner.java`.
 
 ---
 
-### System metrics (optional)
+## 5. Node-Level Metrics — Collection Status and Gaps
 
-These fields appear in `summary.json` and `MetricsSnapshot` when the JVM can
-supply the underlying data. They are currently **not populated by default** in
-the open-source release; the fields exist as placeholders for instrumentation
-added during the full benchmarking campaign.
+The bench client (§4) measures what the *application sees*. To fully understand
+system behaviour under load you also need metrics from the three other tiers:
+the bench/control node itself, the OJP proxy nodes, and the PostgreSQL DB node.
 
-| Field | Description | Source |
-|-------|-------------|--------|
-| `appCpuMedian` | Median application CPU usage (%) during the steady-state phase. | JVM `OperatingSystemMXBean` |
-| `appRssMedian` | Median resident set size (MB). | OSHI library |
-| `gcPauseMsTotal` | Total time spent in GC pauses (ms). | JVM `GarbageCollectorMXBean` |
-| `dbActiveConnectionsMedian` | Median number of backend connections active at PostgreSQL. | `pg_stat_activity` query |
-| `queueDepthMax` | Peak connection-pool queue depth. | HikariCP MBean |
+**Current status: none of these are collected automatically.** The fields
+`appCpuMedian`, `appRssMedian`, `gcPauseMsTotal`, `dbActiveConnectionsMedian`,
+and `queueDepthMax` exist as schema placeholders in `MetricsSnapshot` but are
+**not populated** during a run. Collecting them requires either adding
+instrumentation to the bench JVM or running side-car collection scripts on each
+node tier during the test window.
 
 ---
 
-## 5. Workload Operations
+### Bench / control node
+
+These metrics describe the load-generator process itself. High CPU or memory on
+the bench node can skew results (the generator becomes the bottleneck instead of
+the SUT).
+
+| Metric | Why it matters | How to collect |
+|--------|---------------|----------------|
+| **CPU %** | Bench JVM saturating CPU → it can no longer dispatch at the target RPS; `openLoopMissedOpportunities` will spike. | `OperatingSystemMXBean.getProcessCpuLoad()` (in-process) or `vmstat`/`sar` on the host. |
+| **JVM heap used / committed** | GC pressure on the bench JVM can introduce stop-the-world pauses that inflate latency measurements. | `java.lang:type=Memory` via JMX or `-verbose:gc` JVM flag. |
+| **GC pause total (ms)** | Direct measurement of time the bench JVM was stopped. | `GarbageCollectorMXBean.getCollectionTime()` summed across all collectors. |
+| **Thread count** | Number of live threads (dispatcher + worker pool). | `java.lang:type=Threading#ThreadCount` via JMX. |
+| **Network TX/RX (bytes/s)** | Confirm the bench node NIC is not the bottleneck. | `sar -n DEV 1` or `/proc/net/dev` polling. |
+
+> **Collection hook:** `MetricsSnapshot.appCpuMedian`, `MetricsSnapshot.gcPauseMsTotal` — already in the schema, not yet wired up.
+
+---
+
+### OJP proxy node — JVM heap vs OS RSS
+
+> ⚠️ **Critical distinction for OJP:** Java reserves virtual memory from the OS and
+> holds it even after GC reclaims the objects. This means the **OS-reported RSS
+> (Resident Set Size) is not a reliable indicator of actual memory usage**.
+> A process showing 2 GB RSS may have only 400 MB of live objects.
+>
+> **Do NOT use `/proc/<pid>/status VmRSS`, `ps`, or `top` to measure OJP memory.**
+> Use JVM-internal heap metrics instead.
+
+| Metric | Why it matters | Correct collection method |
+|--------|---------------|--------------------------|
+| **JVM heap used** | Actual live object bytes on the heap. The number that correlates with GC frequency and GC pause duration. | `java.lang:type=Memory#HeapMemoryUsage.used` via JMX (`jcmd <pid> VM.native_memory` or `jstat -gc`). |
+| **JVM heap committed** | Memory the JVM has actually obtained from the OS and won't return until JVM exit. | `java.lang:type=Memory#HeapMemoryUsage.committed` via JMX. |
+| **JVM heap max** | The `-Xmx` ceiling. Heap used approaching heap max → imminent OOME or GC storm. | `java.lang:type=Memory#HeapMemoryUsage.max` via JMX. |
+| **GC pause count / duration** | OJP with G1GC or ZGC should have near-zero STW pauses; unexpected long pauses add server-side latency. | `java.lang:type=GarbageCollector,name=*#CollectionCount/Time` via JMX; or parse `-Xlog:gc*` log. |
+| **JVM thread count** | Number of server-side handler threads. Growth indicates thread leaks or pool exhaustion. | `java.lang:type=Threading#ThreadCount` via JMX. |
+| **OJP server-side pool occupancy** | How many backend PG connections are in-use vs idle at any given second. | OJP exposes pool stats via its management API / JMX MBean (see OJP server docs). |
+| **OJP request queue depth** | Requests waiting for a backend connection slot. Non-zero → pool is saturated. | OJP management API / JMX. |
+| **Proxy node CPU %** | Sustained high CPU on OJP → it is the bottleneck, not PG. | `OperatingSystemMXBean.getSystemCpuLoad()` via JMX, or `sar 1` side-car. |
+| **Proxy node network TX/RX** | Confirm OJP NIC is not the bottleneck. | `/proc/net/dev` polling or `sar -n DEV`. |
+
+**How to attach to OJP JMX:**
+
+OJP Server exposes standard JMX when started with:
+
+```bash
+-Dcom.sun.management.jmxremote.port=9999
+-Dcom.sun.management.jmxremote.authenticate=false
+-Dcom.sun.management.jmxremote.ssl=false
+```
+
+Then during a run, poll every 1 s with:
+
+```bash
+# Heap used in MB, printed every second
+jstat -gc <ojp-pid> 1000
+# Fields: S0C S1C S0U S1U EC EU OC OU MC MU YGC YGCT FGC FGCT GCT
+# EU = Eden Used, OU = Old Used — sum these for total heap used
+```
+
+For Ansible-automated collection, the `run_benchmarks.yml` playbook should
+start a background `jstat` loop on each proxy node before launching bench
+replicas and kill it after they complete.
+
+---
+
+### PostgreSQL DB node
+
+PostgreSQL exposes rich internal statistics through its system views. These
+should be snapshotted (or polled continuously) during the test window to
+understand where DB time is spent.
+
+#### Key statistics views
+
+| View / column | Metric | Why it matters |
+|---------------|--------|----------------|
+| `pg_stat_activity` | Count of active / idle / waiting backends | Direct view of connection usage; idle-in-transaction connections indicate connection leaks |
+| `pg_stat_bgwriter.buffers_checkpoint` | Buffers written by checkpoint | High values → WAL/checkpoint pressure; checkpoint may stall queries |
+| `pg_stat_bgwriter.checkpoint_write_time` | Milliseconds spent writing during checkpoints | High → I/O-bound; will cause latency spikes |
+| `pg_stat_bgwriter.buffers_clean` | Buffers written by background writer | Non-zero → `shared_buffers` may be too small |
+| `pg_stat_database.blks_hit` / `blks_read` | Buffer cache hit ratio = `blks_hit / (blks_hit + blks_read)` | < 99 % hit ratio on OLTP workloads suggests insufficient `shared_buffers` |
+| `pg_stat_database.xact_commit` / `xact_rollback` | Transaction rate | Cross-check against bench-reported RPS; rollbacks indicate contention |
+| `pg_stat_database.deadlocks` | Deadlock count | Unexpected deadlocks in the test → schema/workload issue |
+| `pg_stat_database.temp_bytes` | Temporary file writes | Non-zero → sort/hash spills; `work_mem` may need tuning |
+| `pg_locks` | Lock waits | Count rows where `granted = false`; indicates hot-row contention |
+| OS CPU on DB node | Total CPU (user + sys) | High sys% → I/O or network; high user% → query execution |
+| OS disk I/O (MB/s, IOPS) | Read and write throughput | WAL writes, checkpoints, dirty-page flush |
+| OS network RX (MB/s) | Data sent from PG to clients | High → large result sets; saturated NIC |
+
+#### Collection during a run
+
+The simplest approach is a polling loop that runs in parallel with the bench:
+
+```bash
+# Run from the DB node (or via psql from the control node) every 5 s
+while true; do
+  psql -U postgres -c "
+    SELECT now(),
+           numbackends,
+           xact_commit,
+           xact_rollback,
+           blks_hit,
+           blks_read,
+           ROUND(blks_hit * 100.0 / NULLIF(blks_hit + blks_read, 0), 2) AS cache_hit_pct,
+           temp_bytes,
+           deadlocks
+    FROM pg_stat_database
+    WHERE datname = 'ojp_bench';
+    SELECT now(), count(*) AS waiting
+    FROM pg_locks WHERE NOT granted;
+  " -t >> results/pg_stats.csv
+  sleep 5
+done
+```
+
+This loop should be launched as a background task in the Ansible
+`run_benchmarks.yml` playbook (before starting bench replicas) and killed after
+they complete.
+
+#### Reset stats before each run
+
+PostgreSQL statistics counters are cumulative since last `pg_stat_reset()`. Always reset before a run to get clean deltas:
+
+```sql
+SELECT pg_stat_reset();                       -- resets pg_stat_database, pg_stat_user_tables, etc.
+SELECT pg_stat_reset_shared('bgwriter');      -- resets pg_stat_bgwriter
+```
+
+The `teardown.yml` Ansible playbook already calls `pg_stat_reset()`.
+
+---
+
+## 6. Workload Operations
 
 The SQL executed by each workload type:
 
@@ -320,7 +452,7 @@ duration (head-of-line blocking, server-side pool starvation under slow queries)
 
 ---
 
-## 6. Environment Snapshot
+## 7. Environment Snapshot
 
 Running `bench env-snapshot` captures a point-in-time snapshot of the control
 node's environment into `results/env/<timestamp>/`:
@@ -338,7 +470,7 @@ hardware detection).
 
 ---
 
-## 7. Multi-Replica Aggregation
+## 8. Multi-Replica Aggregation
 
 When 16 bench JVM replicas run in parallel, each writes its own
 `instance_N/summary.json` and `instance_N/hdr.hlog`. Running `bench aggregate`
@@ -357,14 +489,15 @@ Source: `HistogramAggregator.java`, `ansible/scripts/generate_report.sh`.
 
 ---
 
-## 8. Limitations and Known Issues
+## 9. Limitations and Known Issues
 
 | # | Issue | Impact |
 |---|-------|--------|
 | 1 | **Latency clock starts at actual send, not scheduled time.** The gap between when the dispatcher submitted a task and when the worker thread actually started it is not included in the per-operation latency. This gap is tracked as `openLoopSchedulingDelayMs` in aggregate but not per-operation. | Reported latencies may understate end-to-end response time under heavy contention for worker threads. |
 | 2 | **No cross-replica clock synchronisation.** Each bench JVM uses its own `System.currentTimeMillis()` for `timestamp_iso`. Merging timeseries from different machines assumes clocks are within NTP-synchronised bounds (≤ 10 ms drift). | Timeseries from LG-1 and LG-2 may have small timestamp offsets. |
-| 3 | **System metrics not yet auto-populated.** `appCpuMedian`, `appRssMedian`, `gcPauseMsTotal`, `dbActiveConnectionsMedian`, and `queueDepthMax` are schema placeholders; collection code exists but is not wired to the main run loop. | These fields will show `null` in `summary.json`. |
-| 4 | **HDR histogram highest trackable value is 60 s.** Latencies above 60,000 ms are clamped to the max bucket. | Extremely high tail values during catastrophic saturation are reported as 60,000 ms instead of their true value. |
+| 3 | **Node-level metrics not collected.** CPU, JVM heap, GC, and DB stats for all three node tiers (bench, OJP proxy, PostgreSQL) are not currently gathered during a run. See §5 for what needs to be added. | Cannot correlate client-observed latency with server-side resource saturation without manual collection. |
+| 4 | **`appRssMedian` is misleading for OJP.** The schema field measures OS RSS, but JVM processes hold memory from the OS without returning it after GC. RSS overstates live heap usage. Use JMX `HeapMemoryUsage.used` instead — see §5. | Reported OJP memory may be 2–5× the actual live heap. |
+| 5 | **HDR histogram highest trackable value is 60 s.** Latencies above 60,000 ms are clamped to the max bucket. | Extremely high tail values during catastrophic saturation are reported as 60,000 ms instead of their true value. |
 
 See [TECHNICAL_ANALYSIS.md](TECHNICAL_ANALYSIS.md) for the full 30-question
 correctness analysis of the load model and measurement methodology.
