@@ -108,6 +108,11 @@ Comprehensive documentation is available in the `docs/` directory:
   - Limitations of closed-loop load generation
   - Reproducibility requirements for scientific publication
 
+- **[PARAMETER_DECISIONS.md](docs/PARAMETER_DECISIONS.md)** - Explainability: why every numeric constant was chosen
+  - Why 16 client JVM processes (and why 8 per machine)
+  - Why 300 total backend connections, 19 per replica, 63 RPS per client
+  - Why specific timing windows, SLO thresholds, dataset sizes, and infrastructure settings
+
 - **[BENCHMARKING_GUIDE.md](docs/BENCHMARKING_GUIDE.md)** - Step-by-step benchmarking protocol
   - Deployment topology and hardware specifications
   - Software installation and configuration (PostgreSQL, PgBouncer, OJP)
