@@ -73,6 +73,9 @@ The executable will be at: `build/install/ojp-performance-tester/bin/bench`
 
 ### 2. Initialize Database
 
+> These are minimal values for a quick functional test. For a production benchmark, the full
+> dataset (1 M accounts / 100 K items / 10 M orders) is seeded by the Ansible automation.
+
 ```bash
 build/install/ojp-performance-tester/bin/bench init-db \
   --jdbc-url "jdbc:postgresql://localhost:5432/benchdb" \

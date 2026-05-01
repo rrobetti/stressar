@@ -60,13 +60,17 @@ graph TD
     P3 -- "JDBC" --> DB
 ```
 
-**Key differences from the full multi-machine topology:**
+**Topology comparison — which guide applies to you:**
 
-| Full topology | This guide |
-|---|---|
-| 16 bench JVMs split across LG-1 + LG-2 | All bench JVMs run on the control node |
-| Separate load-generator machines required | No LG machines required |
-| Results reflect a multi-host client tier | Suitable for functional validation and OJP scenario testing |
+| Topology | Where bench runs | Hardware scale | Purpose |
+|---|---|---|---|
+| [BENCHMARKING_GUIDE.md](BENCHMARKING_GUIDE.md) **Full run** | 2 dedicated load-generator machines (LG-1 + LG-2) | Production hardware for each node | Publishable benchmark results |
+| **This guide** (Single control-node) | Your laptop | **Production-spec** proxy + DB machines | Functional validation and OJP scenario testing without dedicated LG machines |
+| [Ansible dry-run](../ansible/README.md#dry-run-on-minimal-hardware) | Ansible control node (localhost) | 1 vCPU / 1 GB per machine | Validate the Ansible automation itself before paying for larger hardware |
+
+> **This guide assumes production-spec remote machines** (proxy nodes with ≥4 GB RAM,
+> DB server with ≥16 GB RAM). To validate the automation scripts on minimal hardware
+> first, use the [Ansible dry-run preset](../ansible/README.md#dry-run-on-minimal-hardware).
 
 ---
 
@@ -186,6 +190,10 @@ ENDSQL
 ```
 
 ### 4.3 Configure PostgreSQL for benchmarking
+
+> **These settings are sized for production hardware (DB server with ≥16 GB RAM).**
+> For 1 vCPU / 1 GB machines (dry-run), use the PostgreSQL values in
+> [`ansible/vars/dryrun.yml`](../ansible/vars/dryrun.yml) instead.
 
 ```bash
 ssh ${SSH_USER}@${DB_IP} bash -s << 'ENDSSH'
@@ -308,6 +316,12 @@ alias bench="$(pwd)/build/install/ojp-performance-tester/bin/bench"
 
 ## 7. Initialise the Benchmark Database
 
+> **Dataset sizes:** the values below (`10 000 accounts / 5 000 items / 50 000 orders`) are a
+> minimal smoke-test set, suitable for a quick functional check. For the full benchmark dataset,
+> use the Ansible automation (`ansible/vars/group_vars/all.yml`: 1 M accounts / 100 K items /
+> 10 M orders). The [Ansible dry-run preset](../ansible/README.md#dry-run-on-minimal-hardware)
+> seeds 10 K accounts / 1 K items / 100 K orders.
+
 Run from the control node, targeting the remote DB machine:
 
 ```bash
@@ -370,6 +384,11 @@ All three should report `succeeded`.
 ---
 
 ## 9. Run Benchmarks from the Control Node
+
+> **Workload parameters below (`targetRps: 500`, `durationSeconds: 300`) are production defaults**
+> for a properly spec'd proxy + DB tier. For a quick smoke-test on minimal hardware, use the
+> [Ansible dry-run preset](../ansible/README.md#dry-run-on-minimal-hardware) (50 RPS / 60 s)
+> rather than adjusting these values manually.
 
 Create a benchmark configuration pointing to the three OJP proxy nodes and the remote DB:
 
