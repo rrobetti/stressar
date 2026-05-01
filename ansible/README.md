@@ -65,6 +65,36 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml
 
 ---
 
+## Dry-run on minimal hardware
+
+`ansible/vars/dryrun.yml` contains pre-tuned values for **7 × 1 vCPU / 1 GB RAM** machines.
+Use it to verify the scripts end-to-end before provisioning full-size hardware.
+Expected run time: ≈ 5 minutes (seed + warmup + 60 s bench + report).
+
+```bash
+# Setup
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
+  -e @ansible/vars/dryrun.yml
+
+# Run
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \
+  -e @ansible/vars/dryrun.yml  -e run_name=dryrun-1
+```
+
+Key differences from a production run:
+
+| Parameter | Dry-run | Default |
+|-----------|---------|---------|
+| `bench_num_accounts` | 10 000 | 1 000 000 |
+| `bench_num_orders` | 100 000 | 10 000 000 |
+| `bench_replica_count` | 1 | 4 |
+| `bench_target_rps` | 50 | 500 |
+| `bench_duration_seconds` | 60 | 300 |
+| `pg_shared_buffers` | 128 MB | 4 GB |
+| `pg_max_connections` | 50 | 400 |
+
+---
+
 ## Customising a run
 
 All numeric parameters have defaults in `group_vars/all.yml` and the role
@@ -142,6 +172,8 @@ ansible/
 │   ├── setup.yml                      # Full infrastructure setup
 │   ├── run_benchmarks.yml             # Execute benchmarks + generate report
 │   └── teardown.yml                   # Stop services, reset DB stats
+├── vars/
+│   └── dryrun.yml                     # Minimal-hardware overrides (1 vCPU / 1 GB)
 ├── templates/
 │   └── ojp-benchmark.yaml.j2          # Parameterised bench config template
 └── scripts/

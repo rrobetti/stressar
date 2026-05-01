@@ -1,0 +1,37 @@
+---
+# ansible/vars/dryrun.yml
+#
+# Minimal-hardware override for 7 × 1 vCPU / 1 GB RAM nodes.
+# Use this to validate the scripts cheaply before provisioning full hardware.
+#
+# Usage (add to any playbook invocation):
+#   ansible-playbook ... -e @ansible/vars/dryrun.yml
+
+# ── Dataset (fast to seed) ────────────────────────────────────────────────────
+bench_num_accounts: 10000
+bench_num_items:    1000
+bench_num_orders:   100000
+
+# ── Benchmark run ─────────────────────────────────────────────────────────────
+bench_replica_count:     1
+bench_target_rps:        50
+bench_warmup_seconds:    10
+bench_duration_seconds:  60
+bench_cooldown_seconds:  10
+
+# ── PostgreSQL — tuned for 1 vCPU / 1 GB RAM ─────────────────────────────────
+# shared_buffers  ≈ 128 MB (25 % of ~512 MB usable after OS overhead)
+# effective_cache ≈ 384 MB (remaining page-cache budget)
+pg_shared_buffers:               "128MB"
+pg_effective_cache_size:         "384MB"
+pg_maintenance_work_mem:         "32MB"
+pg_work_mem:                     "4MB"
+pg_wal_buffers:                  "4MB"
+pg_min_wal_size:                 "80MB"
+pg_max_wal_size:                 "256MB"
+pg_max_connections:              50
+pg_max_worker_processes:         1
+pg_max_parallel_workers_per_gather: 1
+pg_max_parallel_workers:         1
+pg_effective_io_concurrency:     1
+pg_random_page_cost:             "4.0"
