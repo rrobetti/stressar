@@ -1,4 +1,4 @@
-# OJP Performance Benchmark Tool - Results Format Reference
+# Stressar - Results Format Reference
 
 Complete reference for result data schemas, file formats, and metric calculations.
 

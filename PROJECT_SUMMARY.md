@@ -1,4 +1,4 @@
-# OJP Performance Benchmark Tool - Project Summary
+# Stressar - Project Summary
 
 ## Overview
 A complete, production-ready database benchmark harness for PostgreSQL that enables rigorous, reproducible comparison of connection pooling strategies.

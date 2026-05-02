@@ -1,6 +1,6 @@
 # Benchmark Harness Technical Analysis - Answers to 30 Questions
 
-This document provides detailed answers to questions about the implementation correctness and completeness of the OJP Performance Benchmark Harness.
+This document provides detailed answers to questions about the implementation correctness and completeness of Stressar.
 
 ---
 

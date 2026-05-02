@@ -3,7 +3,7 @@
 ## Purpose
 
 This document provides a complete, step-by-step protocol for benchmarking OJP (Open J Proxy)
-and PgBouncer using the OJP Performance Tester Tool. It specifies the deployment topology,
+and PgBouncer using Stressar. It specifies the deployment topology,
 hardware requirements, software configuration, workload definitions, load levels, acceptance
 criteria, and analysis procedures required to produce data suitable for publication in a
 peer-reviewed venue.
