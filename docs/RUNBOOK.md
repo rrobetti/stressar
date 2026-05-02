@@ -1,4 +1,4 @@
-# OJP Performance Benchmark Tool - Operational Runbook
+# Stressar - Operational Runbook
 
 Complete guide for running benchmarks with exact commands and configurations.
 

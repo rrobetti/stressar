@@ -1,6 +1,6 @@
 # Installing PostgreSQL
 
-The OJP Performance Tester Tool requires **PostgreSQL 12 or later**. It has been tested with
+Stressar requires **PostgreSQL 12 or later**. It has been tested with
 PostgreSQL 14, 15, and 16. **PostgreSQL 16** is the recommended version for new benchmark setups.
 
 ---

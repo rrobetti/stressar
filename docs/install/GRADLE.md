@@ -1,6 +1,6 @@
 # Installing Gradle
 
-The OJP Performance Tester Tool ships with a **Gradle Wrapper** (`./gradlew` / `gradlew.bat`),
+Stressar ships with a **Gradle Wrapper** (`./gradlew` / `gradlew.bat`),
 which automatically downloads the correct Gradle version on first use.  
 **You do not need to install Gradle separately** to build or run the tool.
 

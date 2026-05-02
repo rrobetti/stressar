@@ -1,4 +1,4 @@
-# Rationale for the OJP Performance Tester Tool
+# Rationale for Stressar
 
 ## Abstract
 
