@@ -9,7 +9,6 @@ import java.util.Random;
 public class ZipfGenerator {
     private final Random random;
     private final int numElements;
-    private final double alpha;
     private final double[] cumulativeProbabilities;
     
     /**
@@ -28,7 +27,6 @@ public class ZipfGenerator {
         
         this.random = new Random(seed);
         this.numElements = numElements;
-        this.alpha = alpha;
         this.cumulativeProbabilities = new double[numElements];
         
         // Compute cumulative probabilities
@@ -36,10 +34,13 @@ public class ZipfGenerator {
         for (int i = 1; i <= numElements; i++) {
             sum += 1.0 / Math.pow(i, alpha);
         }
-        
+        if (sum <= 0.0 || !Double.isFinite(sum)) {
+            throw new IllegalArgumentException("Zipf normalizer must be finite and positive; check alpha");
+        }
+
         double cumulative = 0.0;
         for (int i = 0; i < numElements; i++) {
-            double prob = (1.0 / Math.pow(i + 1, alpha)) / sum;
+            double prob = (1.0 / Math.pow(i + 1.0, alpha)) / sum;
             cumulative += prob;
             cumulativeProbabilities[i] = cumulative;
         }
