@@ -108,18 +108,8 @@ public class TrueOpenLoopLoadGenerator extends LoadGenerator {
                 // Advance to next scheduled time
                 nextSendTimeNanos += intervalNanos;
             }
-            
-            // Submit operation to worker pool (if not stopping)
-            if (!stopping.get()) {
-                attemptedOps.incrementAndGet();
-                workers.submit(() -> {
-                    try {
-                        executeWorkload();
-                    } catch (Exception e) {
-                        logger.error("Error executing workload", e);
-                    }
-                });
-            }
+
+            submitOperationToPool();
         }
         
         logger.info("Dispatcher stopped. Total attempted ops: {}, missed opportunities: {}, " +
@@ -127,7 +117,21 @@ public class TrueOpenLoopLoadGenerator extends LoadGenerator {
                    attemptedOps.get(), missedOpportunities.get(), 
                    schedulingDelaysNanos.get() / 1_000_000);
     }
-    
+
+    private void submitOperationToPool() {
+        // Submit operation to worker pool (if not stopping)
+        if (!stopping.get()) {
+            attemptedOps.incrementAndGet();
+            workers.submit(() -> {
+                try {
+                    executeWorkload();
+                } catch (Exception e) {
+                    logger.error("Error executing workload", e);
+                }
+            });
+        }
+    }
+
     @Override
     public void stop() throws InterruptedException {
         if (!running.get()) {
