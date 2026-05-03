@@ -9,7 +9,8 @@ Successfully implemented a complete, production-ready database benchmark harness
 ### 1. Source Code (41 files, 3,829 lines)
 
 #### CLI Commands (9 classes)
-- BenchmarkCLI.java - Main entry point with picocli
+
+- BenchmarkCLI.java - Main entry point with Picocli
 - InitDbCommand.java - Database initialization
 - RunCommand.java - Single benchmark execution
 - WarmupCommand.java - Warmup phase only
@@ -20,6 +21,7 @@ Successfully implemented a complete, production-ready database benchmark harness
 - ConfigLoader.java - YAML configuration loading
 
 #### Configuration (9 classes)
+
 - BenchmarkConfig.java - Main configuration with disciplined pooling
 - DatabaseConfig.java - Database connection settings
 - WorkloadConfig.java - Workload parameters
@@ -31,6 +33,7 @@ Successfully implemented a complete, production-ready database benchmark harness
 - ConnectionProviderFactory.java - Provider creation
 
 #### Workloads (6 classes)
+
 - Workload.java - Abstract base class
 - ReadOnlyWorkload.java - W1: 30% QueryA, 70% QueryB
 - ReadWriteWorkload.java - W2: Transactional inserts
@@ -39,12 +42,14 @@ Successfully implemented a complete, production-ready database benchmark harness
 - WorkloadFactory.java - Workload creation
 
 #### Load Generation (4 classes)
+
 - LoadGenerator.java - Abstract base
 - OpenLoopLoadGenerator.java - Token-bucket arrival rate
 - ClosedLoopLoadGenerator.java - Fixed concurrency
 - BenchmarkRunner.java - Orchestrates warmup/steady/cooldown
 
 #### Metrics (5 classes)
+
 - LatencyRecorder.java - HdrHistogram wrapper
 - MetricsCollector.java - Aggregates metrics
 - MetricsSnapshot.java - Point-in-time snapshot
@@ -52,10 +57,12 @@ Successfully implemented a complete, production-ready database benchmark harness
 - SummaryWriter.java - JSON summary export
 
 #### Utilities (2 classes)
+
 - ZipfGenerator.java - Zipf distribution (α=1.1)
 - RandomGenerator.java - Seedable RNG
 
 #### Tests (3 classes, 17 tests, 100% passing)
+
 - ZipfGeneratorTest.java - 5 tests
 - BenchmarkConfigTest.java - 6 tests
 - LatencyRecorderTest.java - 7 tests
@@ -63,6 +70,7 @@ Successfully implemented a complete, production-ready database benchmark harness
 ### 2. Database Schema (3 SQL files)
 
 #### DDL (schema/ddl.sql)
+
 - accounts table (10K default)
 - items table (5K default)
 - orders table (50K default)
@@ -70,10 +78,12 @@ Successfully implemented a complete, production-ready database benchmark harness
 - pg_stat_statements extension
 
 #### Indexes (schema/indexes.sql)
+
 - Optimized for workload access patterns
 - Covers account lookups, order history, joins
 
 #### Data Generator (data/generator.sql)
+
 - Deterministic generation (seedable)
 - Configurable dataset sizes
 - Realistic distributions
@@ -83,6 +93,7 @@ Successfully implemented a complete, production-ready database benchmark harness
 ### 3. Documentation (3 files, 3,030 lines)
 
 #### RUNBOOK.md (904 lines)
+
 - PostgreSQL setup and configuration
 - Database initialization steps
 - All SUT mode examples
@@ -92,6 +103,7 @@ Successfully implemented a complete, production-ready database benchmark harness
 - Troubleshooting guide
 
 #### CONFIG.md (1,238 lines)
+
 - Complete parameter reference
 - All configuration sections
 - Default values documented
@@ -99,6 +111,7 @@ Successfully implemented a complete, production-ready database benchmark harness
 - Best practices
 
 #### RESULTS_FORMAT.md (888 lines)
+
 - timeseries.csv schema
 - summary.json schema
 - HDR histogram format
@@ -117,54 +130,56 @@ Successfully implemented a complete, production-ready database benchmark harness
 
 ## Feature Completeness Matrix
 
-| Requirement | Status | Implementation |
-|-------------|--------|----------------|
+| Requirement          | Status | Implementation                   |
+|----------------------|--------|----------------------------------|
 | **Connection Modes** |
-| Direct HikariCP | ✅ | HikariProvider with full pooling |
-| Disciplined Pooling | ✅ | Budget/replicas calculation |
-| OJP Gateway | ✅ | Minimal local pooling (2 conn) |
-| PgBouncer | ✅ | Minimal local pooling (2 conn) |
-| **Workloads** |
-| W1 Read-Only | ✅ | QueryA (30%) + QueryB (70%) |
-| W2 Read-Write | ✅ | Transactional order inserts |
-| W2 Mixed | ✅ | Configurable ratio (80/20) |
-| W3 Slow Query | ✅ | Fast (99%) + slow (1%) mix |
-| **Load Models** |
-| Open-Loop | ✅ | Scheduled executor, rate-based |
-| Closed-Loop | ✅ | Fixed concurrency workers |
-| Warmup Phase | ✅ | Configurable duration |
-| Steady State | ✅ | Metrics collection period |
-| Cooldown | ✅ | Recovery observation |
-| **Metrics** |
-| HdrHistogram | ✅ | Latency tracking (μs precision) |
-| Timeseries CSV | ✅ | 1-second intervals |
-| Summary JSON | ✅ | Run metadata + statistics |
-| HDR Log Export | ✅ | For offline analysis |
-| Error Classification | ✅ | Timeout, SQL, rejected |
-| **CLI Commands** |
-| init-db | ✅ | Schema + data generation |
-| warmup | ✅ | Warmup phase only |
-| run | ✅ | Single iteration |
-| sweep | ✅ | Capacity with SLO detection |
-| overload | ✅ | 130% capacity testing |
-| env-snapshot | ✅ | System info capture |
-| aggregate | ✅ | Results aggregation |
-| **Data Generation** |
-| Deterministic | ✅ | Seedable RNG |
-| Configurable Size | ✅ | accounts, items, orders |
-| Realistic Data | ✅ | Proper relationships |
-| Zipf Distribution | ✅ | Skewed access (α=1.1) |
-| **Quality** |
-| Unit Tests | ✅ | 17 tests, 100% passing |
-| Code Review | ✅ | No issues found |
-| Security Scan | ✅ | No vulnerabilities |
-| Documentation | ✅ | 3,030 lines |
-| Build System | ✅ | Gradle with wrapper |
+| Direct HikariCP      | ✅      | HikariProvider with full pooling |
+| Disciplined Pooling  | ✅      | Budget/replicas calculation      |
+| OJP Gateway          | ✅      | Minimal local pooling (2 conn)   |
+| PgBouncer            | ✅      | Minimal local pooling (2 conn)   |
+| **Workloads**        |
+| W1 Read-Only         | ✅      | QueryA (30%) + QueryB (70%)      |
+| W2 Read-Write        | ✅      | Transactional order inserts      |
+| W2 Mixed             | ✅      | Configurable ratio (80/20)       |
+| W3 Slow Query        | ✅      | Fast (99%) + slow (1%) mix       |
+| **Load Models**      |
+| Open-Loop            | ✅      | Scheduled executor, rate-based   |
+| Closed-Loop          | ✅      | Fixed concurrency workers        |
+| Warmup Phase         | ✅      | Configurable duration            |
+| Steady State         | ✅      | Metrics collection period        |
+| Cooldown             | ✅      | Recovery observation             |
+| **Metrics**          |
+| HdrHistogram         | ✅      | Latency tracking (μs precision)  |
+| Timeseries CSV       | ✅      | 1-second intervals               |
+| Summary JSON         | ✅      | Run metadata + statistics        |
+| HDR Log Export       | ✅      | For offline analysis             |
+| Error Classification | ✅      | Timeout, SQL, rejected           |
+| **CLI Commands**     |
+| init-db              | ✅      | Schema + data generation         |
+| warmup               | ✅      | Warmup phase only                |
+| run                  | ✅      | Single iteration                 |
+| sweep                | ✅      | Capacity with SLO detection      |
+| overload             | ✅      | 130% capacity testing            |
+| env-snapshot         | ✅      | System info capture              |
+| aggregate            | ✅      | Results aggregation              |
+| **Data Generation**  |
+| Deterministic        | ✅      | Seedable RNG                     |
+| Configurable Size    | ✅      | accounts, items, orders          |
+| Realistic Data       | ✅      | Proper relationships             |
+| Zipf Distribution    | ✅      | Skewed access (α=1.1)            |
+| **Quality**          |
+| Unit Tests           | ✅      | 17 tests, 100% passing           |
+| Code Review          | ✅      | No issues found                  |
+| Security Scan        | ✅      | No vulnerabilities               |
+| Documentation        | ✅      | 3,030 lines                      |
+| Build System         | ✅      | Gradle with wrapper              |
 
 ## Technical Highlights
 
 ### 1. Prepared Statements
+
 All queries use prepared statements consistently across SUTs for fair comparison:
+
 ```java
 PreparedStatement stmt = conn.prepareStatement(QUERY);
 stmt.setLong(1, accountId);
@@ -172,7 +187,9 @@ ResultSet rs = stmt.executeQuery();
 ```
 
 ### 2. Transaction Management
+
 Explicit transaction control with autoCommit=false:
+
 ```java
 conn.setAutoCommit(false);
 try {
@@ -185,7 +202,9 @@ try {
 ```
 
 ### 3. Open-Loop Load Generation
+
 Avoids closed-loop bias with scheduled execution:
+
 ```java
 long intervalNanos = 1_000_000_000L / targetRps;
 scheduler.scheduleAtFixedRate(() -> {
@@ -194,7 +213,9 @@ scheduler.scheduleAtFixedRate(() -> {
 ```
 
 ### 4. HdrHistogram Latency Tracking
+
 Accurate percentile calculation without memory bloat:
+
 ```java
 LatencyRecorder recorder = new LatencyRecorder(60000, 3);
 recorder.recordNanos(latencyNanos);
@@ -202,21 +223,25 @@ double p95 = recorder.getPercentile(95.0);
 ```
 
 ### 5. Disciplined Pooling
+
 Automatic pool size calculation:
+
 ```java
-int poolSize = Math.max(1, 
+int poolSize = Math.max(1,
     Math.min(dbBudget / replicas, maxPerReplica));
 ```
 
 ## Build & Test Results
 
 ### Build Status
+
 ```
 BUILD SUCCESSFUL in 4s
 7 actionable tasks: 7 executed
 ```
 
 ### Test Results
+
 ```
 com.bench.config.BenchmarkConfigTest
   ✓ testDisciplinedPoolSizeRounding
@@ -245,6 +270,7 @@ com.bench.util.ZipfGeneratorTest
 ```
 
 ### Security Scan
+
 ```
 CodeQL Analysis: No vulnerabilities detected
 Code Review: No issues found
@@ -276,6 +302,7 @@ Code Review: No issues found
 ## File Listing
 
 ### Project Root
+
 - README.md - Project overview
 - PROJECT_SUMMARY.md - Detailed summary
 - build.gradle - Build configuration
@@ -285,11 +312,13 @@ Code Review: No issues found
 - LICENSE - Apache 2.0 license
 
 ### Documentation (docs/)
+
 - RUNBOOK.md - Operational guide
 - CONFIG.md - Configuration reference
 - RESULTS_FORMAT.md - Data schemas
 
 ### Examples (examples/)
+
 - w2-open-loop-500rps.yaml
 - disciplined-16-replicas.yaml
 - ojp-mode.yaml
@@ -298,6 +327,7 @@ Code Review: No issues found
 - w3-slow-query.yaml
 
 ### Source (src/main/java/com/bench/)
+
 - cli/ - 9 command classes
 - config/ - 9 configuration classes
 - workloads/ - 6 workload implementations
@@ -306,11 +336,13 @@ Code Review: No issues found
 - util/ - 2 utility classes
 
 ### Resources (src/main/resources/)
+
 - schema/ddl.sql
 - schema/indexes.sql
 - data/generator.sql
 
 ### Tests (src/test/java/com/bench/)
+
 - config/BenchmarkConfigTest.java
 - metrics/LatencyRecorderTest.java
 - util/ZipfGeneratorTest.java
@@ -318,22 +350,26 @@ Code Review: No issues found
 ## Dependencies
 
 ### Core (6)
-- postgresql:42.7.2 - JDBC driver
+
+- PostgreSQL:42.7.2 - JDBC driver
 - HikariCP:5.1.0 - Connection pooling
 - HdrHistogram:2.1.12 - Latency tracking
-- picocli:4.7.5 - CLI framework
-- snakeyaml:2.2 - YAML parsing
-- gson:2.10.1 - JSON serialization
+- Picocli:4.7.5 - CLI framework
+- SnakeYAML:2.2 - YAML parsing
+- Gson:2.10.1 - JSON serialization
 
 ### Monitoring & Reporting (2)
+
 - oshi-core:6.4.10 - System metrics
-- xchart:3.8.5 - Charting library
+- chart:3.8.5 - Charting library
 
 ### Logging (2)
+
 - slf4j-api:2.0.9 - Logging API
 - logback-classic:1.4.14 - Logging implementation
 
 ### Testing (2)
+
 - junit:4.13.2 - Unit testing
 - hamcrest:2.2 - Test matchers
 

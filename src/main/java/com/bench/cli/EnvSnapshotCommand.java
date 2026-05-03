@@ -110,7 +110,7 @@ public class EnvSnapshotCommand implements Callable<Integer> {
             
             gitInfo.put("commit", gitCommit);
             gitInfo.put("branch", gitBranch);
-            gitInfo.put("isDirty", !gitStatus.isEmpty() ? "true" : "false");
+            gitInfo.put("isDirty", Boolean.toString(!gitStatus.isEmpty()));
         } catch (Exception e) {
             logger.warn("Could not get git information: {}", e.getMessage());
             gitInfo.put("commit", "N/A");

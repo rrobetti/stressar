@@ -11,11 +11,11 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * True open-loop load generator using absolute time-based scheduling.
- * 
+ * <p>
  * Unlike scheduleAtFixedRate which queues tasks and causes catch-up bursts,
  * this implementation maintains absolute timestamps for each operation and
  * tracks when the system falls behind schedule.
- * 
+ * <p>
  * Key characteristics:
  * - Single dispatcher thread schedules operations based on absolute time
  * - nextSendTimeNanos += intervalNanos for each operation
