@@ -73,120 +73,120 @@ public class BenchmarkRunner {
                 logger.info("Load mode: closed-loop, concurrency: {}", config.getWorkload().getConcurrency());
             }
 
-            // Start metrics collection
-            TimeseriesWriter timeseriesWriter = new TimeseriesWriter(
-                    Paths.get(outputDir, "timeseries.csv").toString());
-
-            List<MetricsSnapshot> intervalSnapshots = new ArrayList<>();
-            ScheduledExecutorService metricsScheduler = Executors.newSingleThreadScheduledExecutor();
-
-            // Capture metrics at regular intervals
-            // IMPORTANT: Use separate collector for per-interval percentiles
-            MetricsCollector intervalMetrics = new MetricsCollector();
-            metricsScheduler.scheduleAtFixedRate(() -> {
-                try {
-                    // Get snapshot of interval metrics (includes per-interval histogram)
-                    MetricsSnapshot intervalSnapshot = intervalMetrics.getSnapshot();
-
-                    // Also get cumulative snapshot for counting
-                    MetricsSnapshot cumulativeSnapshot = metrics.getSnapshot();
-                    intervalSnapshots.add(cumulativeSnapshot);
-
-                    long intervalStart = intervalSnapshots.size() > 1
-                            ? intervalSnapshots.get(intervalSnapshots.size() - 2).getTimestampMs()
-                            : metrics.getStartTimeMs();
-
-                    double intervalSeconds = (cumulativeSnapshot.getTimestampMs() - intervalStart) / 1000.0;
-                    double intervalAttemptedRps = 0;
-                    double intervalAchievedRps = 0;
-
-                    if (intervalSnapshots.size() > 1) {
-                        MetricsSnapshot prev = intervalSnapshots.get(intervalSnapshots.size() - 2);
-                        long attemptedDelta = cumulativeSnapshot.getAttemptedRequests() - prev.getAttemptedRequests();
-                        long completedDelta = cumulativeSnapshot.getCompletedRequests() - prev.getCompletedRequests();
-                        intervalAttemptedRps = attemptedDelta / intervalSeconds;
-                        intervalAchievedRps = completedDelta / intervalSeconds;
-                    }
-
-                    long intervalErrors = intervalSnapshots.size() > 1 ? cumulativeSnapshot.getErrors()
-                            - intervalSnapshots.get(intervalSnapshots.size() - 2).getErrors() : 0;
-
-                    // FIXED: Use per-interval histogram percentiles, not cumulative
-                    timeseriesWriter.writeRow(
-                            cumulativeSnapshot.getTimestampMs(),
-                            intervalAttemptedRps,
-                            intervalAchievedRps,
-                            intervalErrors,
-                            intervalSnapshot.getP50(), // Per-interval percentiles
-                            intervalSnapshot.getP95(),
-                            intervalSnapshot.getP99(),
-                            intervalSnapshot.getP999(),
-                            intervalSnapshot.getMax());
-
-                    // Reset interval metrics for next window
-                    intervalMetrics.reset();
-
-                } catch (Exception e) {
-                    logger.error("Error collecting interval metrics", e);
-                }
-            }, config.getMetricsIntervalSeconds(), config.getMetricsIntervalSeconds(), TimeUnit.SECONDS);
-
             // Run phases
             int warmupSec = config.getWorkload().getWarmupSeconds();
             int durationSec = config.getWorkload().getDurationSeconds();
             int cooldownSec = config.getWorkload().getCooldownSeconds();
 
-            // Warmup phase
-            if (warmupSec > 0) {
-                logger.info("=== Warmup phase: {} seconds ===", warmupSec);
-                loadGen.start();
-                Thread.sleep(warmupSec * 1000L);
-
-                // Reset metrics after warmup
-                metrics.reset();
-                intervalMetrics.reset();
-                logger.info("Warmup complete, metrics reset");
-            } else {
-                loadGen.start();
-            }
-
-            // Start in-process system metrics collection for the steady-state phase only
             long steadyStateStart;
             Double appCpuMedian;
             Long gcPauseMsTotal;
-            try (SystemMetricsCollector sysMetrics = new SystemMetricsCollector()) {
-                // Steady-state phase
-                logger.info("=== Steady-state phase: {} seconds ===", durationSec);
-                steadyStateStart = System.currentTimeMillis();
-                Thread.sleep(durationSec * 1000L);
 
-                // Stop load
-                loadGen.stop();
+            try (TimeseriesWriter timeseriesWriter = new TimeseriesWriter(
+                    Paths.get(outputDir, "timeseries.csv").toString())) {
 
-                // Cooldown phase
-                if (cooldownSec > 0) {
-                    logger.info("=== Cooldown phase: {} seconds ===", cooldownSec);
-                    Thread.sleep(cooldownSec * 1000L);
-                }
-
-                // Stop metrics collection
-                metricsScheduler.shutdown();
+                List<MetricsSnapshot> intervalSnapshots = new ArrayList<>();
+                ScheduledExecutorService metricsScheduler = Executors.newSingleThreadScheduledExecutor();
                 try {
-                    if (!metricsScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                        metricsScheduler.shutdownNow();
-                        if (!metricsScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                            logger.warn("Metrics scheduler did not terminate after shutdownNow");
-                        }
-                    }
-                } catch (InterruptedException e) {
-                    metricsScheduler.shutdownNow();
-                    Thread.currentThread().interrupt();
-                    throw e;
-                }
-                timeseriesWriter.close();
+                    // Capture metrics at regular intervals
+                    // IMPORTANT: Use separate collector for per-interval percentiles
+                    MetricsCollector intervalMetrics = new MetricsCollector();
+                    metricsScheduler.scheduleAtFixedRate(() -> {
+                        try {
+                            // Get snapshot of interval metrics (includes per-interval histogram)
+                            MetricsSnapshot intervalSnapshot = intervalMetrics.getSnapshot();
 
-                appCpuMedian = sysMetrics.getAppCpuMedian();
-                gcPauseMsTotal = sysMetrics.getGcPauseMsTotal();
+                            // Also get cumulative snapshot for counting
+                            MetricsSnapshot cumulativeSnapshot = metrics.getSnapshot();
+                            intervalSnapshots.add(cumulativeSnapshot);
+
+                            long intervalStart = intervalSnapshots.size() > 1
+                                    ? intervalSnapshots.get(intervalSnapshots.size() - 2).getTimestampMs()
+                                    : metrics.getStartTimeMs();
+
+                            double intervalSeconds = (cumulativeSnapshot.getTimestampMs() - intervalStart) / 1000.0;
+                            double intervalAttemptedRps = 0;
+                            double intervalAchievedRps = 0;
+
+                            if (intervalSnapshots.size() > 1) {
+                                MetricsSnapshot prev = intervalSnapshots.get(intervalSnapshots.size() - 2);
+                                long attemptedDelta = cumulativeSnapshot.getAttemptedRequests() - prev.getAttemptedRequests();
+                                long completedDelta = cumulativeSnapshot.getCompletedRequests() - prev.getCompletedRequests();
+                                intervalAttemptedRps = attemptedDelta / intervalSeconds;
+                                intervalAchievedRps = completedDelta / intervalSeconds;
+                            }
+
+                            long intervalErrors = intervalSnapshots.size() > 1 ? cumulativeSnapshot.getErrors()
+                                    - intervalSnapshots.get(intervalSnapshots.size() - 2).getErrors() : 0;
+
+                            // FIXED: Use per-interval histogram percentiles, not cumulative
+                            timeseriesWriter.writeRow(
+                                    cumulativeSnapshot.getTimestampMs(),
+                                    intervalAttemptedRps,
+                                    intervalAchievedRps,
+                                    intervalErrors,
+                                    intervalSnapshot.getP50(), // Per-interval percentiles
+                                    intervalSnapshot.getP95(),
+                                    intervalSnapshot.getP99(),
+                                    intervalSnapshot.getP999(),
+                                    intervalSnapshot.getMax());
+
+                            // Reset interval metrics for next window
+                            intervalMetrics.reset();
+
+                        } catch (Exception e) {
+                            logger.error("Error collecting interval metrics", e);
+                        }
+                    }, config.getMetricsIntervalSeconds(), config.getMetricsIntervalSeconds(), TimeUnit.SECONDS);
+
+                    // Warmup phase
+                    if (warmupSec > 0) {
+                        logger.info("=== Warmup phase: {} seconds ===", warmupSec);
+                        loadGen.start();
+                        Thread.sleep(warmupSec * 1000L);
+
+                        // Reset metrics after warmup
+                        metrics.reset();
+                        intervalMetrics.reset();
+                        logger.info("Warmup complete, metrics reset");
+                    } else {
+                        loadGen.start();
+                    }
+
+                    // Start in-process system metrics collection for the steady-state phase only
+                    try (SystemMetricsCollector sysMetrics = new SystemMetricsCollector()) {
+                        // Steady-state phase
+                        logger.info("=== Steady-state phase: {} seconds ===", durationSec);
+                        steadyStateStart = System.currentTimeMillis();
+                        Thread.sleep(durationSec * 1000L);
+
+                        // Stop load
+                        loadGen.stop();
+
+                        // Cooldown phase
+                        if (cooldownSec > 0) {
+                            logger.info("=== Cooldown phase: {} seconds ===", cooldownSec);
+                            Thread.sleep(cooldownSec * 1000L);
+                        }
+
+                        appCpuMedian = sysMetrics.getAppCpuMedian();
+                        gcPauseMsTotal = sysMetrics.getGcPauseMsTotal();
+                    }
+                } finally {
+                    // Stop metrics collection
+                    metricsScheduler.shutdown();
+                    try {
+                        if (!metricsScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                            metricsScheduler.shutdownNow();
+                            if (!metricsScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                                logger.warn("Metrics scheduler did not terminate after shutdownNow");
+                            }
+                        }
+                    } catch (InterruptedException e) {
+                        metricsScheduler.shutdownNow();
+                        Thread.currentThread().interrupt();
+                    }
+                }
             }
 
             // Get final metrics
