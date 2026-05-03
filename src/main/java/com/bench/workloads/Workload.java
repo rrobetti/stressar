@@ -5,12 +5,19 @@ import com.bench.util.RandomGenerator;
 import com.bench.util.ZipfGenerator;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 
 /**
  * Abstract base for workload implementations.
  */
 public abstract class Workload {
+
+    @FunctionalInterface
+    protected interface ResultSetRowConsumer {
+        void accept(ResultSet rs) throws SQLException;
+    }
     protected final ConnectionProvider connectionProvider;
     protected final RandomGenerator random;
     protected final ZipfGenerator zipfGenerator;
@@ -69,5 +76,18 @@ public abstract class Workload {
      */
     protected int generateQuantity() {
         return random.nextInt(1, 4);
+    }
+
+    protected void executeSingleLongParamQuery(
+        String sql, long param, ResultSetRowConsumer rowConsumer) throws SQLException {
+        try (Connection conn = connectionProvider.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, param);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    rowConsumer.accept(rs);
+                }
+            }
+        }
     }
 }
