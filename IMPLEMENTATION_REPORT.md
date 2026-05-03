@@ -1,4 +1,4 @@
-# OJP Performance Benchmark Harness - Implementation Report
+# Stressar - Implementation Report
 
 ## Executive Summary
 

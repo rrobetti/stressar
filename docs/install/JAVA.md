@@ -1,6 +1,6 @@
 # Installing Java
 
-The OJP Performance Tester Tool requires **Java 11 or later**. The latest Long-Term Support (LTS)
+Stressar requires **Java 11 or later**. The latest Long-Term Support (LTS)
 release is recommended for production benchmark runs; as of 2025 that is **Java 21**.
 
 ---
