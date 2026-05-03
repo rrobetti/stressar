@@ -3,6 +3,7 @@ package com.bench.load;
 import com.bench.config.BenchmarkConfig;
 import com.bench.config.ConnectionProvider;
 import com.bench.config.ConnectionProviderFactory;
+import com.bench.config.OjpProvider;
 import com.bench.metrics.MetricsCollector;
 import com.bench.metrics.MetricsSnapshot;
 import com.bench.metrics.SummaryWriter;
@@ -201,8 +202,9 @@ public class BenchmarkRunner {
             }
 
             // Add OJP-specific fields if in OJP mode
-            if (connectionProvider instanceof com.bench.config.OjpProvider) {
-                com.bench.config.OjpProvider ojpProvider = (com.bench.config.OjpProvider) connectionProvider;
+            if (connectionProvider instanceof OjpProvider) {
+                @SuppressWarnings("resource") // closed with connectionProvider in outer try-with-resources
+                OjpProvider ojpProvider = (OjpProvider) connectionProvider;
                 runInfo.clientPooling = "none";
                 runInfo.ojpVirtualConnectionMode = ojpProvider.getOjpConfig().getVirtualConnectionMode().toString();
                 runInfo.ojpPoolSharing = ojpProvider.getOjpConfig().getPoolSharing().toString();
