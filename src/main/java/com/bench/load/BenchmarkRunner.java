@@ -86,12 +86,11 @@ public class BenchmarkRunner {
                     Paths.get(outputDir, "timeseries.csv").toString())) {
 
                 List<MetricsSnapshot> intervalSnapshots = new ArrayList<>();
-                ScheduledExecutorService metricsScheduler = Executors.newSingleThreadScheduledExecutor();
-                try {
+                try (MetricsSchedulerHandle metricsScheduler = new MetricsSchedulerHandle()) {
                     // Capture metrics at regular intervals
                     // IMPORTANT: Use separate collector for per-interval percentiles
                     MetricsCollector intervalMetrics = new MetricsCollector();
-                    metricsScheduler.scheduleAtFixedRate(() -> {
+                    metricsScheduler.scheduled().scheduleAtFixedRate(() -> {
                         try {
                             // Get snapshot of interval metrics (includes per-interval histogram)
                             MetricsSnapshot intervalSnapshot = intervalMetrics.getSnapshot();
@@ -172,20 +171,6 @@ public class BenchmarkRunner {
                         appCpuMedian = sysMetrics.getAppCpuMedian();
                         gcPauseMsTotal = sysMetrics.getGcPauseMsTotal();
                     }
-                } finally {
-                    // Stop metrics collection
-                    metricsScheduler.shutdown();
-                    try {
-                        if (!metricsScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                            metricsScheduler.shutdownNow();
-                            if (!metricsScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                                logger.warn("Metrics scheduler did not terminate after shutdownNow");
-                            }
-                        }
-                    } catch (InterruptedException e) {
-                        metricsScheduler.shutdownNow();
-                        Thread.currentThread().interrupt();
-                    }
                 }
             }
 
@@ -247,6 +232,33 @@ public class BenchmarkRunner {
                 logger.info("Latency p99: {} ms", String.format("%.2f", summary.latencyMs.p99));
             }
             logger.info("Results written to: {}", outputDir);
+        }
+    }
+
+    /**
+     * Owns a single-thread {@link ScheduledExecutorService} and shuts it down on {@link #close()}.
+     */
+    private static final class MetricsSchedulerHandle implements AutoCloseable {
+        private final ScheduledExecutorService scheduled = Executors.newSingleThreadScheduledExecutor();
+
+        ScheduledExecutorService scheduled() {
+            return scheduled;
+        }
+
+        @Override
+        public void close() {
+            scheduled.shutdown();
+            try {
+                if (!scheduled.awaitTermination(5, TimeUnit.SECONDS)) {
+                    scheduled.shutdownNow();
+                    if (!scheduled.awaitTermination(5, TimeUnit.SECONDS)) {
+                        logger.warn("Metrics scheduler did not terminate after shutdownNow");
+                    }
+                }
+            } catch (InterruptedException e) {
+                scheduled.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
         }
     }
 }
