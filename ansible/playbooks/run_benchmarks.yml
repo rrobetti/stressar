@@ -1,0 +1,265 @@
+---
+# ansible/playbooks/run_benchmarks.yml
+#
+# Executes the full OJP benchmark suite from the control node:
+#   1. Renders a bench config from the Jinja2 template.
+#   2. Resets PostgreSQL statistics so the run starts from a clean baseline.
+#   3. Deploys and starts side-car metric collectors on OJP proxy + DB nodes.
+#   4. Runs a warmup pass (single instance).
+#   5. Launches {{ bench_replica_count }} bench JVMs in parallel.
+#   6. Waits for all replicas to finish.
+#   7. Stops side-car collectors and fetches their CSV files to the control node.
+#   8. Runs generate_report.sh to produce a Markdown report.
+#
+# Side-car scripts:
+#   ansible/scripts/collect_jvm_metrics.sh  — runs on each proxy node via jstat;
+#       captures actual JVM heap (not OS RSS) + GC stats once per second.
+#   ansible/scripts/collect_pg_metrics.sh   — runs on the DB node; polls
+#       pg_stat_database, pg_stat_bgwriter, and pg_locks every 5 seconds.
+#
+# Usage:
+#   ansible-playbook -i inventory.yml playbooks/run_benchmarks.yml
+#
+# Optional overrides:
+#   -e run_name=ojp-run-1          # subdirectory under results/
+#   -e bench_target_rps=500
+#   -e bench_duration_seconds=300
+#   -e bench_replica_count=4
+
+- name: Run OJP benchmark from control node
+  hosts: control
+  gather_facts: false
+
+  vars:
+    run_name:   "ojp-run-{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
+    db_host:    "{{ hostvars[groups['db'][0]]['ansible_host'] }}"
+    # Build the list of  PROXY_IP:PORT  strings from the proxy inventory group.
+    proxy_urls: >-
+      {{
+        groups['proxy']
+          | map('extract', hostvars, 'ansible_host')
+          | map('regex_replace', '^(.*)$', '\\1:' + (ojp_server_port | string))
+          | list
+      }}
+    bench_config_file: "/tmp/ojp-benchmark-{{ run_name }}.yaml"
+    # Remote paths for side-car output files (written on each remote node)
+    remote_jvm_csv:  "/tmp/jvm_metrics_{{ run_name }}.csv"
+    remote_pg_csv:   "/tmp/pg_metrics_{{ run_name }}.csv"
+    # Local (control-node) paths where side-car CSVs are fetched to
+    local_jvm_csv_dir: "{{ bench_results_dir }}/{{ run_name }}/node_metrics/proxy"
+    local_pg_csv:      "{{ bench_results_dir }}/{{ run_name }}/node_metrics/pg_metrics.csv"
+    # Paths to side-car scripts on the control node (copied to remote nodes)
+    jvm_script_src: "{{ bench_repo_dir }}/ansible/scripts/collect_jvm_metrics.sh"
+    pg_script_src:  "{{ bench_repo_dir }}/ansible/scripts/collect_pg_metrics.sh"
+    remote_jvm_script: "/tmp/collect_jvm_metrics.sh"
+    remote_pg_script:  "/tmp/collect_pg_metrics.sh"
+
+  tasks:
+    # ── Pre-run setup ─────────────────────────────────────────────────────────
+
+    - name: Ensure results directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ bench_results_dir }}/{{ run_name }}"
+        - "{{ local_jvm_csv_dir }}"
+
+    - name: Render benchmark configuration
+      ansible.builtin.template:
+        src: "{{ bench_repo_dir }}/ansible/templates/ojp-benchmark.yaml.j2"
+        dest: "{{ bench_config_file }}"
+        mode: "0644"
+
+    - name: Show rendered config path
+      ansible.builtin.debug:
+        msg: "Benchmark config written to {{ bench_config_file }}"
+
+    # ── Reset PostgreSQL statistics (clean baseline) ──────────────────────────
+
+    - name: Reset pg_stat_database counters
+      community.postgresql.postgresql_query:
+        db: "{{ db_name }}"
+        query: "SELECT pg_stat_reset();"
+        login_host: "{{ db_host }}"
+        login_user: "{{ db_user }}"
+        login_password: "{{ db_password }}"
+        port: "{{ db_port }}"
+
+    - name: Reset pg_stat_bgwriter counters
+      community.postgresql.postgresql_query:
+        db: "{{ db_name }}"
+        query: "SELECT pg_stat_reset_shared('bgwriter');"
+        login_host: "{{ db_host }}"
+        login_user: "{{ db_user }}"
+        login_password: "{{ db_password }}"
+        port: "{{ db_port }}"
+
+    # ── Deploy and start OJP JVM metrics side-car on each proxy node ──────────
+
+    - name: Copy JVM metrics collection script to proxy nodes
+      ansible.builtin.copy:
+        src: "{{ jvm_script_src }}"
+        dest: "{{ remote_jvm_script }}"
+        mode: "0755"
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['proxy'] }}"
+
+    - name: Start JVM metrics collection on proxy nodes
+      ansible.builtin.shell: |
+        nohup "{{ remote_jvm_script }}" "{{ remote_jvm_csv }}" \
+          </dev/null >"{{ remote_jvm_csv }}.log" 2>&1 &
+        echo $! > "{{ remote_jvm_csv }}.pid"
+      args:
+        executable: /bin/bash
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['proxy'] }}"
+      changed_when: true
+
+    # ── Deploy and start PostgreSQL metrics side-car on the DB node ───────────
+
+    - name: Copy PostgreSQL metrics collection script to DB node
+      ansible.builtin.copy:
+        src: "{{ pg_script_src }}"
+        dest: "{{ remote_pg_script }}"
+        mode: "0755"
+      delegate_to: "{{ groups['db'][0] }}"
+
+    - name: Start PostgreSQL metrics collection on DB node
+      ansible.builtin.shell: |
+        nohup "{{ remote_pg_script }}" "{{ remote_pg_csv }}" \
+          "{{ db_name }}" postgres \
+          </dev/null >"{{ remote_pg_csv }}.log" 2>&1 &
+        echo $! > "{{ remote_pg_csv }}.pid"
+      args:
+        executable: /bin/bash
+      become: true
+      become_user: postgres
+      delegate_to: "{{ groups['db'][0] }}"
+      changed_when: true
+
+    # ── Warmup ───────────────────────────────────────────────────────────────
+
+    - name: Run warmup pass
+      ansible.builtin.command: >
+        {{ bench_binary }} warmup --config {{ bench_config_file }}
+      register: warmup_out
+      changed_when: true
+
+    - name: Print warmup output
+      ansible.builtin.debug:
+        msg: "{{ warmup_out.stdout_lines[-10:] }}"
+
+    # ── Parallel benchmark replicas ──────────────────────────────────────────
+
+    - name: Launch {{ bench_replica_count }} bench replicas in parallel
+      ansible.builtin.shell: |
+        set -euo pipefail
+        mkdir -p "{{ bench_results_dir }}/{{ run_name }}"
+        pids=()
+        for ID in $(seq 0 $(( {{ bench_replica_count }} - 1 )) ); do
+          "{{ bench_binary }}" run \
+            --config     "{{ bench_config_file }}" \
+            --output     "{{ bench_results_dir }}/{{ run_name }}/replica-${ID}/" \
+            --instance-id "${ID}" \
+            > "{{ bench_results_dir }}/{{ run_name }}/replica-${ID}.log" 2>&1 &
+          pids+=($!)
+          echo "Started replica ${ID} (PID ${pids[-1]})"
+        done
+        echo "Waiting for all ${#pids[@]} replicas..."
+        failed=0
+        for pid in "${pids[@]}"; do
+          if ! wait "$pid"; then
+            echo "ERROR: replica PID ${pid} exited non-zero"
+            failed=$(( failed + 1 ))
+          fi
+        done
+        if [ "$failed" -gt 0 ]; then
+          echo "FAILED: ${failed} replica(s) did not complete successfully"
+          exit 1
+        fi
+        echo "All replicas finished successfully"
+      register: bench_run_out
+      changed_when: true
+      # Allow up to 45 minutes for a full run (warmup + duration + cooldown).
+      timeout: 2700
+
+    - name: Print bench run output
+      ansible.builtin.debug:
+        msg: "{{ bench_run_out.stdout_lines }}"
+
+    # ── Stop OJP JVM metrics side-car on proxy nodes; fetch CSVs ─────────────
+
+    - name: Stop JVM metrics collection on proxy nodes
+      ansible.builtin.shell: |
+        PID_FILE="{{ remote_jvm_csv }}.pid"
+        if [ -f "${PID_FILE}" ]; then
+          kill "$(cat "${PID_FILE}")" 2>/dev/null || true
+          rm -f "${PID_FILE}"
+        fi
+      args:
+        executable: /bin/bash
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['proxy'] }}"
+      changed_when: true
+      ignore_errors: true
+
+    - name: Fetch JVM metrics CSV from each proxy node
+      ansible.builtin.fetch:
+        src: "{{ remote_jvm_csv }}"
+        dest: "{{ local_jvm_csv_dir }}/{{ item }}_jvm_metrics.csv"
+        flat: true
+        fail_on_missing: false
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['proxy'] }}"
+
+    # ── Stop PostgreSQL metrics side-car; fetch CSV ───────────────────────────
+
+    - name: Stop PostgreSQL metrics collection on DB node
+      ansible.builtin.shell: |
+        PID_FILE="{{ remote_pg_csv }}.pid"
+        if [ -f "${PID_FILE}" ]; then
+          kill "$(cat "${PID_FILE}")" 2>/dev/null || true
+          rm -f "${PID_FILE}"
+        fi
+      args:
+        executable: /bin/bash
+      become: true
+      become_user: postgres
+      delegate_to: "{{ groups['db'][0] }}"
+      changed_when: true
+      ignore_errors: true
+
+    - name: Fetch PostgreSQL metrics CSV from DB node
+      ansible.builtin.fetch:
+        src: "{{ remote_pg_csv }}"
+        dest: "{{ local_pg_csv }}"
+        flat: true
+        fail_on_missing: false
+      delegate_to: "{{ groups['db'][0] }}"
+
+    # ── Report ────────────────────────────────────────────────────────────────
+
+    - name: Generate Markdown report
+      ansible.builtin.command: >
+        {{ bench_repo_dir }}/ansible/scripts/generate_report.sh
+          "{{ bench_results_dir }}/{{ run_name }}"
+          "{{ bench_results_dir }}/{{ run_name }}/report.md"
+      register: report_out
+      changed_when: true
+
+    - name: Print report location
+      ansible.builtin.debug:
+        msg: "Report written to {{ bench_results_dir }}/{{ run_name }}/report.md"
+
+    - name: Print report summary
+      ansible.builtin.command: >
+        cat "{{ bench_results_dir }}/{{ run_name }}/report.md"
+      register: report_content
+      changed_when: false
+
+    - name: Show report
+      ansible.builtin.debug:
+        msg: "{{ report_content.stdout_lines }}"
+

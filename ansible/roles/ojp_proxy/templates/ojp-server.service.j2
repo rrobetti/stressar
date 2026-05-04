@@ -1,0 +1,23 @@
+# {{ ansible_managed }}
+# /etc/systemd/system/ojp-server.service
+# OJP Server {{ ojp_version }} — managed by Ansible
+
+[Unit]
+Description=OJP Server {{ ojp_version }}
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/java \
+    -Duser.timezone=UTC \
+    -Dojp.libs.path={{ ojp_install_dir }}/ojp-libs \
+    -Dojp.server.port={{ ojp_server_port }} \
+    -jar {{ ojp_install_dir }}/bin/ojp-server-{{ ojp_version }}-shaded.jar
+StandardOutput=append:{{ ojp_log_file }}
+StandardError=append:{{ ojp_log_file }}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

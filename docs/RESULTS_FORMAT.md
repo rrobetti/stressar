@@ -2,6 +2,10 @@
 
 Complete reference for result data schemas, file formats, and metric calculations.
 
+> **See also: [METRICS.md](METRICS.md)** — detailed documentation of every metric,
+> how it is collected, what the latency clock covers, and the two-histogram design
+> used for per-interval vs. cumulative measurements.
+
 ## Table of Contents
 - [Results Directory Structure](#results-directory-structure)
 - [Timeseries CSV Format](#timeseries-csv-format)

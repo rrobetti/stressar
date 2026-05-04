@@ -1,0 +1,30 @@
+---
+# ansible/roles/bench_control/tasks/main.yml
+# Runs on localhost: verifies Java, builds the bench tool with Gradle.
+
+- name: Verify Java is available on the control node
+  ansible.builtin.command: java -version
+  register: ctrl_java_version
+  changed_when: false
+  failed_when: ctrl_java_version.rc != 0
+
+- name: Print control-node Java version
+  ansible.builtin.debug:
+    msg: "Control node Java: {{ ctrl_java_version.stderr }}"
+
+- name: Build bench tool (./gradlew installDist)
+  ansible.builtin.command:
+    cmd: ./gradlew installDist
+    chdir: "{{ bench_repo_dir }}"
+  register: gradle_build
+  changed_when: "'BUILD SUCCESSFUL' in gradle_build.stdout"
+
+- name: Verify bench binary exists
+  ansible.builtin.stat:
+    path: "{{ bench_binary }}"
+  register: bench_bin_stat
+
+- name: Fail if bench binary is missing after build
+  ansible.builtin.fail:
+    msg: "bench binary not found at {{ bench_binary }} — Gradle build may have failed."
+  when: not bench_bin_stat.stat.exists

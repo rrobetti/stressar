@@ -1,0 +1,20 @@
+---
+# ansible/roles/postgresql/defaults/main.yml
+# Role-level defaults; override via group_vars/db.yml or host_vars.
+
+pg_version: 16
+pg_shared_buffers:           "256MB"
+pg_effective_cache_size:     "768MB"
+pg_maintenance_work_mem:     "128MB"
+pg_work_mem:                 "4MB"
+pg_wal_buffers:              "4MB"
+pg_min_wal_size:             "80MB"
+pg_max_wal_size:             "1GB"
+pg_checkpoint_completion_target: "0.9"
+pg_default_statistics_target: 100
+pg_random_page_cost:         "4.0"
+pg_effective_io_concurrency: 1
+pg_max_worker_processes:     8
+pg_max_parallel_workers_per_gather: 2
+pg_max_parallel_workers:     8
+pg_max_connections:          100

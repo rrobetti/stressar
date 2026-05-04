@@ -1,0 +1,48 @@
+---
+# ansible/inventory.yml.example
+#
+# Copy this file to inventory.yml, fill in your actual IP addresses or hostnames,
+# and optionally set per-host SSH user overrides.
+#
+# Usage:
+#   cp ansible/inventory.yml.example ansible/inventory.yml
+#   # edit ansible/inventory.yml
+#   ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml
+
+all:
+  vars:
+    # SSH user for all remote machines.
+    # Override per host below if machines use different users.
+    ansible_user: ubuntu
+
+  children:
+
+    # ─────────────────────────────────────────────────────────────
+    # Database server — one host only
+    # ─────────────────────────────────────────────────────────────
+    db:
+      hosts:
+        db-node:
+          ansible_host: <DB_IP>
+          # ansible_user: ec2-user   # uncomment to override per host
+
+    # ─────────────────────────────────────────────────────────────
+    # OJP proxy nodes — three hosts
+    # ─────────────────────────────────────────────────────────────
+    proxy:
+      hosts:
+        proxy-1:
+          ansible_host: <PROXY1_IP>
+        proxy-2:
+          ansible_host: <PROXY2_IP>
+        proxy-3:
+          ansible_host: <PROXY3_IP>
+
+    # ─────────────────────────────────────────────────────────────
+    # Control node (your laptop) — always localhost
+    # bench is built and run here; no SSH needed
+    # ─────────────────────────────────────────────────────────────
+    control:
+      hosts:
+        localhost:
+          ansible_connection: local

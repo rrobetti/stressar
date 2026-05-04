@@ -1,0 +1,28 @@
+---
+# ansible/group_vars/all.yml
+# Variables shared by every host in the inventory.
+
+# ── OJP release ──────────────────────────────────────────────────────────────
+ojp_version: "0.4.8-beta"
+
+# ── PostgreSQL JDBC driver (used by OJP proxy nodes) ─────────────────────────
+pg_jdbc_driver_version: "42.7.8"
+
+# ── Database credentials ──────────────────────────────────────────────────────
+# Override db_password with an Ansible Vault secret in production.
+db_name:     benchdb
+db_user:     benchuser
+db_password: benchpass
+db_port:     5432
+
+# ── Benchmark dataset size (must match init-db call) ─────────────────────────
+bench_num_accounts: 1000000
+bench_num_items:    100000
+bench_num_orders:   10000000
+bench_seed:         42
+
+# ── Paths on the control node ─────────────────────────────────────────────────
+# playbook_dir resolves to ansible/ — go one level up to reach the repo root.
+bench_repo_dir:   "{{ playbook_dir }}/.."
+bench_results_dir: "{{ bench_repo_dir }}/results"
+bench_binary:     "{{ bench_repo_dir }}/build/install/ojp-performance-tester/bin/bench"

@@ -13,19 +13,18 @@ See [BENCHMARKING_GUIDE.md](docs/BENCHMARKING_GUIDE.md) for the full protocol.
 
 ### Test A — Capacity Sweep (Increasing Load)
 
-| SUT | Clients | Starting RPS | p50 (ms) | p95 (ms) | p99 (ms) | Max Sustainable Throughput (RPS) | Error Rate |
-|-----|---------|-------------|----------|----------|----------|----------------------------------|-----------|
-| HikariCP Direct (disciplined baseline) | 16 | 16 × 63 ≈ 1,000 | TBD | TBD | TBD | TBD | TBD |
-| OJP — 3 nodes, client-side LB | 16 | 16 × 63 ≈ 1,000 | TBD | TBD | TBD | TBD | TBD |
-| PgBouncer — 3 nodes + HAProxy | 16 | 16 × 63 ≈ 1,000 | TBD | TBD | TBD | TBD | TBD |
+| SUT                                    | Clients | Starting RPS    | p50 (ms) | p95 (ms) | p99 (ms) | Max Sustainable Throughput (RPS) | Error Rate |
+|----------------------------------------|---------|-----------------|----------|----------|----------|----------------------------------|------------|
+| HikariCP Direct (disciplined baseline) | 16      | 16 × 63 ≈ 1,000 | TBD      | TBD      | TBD      | TBD                              | TBD        |
+| OJP — 3 nodes, client-side LB          | 16      | 16 × 63 ≈ 1,000 | TBD      | TBD      | TBD      | TBD                              | TBD        || PgBouncer — 3 nodes + HAProxy          | 16      | 16 × 63 ≈ 1,000 | TBD | TBD | TBD | TBD | TBD |
 
 ### Test B — Overload & Recovery (130 % of Max Sustainable Throughput)
 
-| SUT | Overload Level | Peak p99 (ms) | Error Rate During Overload | Recovery Time (s) |
-|-----|---------------|---------------|---------------------------|------------------|
-| HikariCP Direct (disciplined baseline) | 130 % MST | TBD | TBD | TBD |
-| OJP — 3 nodes, client-side LB | 130 % MST | TBD | TBD | TBD |
-| PgBouncer — 3 nodes + HAProxy | 130 % MST | TBD | TBD | TBD |
+| SUT                                    | Overload Level | Peak p99 (ms) | Error Rate During Overload | Recovery Time (s) |
+|----------------------------------------|----------------|---------------|----------------------------|-------------------|
+| HikariCP Direct (disciplined baseline) | 130 % MST      | TBD           | TBD                        | TBD               |
+| OJP — 3 nodes, client-side LB          | 130 % MST      | TBD           | TBD                        | TBD               |
+| PgBouncer — 3 nodes + HAProxy          | 130 % MST      | TBD           | TBD                        | TBD               |
 
 ---
 
@@ -35,10 +34,10 @@ See [BENCHMARKING_GUIDE.md](docs/BENCHMARKING_GUIDE.md) for the full protocol.
 
 Two tests are run, each against three different systems under test (SUTs):
 
-| # | What we run | Why |
-|---|-------------|-----|
-| **Test A** | Gradually increase the request rate in 15 % steps until the system can no longer keep up (p95 latency > 50 ms or error rate > 0.1 %). Record the maximum sustainable throughput for each SUT. | Finds each system's breaking point and compares throughput capacity. |
-| **Test B** | Push each system to 130 % of its maximum throughput for 5 minutes, then drop back to 70 % and measure how long it takes to recover. | Reveals queue management, back-pressure behaviour, and resilience under overload. |
+| #          | What we run                                                                                                                                                                                   | Why                                                                               |
+|------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------|
+| **Test A** | Gradually increase the request rate in 15 % steps until the system can no longer keep up (p95 latency > 50 ms or error rate > 0.1 %). Record the maximum sustainable throughput for each SUT. | Finds each system's breaking point and compares throughput capacity.              |
+| **Test B** | Push each system to 130 % of its maximum throughput for 5 minutes, then drop back to 70 % and measure how long it takes to recover.                                                           | Reveals queue management, back-pressure behaviour, and resilience under overload. |
 
 The three systems under test (run in this order):
 
@@ -73,6 +72,9 @@ The executable will be at: `build/install/ojp-performance-tester/bin/bench`
 
 ### 2. Initialize Database
 
+> These are minimal values for a quick functional test. For a production benchmark, the full
+> dataset (1 M accounts / 100 K items / 10 M orders) is seeded by the Ansible automation.
+
 ```bash
 build/install/ojp-performance-tester/bin/bench init-db \
   --jdbc-url "jdbc:postgresql://localhost:5432/benchdb" \
@@ -94,6 +96,14 @@ build/install/ojp-performance-tester/bin/bench run \
 ## Documentation
 
 Comprehensive documentation is available in the `docs/` directory:
+
+- **[DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** - Single control-node deployment guide (pre-provisioned machines, SSH-based setup, OJP 0.4.8-beta)
+
+- **[ansible/README.md](ansible/README.md)** - Ansible automation (install software, run tests, collect results, generate report)
+  - `setup.yml` — one command to install PostgreSQL, OJP Server, and build the bench tool
+  - `run_benchmarks.yml` — parallel bench replicas + automatic Markdown report
+  - `teardown.yml` — stop services and reset DB statistics
+  - `scripts/generate_report.sh` — standalone `jq`-based report generator
 
 - **[install/README.md](docs/install/README.md)** - Installation guides index
   - [Java](docs/install/JAVA.md) — JVM runtime (required)
@@ -133,6 +143,13 @@ Comprehensive documentation is available in the `docs/` directory:
   - All parameters with descriptions and defaults
   - Workload types and load modes
   - Example configurations for common scenarios
+
+- **[METRICS.md](docs/METRICS.md)** - Metrics reference — what is measured and how
+  - Measurement scope (what the latency clock covers)
+  - Collection pipeline (two-histogram design for per-interval vs. cumulative)
+  - Full metric catalogue: latency, throughput, errors, open-loop correctness, OJP-specific, system
+  - Workload SQL (W1, W2, W3)
+  - Multi-replica aggregation methodology
 
 - **[RESULTS_FORMAT.md](docs/RESULTS_FORMAT.md)** - Data schemas and formats
   - Timeseries CSV format

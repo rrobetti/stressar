@@ -12,13 +12,15 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * File-based barrier for coordinating start time across multiple replicas.
- * 
+ * <p>
  * All replicas register themselves and wait for a start signal.
  * Once all expected replicas are registered, the coordinator writes a start time.
  * All replicas wait for the start time and begin execution simultaneously.
  */
 public class ReplicaStartBarrier {
     private static final Logger logger = LoggerFactory.getLogger(ReplicaStartBarrier.class);
+    private static final String REPLICA_FILE_PREFIX = "replica_";
+    private static final String START_TIME = "start_time";
     
     private final Path barrierDir;
     private final int expectedReplicas;
@@ -51,16 +53,17 @@ public class ReplicaStartBarrier {
         Files.createDirectories(barrierDir);
         
         // Clean up any previous barrier files
-        Files.list(barrierDir)
-            .filter(p -> p.getFileName().toString().startsWith("replica_") ||
-                        p.getFileName().toString().equals("start_time"))
-            .forEach(p -> {
-                try {
-                    Files.deleteIfExists(p);
-                } catch (IOException e) {
-                    logger.warn("Failed to delete old barrier file: {}", p, e);
-                }
-            });
+        try (var stream = Files.list(barrierDir)) {
+            stream.filter(p -> p.getFileName().toString().startsWith(REPLICA_FILE_PREFIX) ||
+                               p.getFileName().toString().equals(START_TIME))
+                .forEach(p -> {
+                    try {
+                        Files.deleteIfExists(p);
+                    } catch (IOException e) {
+                        logger.warn("Failed to delete old barrier file: {}", p, e);
+                    }
+                });
+        }
         
         logger.info("Barrier initialized for {} replicas", expectedReplicas);
     }
@@ -73,14 +76,14 @@ public class ReplicaStartBarrier {
         logger.info("Instance {} registering with barrier", instanceId);
         
         // Register this instance
-        Path replicaFile = barrierDir.resolve("replica_" + instanceId);
+        Path replicaFile = barrierDir.resolve(REPLICA_FILE_PREFIX + instanceId);
         Files.writeString(replicaFile, String.valueOf(System.currentTimeMillis()),
                          StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
         
         logger.info("Instance {} registered, waiting for start signal", instanceId);
         
         // Wait for start signal
-        Path startFile = barrierDir.resolve("start_time");
+        Path startFile = barrierDir.resolve(START_TIME);
         long deadline = System.currentTimeMillis() + timeoutMs;
         
         while (System.currentTimeMillis() < deadline) {
@@ -114,9 +117,12 @@ public class ReplicaStartBarrier {
      * Called by coordinator before writing start signal.
      */
     public boolean areAllReplicasRegistered() throws IOException {
-        long registeredCount = Files.list(barrierDir)
-            .filter(p -> p.getFileName().toString().startsWith("replica_"))
-            .count();
+        long registeredCount;
+        try (var stream = Files.list(barrierDir)) {
+            registeredCount = stream
+                .filter(p -> p.getFileName().toString().startsWith(REPLICA_FILE_PREFIX))
+                .count();
+        }
         
         logger.debug("Registered replicas: {} / {}", registeredCount, expectedReplicas);
         return registeredCount >= expectedReplicas;
@@ -127,7 +133,7 @@ public class ReplicaStartBarrier {
      * All replicas will start at startTimeNanos (System.nanoTime() basis).
      */
     public void signalStart(long startTimeNanos) throws IOException {
-        Path startFile = barrierDir.resolve("start_time");
+        Path startFile = barrierDir.resolve(START_TIME);
         Files.writeString(startFile, String.valueOf(startTimeNanos),
                          StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
         logger.info("Start signal written: {}", startTimeNanos);
@@ -167,14 +173,15 @@ public class ReplicaStartBarrier {
      */
     public void cleanup() {
         try {
-            Files.list(barrierDir)
-                .forEach(p -> {
+            try (var stream = Files.list(barrierDir)) {
+                stream.forEach(p -> {
                     try {
                         Files.deleteIfExists(p);
                     } catch (IOException e) {
                         logger.warn("Failed to delete barrier file: {}", p, e);
                     }
                 });
+            }
             Files.deleteIfExists(barrierDir);
             logger.info("Barrier cleanup complete");
         } catch (IOException e) {
