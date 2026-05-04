@@ -12,12 +12,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Connection provider for OJP (Open JDBC Pooler).
- * 
+ * Connection provider for OJP (Open J Proxy).
  * IMPORTANT: OJP does NOT use client-side connection pooling.
  * The application creates virtual JDBC connection handles that map
  * to a server-side pool managed by OJP.
- * 
  * Pool configuration is passed via OJP JDBC driver properties
  * (e.g., ojp.maxConnections) and applied on the OJP server side.
  */

@@ -154,8 +154,7 @@ public class OverloadCommand implements Callable<Integer> {
             String[] parts = line.split(",");
             if (parts.length >= 1) {
                 try {
-                    int rps = Integer.parseInt(parts[0].trim());
-                    maxRps = rps;
+                    maxRps = Integer.parseInt(parts[0].trim());
                 } catch (NumberFormatException e) {
                     // Skip invalid lines
                 }

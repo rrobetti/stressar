@@ -1,0 +1,113 @@
+---
+# ansible/roles/ojp_proxy/tasks/main.yml
+# Installs Java 21 and the OJP Server on each proxy node.
+
+# ── Java 21 (Temurin) ─────────────────────────────────────────────────────────
+
+- name: Install prerequisite packages for Adoptium repository
+  ansible.builtin.apt:
+    name:
+      - wget
+      - apt-transport-https
+      - gnupg
+    state: present
+    update_cache: true
+  become: true
+
+- name: Download Adoptium GPG key
+  ansible.builtin.get_url:
+    url: https://packages.adoptium.net/artifactory/api/gpg/key/public
+    dest: /tmp/adoptium.asc
+    mode: "0644"
+
+- name: Dearmor and install Adoptium GPG key
+  ansible.builtin.shell: |
+    gpg --dearmor < /tmp/adoptium.asc \
+      | tee /etc/apt/trusted.gpg.d/adoptium.gpg > /dev/null
+  args:
+    creates: /etc/apt/trusted.gpg.d/adoptium.gpg
+  become: true
+
+- name: Add Adoptium apt repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb https://packages.adoptium.net/artifactory/deb
+      {{ ansible_distribution_release }} main
+    filename: adoptium
+    state: present
+  become: true
+
+- name: Install {{ java_package }}
+  ansible.builtin.apt:
+    name: "{{ java_package }}"
+    state: present
+    update_cache: true
+  become: true
+
+- name: Verify Java installation
+  ansible.builtin.command: java -version
+  register: java_version_out
+  changed_when: false
+
+- name: Print Java version
+  ansible.builtin.debug:
+    msg: "{{ java_version_out.stderr }}"
+
+# ── OJP Server directories ───────────────────────────────────────────────────
+
+- name: Create OJP installation directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  loop:
+    - "{{ ojp_install_dir }}/bin"
+    - "{{ ojp_install_dir }}/ojp-libs"
+
+# ── Download artefacts ────────────────────────────────────────────────────────
+
+- name: Download OJP Server {{ ojp_version }} shaded JAR
+  ansible.builtin.get_url:
+    url: >-
+      https://repo1.maven.org/maven2/org/openjproxy/ojp-server/{{ ojp_version }}/ojp-server-{{ ojp_version }}-shaded.jar
+    dest: "{{ ojp_install_dir }}/bin/ojp-server-{{ ojp_version }}-shaded.jar"
+    mode: "0644"
+  become: true
+
+- name: Download PostgreSQL JDBC driver {{ pg_jdbc_driver_version }}
+  ansible.builtin.get_url:
+    url: >-
+      https://repo1.maven.org/maven2/org/postgresql/postgresql/{{ pg_jdbc_driver_version }}/postgresql-{{ pg_jdbc_driver_version }}.jar
+    dest: "{{ ojp_install_dir }}/ojp-libs/postgresql-{{ pg_jdbc_driver_version }}.jar"
+    mode: "0644"
+  become: true
+
+# ── Systemd service ───────────────────────────────────────────────────────────
+
+- name: Deploy OJP Server systemd service unit
+  ansible.builtin.template:
+    src: ojp-server.service.j2
+    dest: /etc/systemd/system/ojp-server.service
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - reload systemd
+    - restart ojp-server
+
+- name: Enable and start OJP Server service
+  ansible.builtin.systemd:
+    name: ojp-server
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+
+- name: Wait for OJP Server to open port {{ ojp_server_port }}
+  ansible.builtin.wait_for:
+    port: "{{ ojp_server_port }}"
+    timeout: 30

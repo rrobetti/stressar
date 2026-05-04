@@ -1,0 +1,61 @@
+---
+# ansible/playbooks/setup.yml
+#
+# Full infrastructure setup:
+#   1. Installs and configures PostgreSQL 16 on the db group.
+#   2. Installs Java 21 + OJP Server on every proxy node.
+#   3. Initialises the benchmark database from the control node.
+#   4. Builds the bench tool on the control node.
+#
+# Usage:
+#   ansible-playbook -i inventory.yml playbooks/setup.yml
+#
+# To limit to a single step, use --tags:
+#   ansible-playbook -i inventory.yml playbooks/setup.yml --tags db
+#   ansible-playbook -i inventory.yml playbooks/setup.yml --tags proxy
+#   ansible-playbook -i inventory.yml playbooks/setup.yml --tags bench
+
+- name: Set up database server
+  hosts: db
+  gather_facts: true
+  tags: db
+  roles:
+    - role: postgresql
+
+- name: Set up OJP proxy nodes
+  hosts: proxy
+  gather_facts: true
+  tags: proxy
+  roles:
+    - role: ojp_proxy
+
+- name: Build bench tool on control node
+  hosts: control
+  gather_facts: false
+  tags: bench
+  roles:
+    - role: bench_control
+
+- name: Initialise benchmark database
+  hosts: control
+  gather_facts: false
+  tags: init-db
+  vars:
+    # db_host is the inventory hostname of the DB node; read from hostvars.
+    db_host: "{{ hostvars[groups['db'][0]]['ansible_host'] }}"
+  tasks:
+    - name: Run bench init-db
+      ansible.builtin.command: >
+        {{ bench_binary }} init-db
+          --jdbc-url  "jdbc:postgresql://{{ db_host }}:{{ db_port }}/{{ db_name }}"
+          --username  "{{ db_user }}"
+          --password  "{{ db_password }}"
+          --accounts  "{{ bench_num_accounts }}"
+          --items     "{{ bench_num_items }}"
+          --orders    "{{ bench_num_orders }}"
+          --seed      "{{ bench_seed }}"
+      register: init_db_out
+
+    - name: Print init-db output
+      ansible.builtin.debug:
+        msg: "{{ init_db_out.stdout_lines }}"

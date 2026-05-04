@@ -5,7 +5,7 @@ import java.util.Map;
 import java.util.Properties;
 
 /**
- * Configuration for OJP (Open JDBC Pooler) mode.
+ * Configuration for OJP (Open J Proxy) mode.
  * OJP does NOT use client-side connection pooling libraries.
  * Instead, it uses virtual JDBC connections that map to a server-side pool
  * configured via OJP JDBC driver properties.

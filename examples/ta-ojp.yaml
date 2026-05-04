@@ -1,0 +1,73 @@
+# Test A / Test B — OJP (3 nodes, no TLS)
+#
+# 16 independent bench JVM processes (8 on LG, 8 on APP) connect to 3 OJP nodes
+# via the OJP JDBC driver.  The driver performs client-side load balancing using
+# the multi-host URL below — no external load balancer is required.
+#
+# No TLS is used on any leg. All communication is plaintext inside a trusted
+# private network (e.g., a dedicated bench VLAN or a cloud VPC). This matches
+# the majority of internal service-to-service deployments and eliminates TLS
+# handshake cost as a variable, keeping the comparison focused on connection
+# pooling and proxy overhead.
+#
+# Network legs:
+#   Client → OJP server      : gRPC over HTTP/2, plaintext (port 1059)
+#   OJP server → PostgreSQL  : PostgreSQL wire protocol, plaintext (port 5432)
+#
+# Prerequisites:
+#   - Three OJP instances running on port 1059 (plaintext gRPC)
+#   - PostgreSQL configured with pg_hba.conf using "host" (not "hostssl")
+#
+# Run with (execute on LG and APP simultaneously):
+#   for i in {0..7}; do
+#     bench run --config ta-ojp.yaml --instance-id $i \
+#       --output results/sut-b-ojp/ &
+#   done
+#   wait
+#
+# See docs/BENCHMARKING_GUIDE.md § SUT-B for full instructions.
+
+database:
+  # Multi-host OJP JDBC URL — the driver distributes virtual connections across
+  # all three OJP nodes (gRPC port 1059).
+  # See docs/install/OJP_JDBC_DRIVER.md for the exact URL syntax.
+  jdbcUrl: "jdbc:ojp[<PROXY1_IP>:1059,<PROXY2_IP>:1059,<PROXY3_IP>:1059]_postgresql://<DB_IP>:5432/benchdb"
+  username: "benchuser"
+  password: "${DB_PASSWORD}"
+
+connectionMode: OJP
+dbConnectionBudget: 19       # Per-replica virtual connection budget (300 / 16 ≈ 19)
+replicas: 16
+
+ojp:
+  virtualConnectionMode: PER_WORKER
+  poolSharing: PER_INSTANCE
+  minConnections: 3
+  connectionTimeoutMs: 30000
+  idleTimeoutMs: 600000
+  maxLifetimeMs: 1800000
+  queueLimit: 200
+  slowQueryThresholdMs: 1000
+
+workload:
+  type: W2_MIXED
+  openLoop: true
+  targetRps: 63              # Per-replica; 16 × 63 ≈ 1,000 RPS aggregate
+  warmupSeconds: 300
+  durationSeconds: 600
+  cooldownSeconds: 120
+  repeatCount: 5
+  writePercent: 0.20
+  useZipf: false
+  seed: 42
+
+numAccounts: 1000000
+numItems:    100000
+numOrders:   10000000
+
+metricsIntervalSeconds: 1
+outputDir: "results/sut-b-ojp"
+
+sweepIncrementPercent: 15.0  # Used by 'bench sweep' for Test A (capacity sweep)
+sloP95Ms: 50
+errorRateThreshold: 0.001

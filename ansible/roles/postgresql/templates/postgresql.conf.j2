@@ -1,0 +1,36 @@
+# {{ ansible_managed }}
+# /etc/postgresql/{{ pg_version }}/main/postgresql.conf
+# Deployed by Ansible — OJP benchmark tuning
+
+# ── Connections ──────────────────────────────────────────────────────────────
+listen_addresses         = '*'
+max_connections          = {{ pg_max_connections }}
+
+# ── Memory ───────────────────────────────────────────────────────────────────
+shared_buffers           = {{ pg_shared_buffers }}
+effective_cache_size     = {{ pg_effective_cache_size }}
+maintenance_work_mem     = {{ pg_maintenance_work_mem }}
+work_mem                 = {{ pg_work_mem }}
+
+# ── WAL ──────────────────────────────────────────────────────────────────────
+wal_buffers                      = {{ pg_wal_buffers }}
+min_wal_size                     = {{ pg_min_wal_size }}
+max_wal_size                     = {{ pg_max_wal_size }}
+checkpoint_completion_target     = {{ pg_checkpoint_completion_target }}
+
+# ── Planner ──────────────────────────────────────────────────────────────────
+default_statistics_target        = {{ pg_default_statistics_target }}
+random_page_cost                 = {{ pg_random_page_cost }}
+effective_io_concurrency         = {{ pg_effective_io_concurrency }}
+
+# ── Parallelism ──────────────────────────────────────────────────────────────
+max_worker_processes              = {{ pg_max_worker_processes }}
+max_parallel_workers_per_gather   = {{ pg_max_parallel_workers_per_gather }}
+max_parallel_workers              = {{ pg_max_parallel_workers }}
+
+# ── Observability ────────────────────────────────────────────────────────────
+shared_preload_libraries          = 'pg_stat_statements'
+pg_stat_statements.track          = all
+pg_stat_statements.max            = 10000
+track_io_timing                   = on
+track_activity_query_size         = 2048

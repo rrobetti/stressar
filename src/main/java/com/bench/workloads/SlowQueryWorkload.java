@@ -14,12 +14,6 @@ import java.sql.SQLException;
 public class SlowQueryWorkload extends Workload {
     private final double slowQueryPercent;
     
-    // Fast path: same as W1 QueryB
-    private static final String FAST_QUERY =
-        "SELECT order_id, account_id, created_at, status, total_cents " +
-        "FROM orders WHERE account_id = ? " +
-        "ORDER BY created_at DESC LIMIT 20";
-    
     // Slow path: heavy join/aggregate query
     private static final String SLOW_QUERY =
         "SELECT o.order_id, o.account_id, o.created_at, o.status, " +
@@ -47,24 +41,10 @@ public class SlowQueryWorkload extends Workload {
     }
     
     private void executeFastQuery() throws SQLException {
-        long accountId = generateAccountId();
-        
-        try (Connection conn = connectionProvider.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(FAST_QUERY)) {
-            
-            stmt.setLong(1, accountId);
-            
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    // Consume results
-                    rs.getLong("order_id");
-                    rs.getLong("account_id");
-                    rs.getTimestamp("created_at");
-                    rs.getInt("status");
-                    rs.getLong("total_cents");
-                }
-            }
-        }
+        executeSingleLongParamQuery(
+            WorkloadQueries.LAST_20_ORDERS_BY_ACCOUNT,
+            generateAccountId(),
+            WorkloadQueries::consumeLastOrdersRow);
     }
     
     private void executeSlowQuery() throws SQLException {

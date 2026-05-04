@@ -1,0 +1,59 @@
+# Test A / Test B — HikariCP Disciplined Baseline (no TLS)
+#
+# This is the upper-bound baseline for the OJP vs PgBouncer comparison.
+# 16 independent bench JVM processes (8 on LG, 8 on APP) each simulate one
+# microservice replica connecting directly to PostgreSQL — no proxy, no TLS.
+#
+# No TLS is used on any leg. All communication is plaintext inside a trusted
+# private network (e.g., a dedicated bench VLAN or a cloud VPC). This matches
+# the majority of internal service-to-service deployments and eliminates TLS
+# handshake cost as a variable, keeping the comparison focused on connection
+# pooling and proxy overhead.
+#
+# Connection budget: 300 total / 16 replicas = 19 connections per replica.
+# Aggregate target: 16 × 63 RPS ≈ 1,000 RPS.
+#
+# Prerequisites:
+#   - PostgreSQL configured with pg_hba.conf using "host" (not "hostssl")
+#
+# Run with (execute on LG and APP simultaneously):
+#   for i in {0..7}; do
+#     bench run --config ta-baseline-hikari.yaml --instance-id $i \
+#       --output results/sut-a-baseline/ &
+#   done
+#   wait
+#
+# See docs/BENCHMARKING_GUIDE.md § SUT-A for full instructions.
+
+database:
+  jdbcUrl: "jdbc:postgresql://<DB_IP>:5432/benchdb"
+  username: "benchuser"
+  password: "${DB_PASSWORD}"
+
+connectionMode: HIKARI_DISCIPLINED
+dbConnectionBudget: 300      # Total connections across all 16 replicas
+replicas: 16                  # Must match the number of --instance-id values started
+maxPoolSizePerReplica: 19     # 300 / 16 ≈ 19 connections per replica
+
+workload:
+  type: W2_MIXED
+  openLoop: true
+  targetRps: 63              # Per-replica; 16 × 63 ≈ 1,000 RPS aggregate
+  warmupSeconds: 300
+  durationSeconds: 600
+  cooldownSeconds: 120
+  repeatCount: 5
+  writePercent: 0.20
+  useZipf: false
+  seed: 42
+
+numAccounts: 1000000
+numItems:    100000
+numOrders:   10000000
+
+metricsIntervalSeconds: 1
+outputDir: "results/sut-a-baseline"
+
+sweepIncrementPercent: 15.0  # Used by 'bench sweep' for Test A (capacity sweep)
+sloP95Ms: 50
+errorRateThreshold: 0.001

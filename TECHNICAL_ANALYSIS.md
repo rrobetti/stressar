@@ -1,6 +1,6 @@
 # Benchmark Harness Technical Analysis - Answers to 30 Questions
 
-This document provides detailed answers to questions about the implementation correctness and completeness of the OJP Performance Benchmark Harness.
+This document provides detailed answers to questions about the implementation correctness and completeness of Stressar.
 
 ---
 
@@ -11,12 +11,14 @@ This document provides detailed answers to questions about the implementation co
 **How exactly are requests scheduled?**
 
 Requests are scheduled using Java's `ScheduledExecutorService` with `scheduleAtFixedRate()`:
+
 - **Multiple dispatcher threads**: `numThreads` threads (calculated as `Math.max(4, Math.min(targetRps / 10, 200))`)
 - Each thread schedules tasks at a fixed rate
 - Interval calculation: `intervalNanos = 1_000_000_000L / targetRps`
 - Each thread schedules at `intervalNanos * numThreads` to distribute load
 
 **Scheduling mechanism:**
+
 ```java
 scheduler.scheduleAtFixedRate(() -> {
     executeWorkload();
@@ -26,6 +28,7 @@ scheduler.scheduleAtFixedRate(() -> {
 **⚠️ ISSUE**: This is **relative scheduling** (sleep between sends), not absolute time-based scheduling.
 
 **What happens when the system falls behind schedule?**
+
 - Java's `scheduleAtFixedRate` will execute immediately if the scheduled time has passed
 - Tasks may accumulate if execution time exceeds interval
 - **No explicit token bucket** or backlog tracking
@@ -41,6 +44,7 @@ scheduler.scheduleAtFixedRate(() -> {
 **Is latency measured from scheduling time or actual send time?**
 
 Latency is measured from **actual send time** (when executeWorkload() starts):
+
 ```java
 long startNanos = System.nanoTime();
 try {
@@ -55,6 +59,7 @@ try {
 **❌ Missing**: No measurement of scheduling delay (time from intended schedule to actual execution)
 
 **Clock drift between replicas:**
+
 - **Not considered** - each replica uses its own wall-clock time
 - Timestamps in results are local to each instance
 - **⚠️ ISSUE**: Cross-replica time correlation assumes synchronized clocks
@@ -66,6 +71,7 @@ try {
 **Are histograms reset at the start of the measurement window?**
 
 **✅ YES**: In `BenchmarkRunner.java` lines 138-140:
+
 ```java
 // Reset metrics after warmup
 metrics.reset();
@@ -74,10 +80,12 @@ logger.info("Warmup complete, metrics reset");
 ```
 
 **Are time-series metrics excluding warmup?**
+
 - **✅ YES**: Metrics scheduler starts before warmup, but interval metrics are reset
 - Time-series CSV only captures post-warmup data
 
 **Is cooldown excluded from percentiles?**
+
 - **✅ YES**: Load generator is stopped before cooldown phase (line 152)
 - Cooldown happens with no active load generation
 - **⚠️ CAVEAT**: Final snapshot is taken AFTER cooldown, but no new requests are issued during cooldown
@@ -93,6 +101,7 @@ logger.info("Warmup complete, metrics reset");
 **✅ YES**: One histogram in `MetricsCollector` for the entire run after warmup reset
 
 **Configuration:**
+
 - **Precision**: 3 significant digits (line 23 in LatencyRecorder.java)
 - **Max expected latency**: 60,000 ms (60 seconds) - line 61 in MetricsCollector.java
 - Stored in **microseconds** internally
@@ -105,11 +114,13 @@ logger.info("Warmup complete, metrics reset");
 **⚠️ NOT IMPLEMENTED**: Cross-replica histogram merging is NOT currently implemented.
 
 **Current behavior:**
+
 - Each replica writes its own `summary.json` with percentiles
 - No automatic merging of HDR histograms across replicas
 - **🔴 LIMITATION**: The `aggregate` command is a placeholder and does not properly merge histograms
 
 **Correct approach would be:**
+
 1. Export HDR histogram from each replica
 2. Merge histograms using `histogram.add(otherHistogram)`
 3. Compute percentiles from merged histogram
@@ -124,6 +135,7 @@ logger.info("Warmup complete, metrics reset");
 **⚠️ ISSUE**: The current implementation has a problem.
 
 Looking at lines 82-119 in `BenchmarkRunner.java`:
+
 - There's a separate `intervalMetrics` collector
 - It's reset after each interval (line 119)
 - **BUT**: The percentiles written to timeseries come from the cumulative `snapshot`, not interval-specific histograms
@@ -142,12 +154,14 @@ Looking at lines 82-119 in `BenchmarkRunner.java`:
 **Is there an explicit DB safe connection budget defined in config?**
 
 **✅ YES**: `dbConnectionBudget` in `BenchmarkConfig.java` (line 19)
+
 - Default value: 100
 - Used in disciplined pooling calculation
 
 **Is it enforced in disciplined pooling mode?**
 
 **✅ YES**: In `BenchmarkConfig.calculateDisciplinedPoolSize()` (lines 187-193):
+
 ```java
 public int calculateDisciplinedPoolSize() {
     if (replicas <= 0) {
@@ -171,6 +185,7 @@ public int calculateDisciplinedPoolSize() {
 **Is Hikari maximumPoolSize actually set from calculated value?**
 
 **✅ YES**: In `HikariProvider.java` line 32:
+
 ```java
 config.setMaximumPoolSize(poolSize);
 ```
@@ -178,12 +193,14 @@ config.setMaximumPoolSize(poolSize);
 **Are minimumIdle values aligned?**
 
 **⚠️ PARTIAL**: Set to `Math.max(1, poolSize / 2)` (line 33)
+
 - This is reasonable but not exactly aligned with disciplined pooling principles
 - May cause pool to shrink below optimal size
 
 **Are connectionTimeout and validation settings consistent across SUTs?**
 
 **✅ YES**: All providers use the same settings:
+
 - `connectionTimeout`: 30000ms
 - `idleTimeout`: 600000ms (10 min)
 - `maxLifetime`: 1800000ms (30 min)
@@ -196,6 +213,7 @@ config.setMaximumPoolSize(poolSize);
 **Is OJP DB pool size equal to the disciplined budget?**
 
 **⚠️ NOT CONFIGURABLE**: OJP and PgBouncer use **hardcoded** minimal pool size of 2:
+
 ```java
 private static final int MINIMAL_POOL_SIZE = 2;
 ```
@@ -209,6 +227,7 @@ private static final int MINIMAL_POOL_SIZE = 2;
 **Are prepared statement settings identical across modes?**
 
 **✅ YES**: All providers set:
+
 ```java
 config.addDataSourceProperty("cachePrepStmts", "true");
 config.addDataSourceProperty("prepStmtCacheSize", "250");
@@ -227,6 +246,7 @@ config.addDataSourceProperty("useServerPrepStmts", "true");
 **⚠️ NOT IMPLEMENTED**: There is NO start barrier synchronization.
 
 **Current behavior:**
+
 - Each replica starts independently when `bench run` is invoked
 - No coordination between replicas
 - Start times may differ by seconds or minutes
@@ -234,6 +254,7 @@ config.addDataSourceProperty("useServerPrepStmts", "true");
 **🔴 LIMITATION**: Without barrier synchronization, multi-replica results are not truly synchronized
 
 **Expected implementation:**
+
 - Shared coordination service (e.g., file lock, Redis, Zookeeper)
 - All replicas wait until a global start timestamp
 - Requires external coordination mechanism
@@ -247,10 +268,12 @@ config.addDataSourceProperty("useServerPrepStmts", "true");
 **⚠️ NOT IMPLEMENTED**: No automatic cross-replica aggregation
 
 **Current behavior:**
+
 - Each replica writes its own `timeseries.csv` and `summary.json`
 - Manual aggregation required
 
 **The `aggregate` command is a placeholder** - it doesn't implement proper merging:
+
 ```java
 logger.info("Aggregation not yet fully implemented");
 ```
@@ -280,12 +303,14 @@ logger.info("Aggregation not yet fully implemented");
 **Is there ramp-up delay to avoid unrealistic thundering herd?**
 
 **❌ NO**: All replicas initialize pools simultaneously
+
 - No staggered startup
 - No connection rate limiting
 
 **🔴 ISSUE**: Unrealistic thundering herd during replica startup
 
 **Expected behavior:**
+
 - Gradual pool initialization
 - Staggered startup across replicas
 - Connection acquisition rate limiting
@@ -299,6 +324,7 @@ logger.info("Aggregation not yet fully implemented");
 **How exactly is "p95 > SLO for 2 consecutive levels" implemented?**
 
 In `SweepCommand.java` lines 129-154:
+
 ```java
 // Check if this level violates SLO
 double medianP95 = calculateMedian(p95Values);
@@ -334,23 +360,25 @@ if (consecutiveViolations >= 2) {
 **How is instability defined?**
 
 In `SweepCommand.java` lines 179-201:
+
 ```java
 private boolean detectInstability(List<RunResult> runs, double medianP95, double medianErrorRate) {
     // High variance in p95 suggests instability
     double p95Variance = calculateVariance(runs.stream()...);
     double p95Cv = Math.sqrt(p95Variance) / medianP95;
-    
+
     // Error rate spike
     boolean errorSpike = medianErrorRate > errorRateThreshold * INSTABILITY_ERROR_RATE_MULTIPLIER;
-    
+
     // High coefficient of variation in p95
     boolean highVariance = p95Cv > 0.3;
-    
+
     return errorSpike || highVariance;
 }
 ```
 
 **Criteria:**
+
 1. **Throughput collapse**: Not explicitly checked
 2. **Tail divergence**: High CV (>30%) in p95 across repetitions
 3. **Error spike**: Error rate > 3x threshold
@@ -372,6 +400,7 @@ private boolean detectInstability(List<RunResult> runs, double medianP95, double
 **Are they placeholders in summary.json?**
 
 **✅ YES**: Optional fields exist in `MetricsSnapshot.java`:
+
 ```java
 private Integer dbActiveConnectionsMedian;
 ```
@@ -425,6 +454,7 @@ private Integer dbActiveConnectionsMedian;
 **⚠️ MIXED BEHAVIOR**:
 
 In `ReadWriteWorkload.java` lines 48-89:
+
 ```java
 try (PreparedStatement stmt = conn.prepareStatement(INSERT_ORDER)) {
     stmt.setLong(1, accountId);
@@ -435,6 +465,7 @@ try (PreparedStatement stmt = conn.prepareStatement(INSERT_ORDER)) {
 **Issue**: PreparedStatement is created within try-with-resources, so it's **closed after each use**
 
 **HikariCP caching**: The DataSource properties enable prepared statement caching:
+
 ```java
 config.addDataSourceProperty("cachePrepStmts", "true");
 ```
@@ -450,6 +481,7 @@ config.addDataSourceProperty("cachePrepStmts", "true");
 **Is W2 using explicit transactions?**
 
 **✅ YES**: Line 43 in `ReadWriteWorkload.java`:
+
 ```java
 conn.setAutoCommit(false);
 ```
@@ -457,11 +489,13 @@ conn.setAutoCommit(false);
 **Is autocommit disabled correctly?**
 
 **✅ YES**: Also set at pool level in HikariConfig (line 39 in HikariProvider.java):
+
 ```java
 config.setAutoCommit(false);
 ```
 
 **Explicit commit/rollback:** Lines 83-87:
+
 ```java
 conn.commit();
 // ...
@@ -478,11 +512,13 @@ catch (SQLException e) {
 **Is dataset large enough to exceed memory?**
 
 **⚠️ DEPENDS ON CONFIGURATION**:
+
 - Default: 10K accounts, 5K items, 50K orders, ~150K order lines
 - Total size: Approximately 50-100 MB with indexes
 - **Likely fits in memory** with default settings
 
 **Recommendation**: Increase dataset sizes for realistic testing:
+
 - Accounts: 1M+
 - Orders: 10M+
 - To exceed typical DB cache sizes (several GB)
@@ -490,6 +526,7 @@ catch (SQLException e) {
 **Is Zipf distribution implemented correctly and seedable?**
 
 **✅ YES**: `ZipfGenerator.java` implements proper Zipf distribution:
+
 - Precomputes cumulative probabilities (lines 35-44)
 - Uses binary search for value selection (lines 52-64)
 - Seedable random number generator (line 28)
@@ -502,6 +539,7 @@ catch (SQLException e) {
 **Does W3 slow query truly consume CPU/IO?**
 
 In `SlowQueryWorkload.java` lines 24-32:
+
 ```java
 private static final String SLOW_QUERY =
     "SELECT o.order_id, o.account_id, o.created_at, o.status, " +
@@ -514,12 +552,14 @@ private static final String SLOW_QUERY =
 ```
 
 **Analysis:**
+
 - Join across orders and order_lines
 - 90-day window filter
 - GROUP BY aggregation
 - ORDER BY with LIMIT 500
 
 **⚠️ MAY BE CACHE-BOUND**:
+
 - With default dataset (50K orders), 90-day window likely covers most data
 - If entire dataset fits in memory, query may be cache-bound
 - **Limited CPU/IO consumption**
@@ -537,12 +577,14 @@ private static final String SLOW_QUERY =
 In `EnvSnapshotCommand.java` lines 56-105:
 
 **✅ Captured:**
+
 - CPU model (via OSHI - `systemInfo.getHardware().getProcessor()`)
 - RAM (via OSHI)
 - JVM version, vendor, flags (`System.getProperty()`)
 - Git commit hash (`git rev-parse HEAD`)
 
 **⚠️ Partial:**
+
 - Driver version: Via package inspection
 - OS/kernel: Via OSHI
 
@@ -562,7 +604,8 @@ In `EnvSnapshotCommand.java` lines 56-105:
 
 **Does the same seed produce identical request sequences?**
 
-**✅ YES**: 
+**✅ YES**:
+
 - ZipfGenerator uses seeded Random (line 28 in ZipfGenerator.java)
 - RandomGenerator uses seeded Random (line 10 in RandomGenerator.java)
 - **Verified by unit test** `testDeterministicGeneration()` in ZipfGeneratorTest.java
@@ -590,6 +633,7 @@ In `EnvSnapshotCommand.java` lines 56-105:
 **Are timeouts distinguished from SQL errors?**
 
 **✅ YES**: In `LoadGenerator.executeWorkload()` lines 48-58:
+
 ```java
 try {
     workload.execute();
@@ -615,7 +659,8 @@ try {
 
 **Are rejected requests counted as errors?**
 
-**⚠️ DEPENDS**: 
+**⚠️ DEPENDS**:
+
 - If connection pool is exhausted, will throw SQLException → counted as "sql_exception"
 - No explicit "rejected" category for pool exhaustion
 
@@ -632,6 +677,7 @@ try {
 **What happens if load generator CPU saturates?**
 
 **⚠️ UNDEFINED BEHAVIOR**:
+
 - Scheduled tasks may queue up
 - No explicit detection of generator saturation
 - May appear as increased latency
@@ -661,6 +707,7 @@ try {
 **🔴 LIMITATION**: User must manually verify configuration consistency
 
 **Recommendations:**
+
 1. Add config validation: `totalPoolSize = poolSize * replicas <= db_max_connections`
 2. Monitor scheduling delay: `actual_send_time - scheduled_time`
 3. Warn if `achievedRps << targetRps` without errors
@@ -670,16 +717,19 @@ try {
 ### 3️⃣0️⃣ Does reporting distinguish different performance characteristics?
 
 **Current reporting includes:**
+
 - ✅ Throughput (`achievedThroughputRps`)
 - ✅ Error rate (`errorRate`)
 - ✅ Tail latency (p95, p99, p999)
 
 **Missing distinctions:**
+
 - ❌ **Load shaping via queueing**: Not measured (no queue depth)
 - ❌ **Goodput vs throughput**: No distinction between successful and total ops
 - ⚠️ **Degradation modes**: Error spike vs latency spike not clearly separated
 
 **🔴 ENHANCEMENT**: Report should explicitly call out:
+
 1. "Higher throughput with lower error rate" = better capacity
 2. "Same throughput with higher latency" = queueing behavior
 3. "Lower throughput with high errors" = overload/failure
@@ -689,6 +739,7 @@ try {
 ## 📋 Summary of Key Issues
 
 ### 🔴 Critical Issues
+
 1. **Open-loop scheduling**: Not true open-loop (relative scheduling, no missed opportunity tracking)
 2. **Time-series percentiles**: Cumulative instead of per-interval
 3. **No replica synchronization**: No start barrier for multi-instance runs
@@ -696,6 +747,7 @@ try {
 5. **Prepared statements**: Created/closed per operation (relies on driver cache)
 
 ### ⚠️ Significant Limitations
+
 1. **No generator saturation detection**: Cannot distinguish DB vs generator limits
 2. **No queue depth metrics**: Missing for OJP/PgBouncer comparison
 3. **No JVM/GC metrics**: Missing performance diagnostics
@@ -703,6 +755,7 @@ try {
 5. **Connection storm**: No staggered startup for replicas
 
 ### ✅ Strengths
+
 1. **Explicit transactions**: Proper autocommit=false and manual commit/rollback
 2. **HDR histogram usage**: Correct precision and max value configuration
 3. **Warmup isolation**: Proper metric reset after warmup
@@ -726,6 +779,7 @@ try {
 **For comparative analysis:**
 
 Despite limitations, the tool is **usable for comparative analysis** if:
+
 - Same configuration used across all SUTs
 - Single-instance runs (avoid replica coordination issues)
 - Results interpreted with awareness of limitations
@@ -745,11 +799,13 @@ Despite limitations, the tool is **usable for comparative analysis** if:
 The OJP implementation has been corrected to reflect the accurate architectural model:
 
 ### Previous Incorrect Model (REMOVED)
+
 - ❌ OJP used minimal client-side pooling (HikariCP with 2 connections)
 - ❌ Assumption that client must restrict to 1-2 connections
 - ❌ Cannot configure pool parameters on client
 
 ### Correct OJP Model (IMPLEMENTED)
+
 1. **No Client-Side Pooling**: Application does NOT use HikariCP, DBCP, or any client pooling library
 2. **Virtual JDBC Connections**: Client creates many virtual JDBC Connection handles via `DriverManager.getConnection()`
 3. **Server-Side Pool**: OJP JDBC driver properties (ojp.maxConnections, etc.) configure the real backend DB pool on the OJP server
@@ -758,27 +814,32 @@ The OJP implementation has been corrected to reflect the accurate architectural 
 ### Implementation Details
 
 **New Classes:**
+
 - `OjpConfig`: Configuration for OJP-specific settings
 - `OjpVirtualConnectionMode`: PER_WORKER (default) or PER_OPERATION
 - `OjpPoolSharing`: SHARED (all replicas) or PER_INSTANCE (divided)
 - `ConnectionWrapper`: Base class for tracking virtual connection lifecycle
 
 **OjpProvider (Rewritten):**
+
 - Uses `DriverManager.getConnection()` directly (no HikariCP)
 - Passes OJP properties with each connection request
 - Tracks virtual connection metrics (opened, current, max concurrent)
 - Supports both PER_WORKER and PER_OPERATION modes
 
 **Disciplined Pooling Equivalence:**
+
 - SHARED: `ojp.maxConnections = dbConnectionBudget` (all replicas share one pool)
 - PER_INSTANCE: `ojp.maxConnections = floor(dbConnectionBudget / replicas)` (each replica gets own pool)
 
 **Configuration Validation:**
+
 - Rejects client-side poolSize for OJP mode
-- Fails fast if hikari.* or pool-related properties detected
+- Fails fast if hikari.\* or pool-related properties detected
 - Automatically calculates server-side pool allocation
 
 **Summary Output:**
+
 - `clientPooling: "none"` for OJP mode
 - `ojpVirtualConnectionMode`: PER_WORKER or PER_OPERATION
 - `ojpPoolSharing`: SHARED or PER_INSTANCE
@@ -787,12 +848,15 @@ The OJP implementation has been corrected to reflect the accurate architectural 
 - `clientVirtualConnectionsMaxConcurrent`: Peak concurrent virtual connections
 
 ### Updated Documentation
+
 - RUNBOOK.md: Clarifies no client-side pooling for OJP
-- CONFIG.md: Documents all ojp.* properties
+- CONFIG.md: Documents all ojp.\* properties
 - Examples: ojp-mode.yaml and ojp-per-instance-16-replicas.yaml
 
 ### Test Coverage
+
 8 new unit tests in `OjpConfigTest`:
+
 - Allocation calculation (SHARED, PER_INSTANCE, rounding, minimum)
 - Configuration validation (rejects poolSize)
 - Properties building and logging
