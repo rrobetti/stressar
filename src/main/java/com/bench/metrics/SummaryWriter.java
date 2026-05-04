@@ -106,6 +106,9 @@ public class SummaryWriter {
         public int totalInstances;
         public long seed;
         
+        // Replica barrier coordination
+        public Long barrierStartEpochMillis;
+        
         // Open-loop specific metrics
         public Long openLoopAttemptedOps;
         public Long openLoopMissedOpportunities;

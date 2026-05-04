@@ -37,11 +37,13 @@ public class TrueOpenLoopLoadGenerator extends LoadGenerator {
     /**
      * Create a true open-loop load generator.
      * @param workload The workload to execute
-     * @param metrics Metrics collector
+     * @param metrics Cumulative metrics collector
+     * @param intervalMetrics Interval metrics collector
      * @param targetRps Target requests per second
      */
-    public TrueOpenLoopLoadGenerator(Workload workload, MetricsCollector metrics, int targetRps) {
-        super(workload, metrics);
+    public TrueOpenLoopLoadGenerator(Workload workload, MetricsCollector metrics, 
+                                     MetricsCollector intervalMetrics, int targetRps) {
+        super(workload, metrics, intervalMetrics);
         this.targetRps = targetRps;
         // Use enough workers to handle the target rate
         this.numWorkers = Math.max(4, Math.min(targetRps / 5, 200));

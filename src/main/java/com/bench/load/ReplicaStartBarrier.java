@@ -70,7 +70,7 @@ public class ReplicaStartBarrier {
     
     /**
      * Register this replica and wait for all replicas to be ready.
-     * Returns the coordinated start time (nanoTime).
+     * Returns the coordinated start time (epoch milliseconds).
      */
     public long awaitStart() throws IOException, InterruptedException {
         logger.info("Instance {} registering with barrier", instanceId);
@@ -89,20 +89,20 @@ public class ReplicaStartBarrier {
         while (System.currentTimeMillis() < deadline) {
             if (Files.exists(startFile)) {
                 String content = Files.readString(startFile).trim();
-                long startTimeNanos = Long.parseLong(content);
+                long startEpochMillis = Long.parseLong(content);
                 
-                logger.info("Instance {} received start signal: {}", instanceId, startTimeNanos);
+                logger.info("Instance {} received start signal: epoch {} ms", instanceId, startEpochMillis);
                 
                 // Wait until the start time
-                long nowNanos = System.nanoTime();
-                if (nowNanos < startTimeNanos) {
-                    long waitNanos = startTimeNanos - nowNanos;
-                    logger.info("Instance {} waiting {} ms until start", instanceId, waitNanos / 1_000_000);
-                    TimeUnit.NANOSECONDS.sleep(waitNanos);
+                long nowMillis = System.currentTimeMillis();
+                if (nowMillis < startEpochMillis) {
+                    long waitMillis = startEpochMillis - nowMillis;
+                    logger.info("Instance {} waiting {} ms until start", instanceId, waitMillis);
+                    Thread.sleep(waitMillis);
                 }
                 
                 logger.info("Instance {} starting execution", instanceId);
-                return startTimeNanos;
+                return startEpochMillis;
             }
             
             // Check periodically
@@ -130,13 +130,13 @@ public class ReplicaStartBarrier {
     
     /**
      * Write the start signal (called by coordinator).
-     * All replicas will start at startTimeNanos (System.nanoTime() basis).
+     * All replicas will start at startEpochMillis (System.currentTimeMillis() basis).
      */
-    public void signalStart(long startTimeNanos) throws IOException {
+    public void signalStart(long startEpochMillis) throws IOException {
         Path startFile = barrierDir.resolve(START_TIME);
-        Files.writeString(startFile, String.valueOf(startTimeNanos),
+        Files.writeString(startFile, String.valueOf(startEpochMillis),
                          StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-        logger.info("Start signal written: {}", startTimeNanos);
+        logger.info("Start signal written: epoch {} ms", startEpochMillis);
     }
     
     /**
@@ -154,11 +154,11 @@ public class ReplicaStartBarrier {
             if (areAllReplicasRegistered()) {
                 logger.info("All {} replicas registered", expectedReplicas);
                 
-                // Schedule start time in the future
-                long startTimeNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(delayMs);
-                signalStart(startTimeNanos);
+                // Schedule start time in the future (epoch-based)
+                long startEpochMillis = System.currentTimeMillis() + delayMs;
+                signalStart(startEpochMillis);
                 
-                logger.info("Start coordinated for {} ms from now", delayMs);
+                logger.info("Start coordinated for {} ms from now (epoch: {})", delayMs, startEpochMillis);
                 return;
             }
             
