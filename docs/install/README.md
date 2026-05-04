@@ -1,7 +1,6 @@
 # Installation Guides
 
-Step-by-step instructions for every software component required to run the OJP Performance
-Benchmark Tool.
+Step-by-step instructions for every software component required to run Stressar.
 
 | Component | Required for | Guide |
 |---|---|---|

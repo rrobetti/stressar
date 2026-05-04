@@ -1,6 +1,7 @@
 plugins {
     id 'java'
     id 'application'
+    id "org.sonarqube" version "7.2.3.7755"
 }
 
 group = 'com.bench'
@@ -17,7 +18,7 @@ repositories {
 
 dependencies {
     // Database
-    implementation 'org.postgresql:postgresql:42.7.2'
+    implementation 'org.postgresql:postgresql:42.7.11'
     implementation 'com.zaxxer:HikariCP:5.1.0'
 
     // OJP JDBC driver (required for T4 / OJP connection mode)
@@ -42,7 +43,7 @@ dependencies {
     
     // Logging
     implementation 'org.slf4j:slf4j-api:2.0.9'
-    implementation 'ch.qos.logback:logback-classic:1.4.14'
+    implementation 'ch.qos.logback:logback-classic:1.5.13'
     
     // JSON
     implementation 'com.google.code.gson:gson:2.10.1'
@@ -56,7 +57,7 @@ application {
     mainClass = 'com.bench.cli.BenchmarkCLI'
 }
 
-tasks.withType(JavaCompile) {
+tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
 
@@ -88,9 +89,9 @@ startScripts {
 }
 
 // Task to copy SQL resources
-task copySqlResources(type: Copy) {
+tasks.register('copySqlResources', Copy) {
     from 'src/main/resources'
-    into "$buildDir/resources/main"
+    into layout.buildDirectory.dir('resources/main')
 }
 
 processResources.dependsOn copySqlResources

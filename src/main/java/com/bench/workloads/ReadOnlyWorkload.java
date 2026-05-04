@@ -17,12 +17,7 @@ public class ReadOnlyWorkload extends Workload {
     private static final String QUERY_A = 
         "SELECT account_id, username, email, full_name, balance_cents, status " +
         "FROM accounts WHERE account_id = ?";
-    
-    private static final String QUERY_B =
-        "SELECT order_id, account_id, created_at, status, total_cents " +
-        "FROM orders WHERE account_id = ? " +
-        "ORDER BY created_at DESC LIMIT 20";
-    
+
     public ReadOnlyWorkload(ConnectionProvider connectionProvider, long seed,
                            long numAccounts, long numItems, boolean useZipf, 
                            double zipfAlpha, double queryAPercent) {
@@ -59,24 +54,10 @@ public class ReadOnlyWorkload extends Workload {
     }
     
     private void executeQueryB() throws SQLException {
-        long accountId = generateAccountId();
-        
-        try (Connection conn = connectionProvider.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(QUERY_B)) {
-            
-            stmt.setLong(1, accountId);
-            
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    // Consume results
-                    rs.getLong("order_id");
-                    rs.getLong("account_id");
-                    rs.getTimestamp("created_at");
-                    rs.getInt("status");
-                    rs.getLong("total_cents");
-                }
-            }
-        }
+        executeSingleLongParamQuery(
+            WorkloadQueries.LAST_20_ORDERS_BY_ACCOUNT,
+            generateAccountId(),
+            WorkloadQueries::consumeLastOrdersRow);
     }
     
     @Override

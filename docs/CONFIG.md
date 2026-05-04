@@ -1,4 +1,4 @@
-# OJP Performance Benchmark Tool - Configuration Reference
+# Stressar - Configuration Reference
 
 Complete reference for all configuration parameters with descriptions, defaults, and examples.
 

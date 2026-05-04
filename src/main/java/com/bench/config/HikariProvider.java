@@ -2,6 +2,7 @@ package com.bench.config;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,21 +23,8 @@ public class HikariProvider implements ConnectionProvider {
     public HikariProvider(DatabaseConfig dbConfig, int poolSize, boolean isDisciplined) {
         this.poolSize = poolSize;
         this.modeName = isDisciplined ? "HIKARI_DISCIPLINED" : "HIKARI_DIRECT";
-        
-        HikariConfig config = new HikariConfig();
-        config.setJdbcUrl(dbConfig.getJdbcUrl());
-        config.setUsername(dbConfig.getUsername());
-        config.setPassword(dbConfig.getPassword());
-        
-        // Pool configuration
-        config.setMaximumPoolSize(poolSize);
-        config.setMinimumIdle(Math.max(1, poolSize / 2));
-        config.setConnectionTimeout(30000);
-        config.setIdleTimeout(600000);
-        config.setMaxLifetime(1800000);
-        
-        // Performance settings
-        config.setAutoCommit(false);  // Explicit transaction control
+
+        HikariConfig config = getHikariConfig(dbConfig, poolSize);
         config.addDataSourceProperty("cachePrepStmts", "true");
         config.addDataSourceProperty("prepStmtCacheSize", "250");
         config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
@@ -51,7 +39,25 @@ public class HikariProvider implements ConnectionProvider {
         
         logger.info("Initialized {} with pool size: {}", modeName, poolSize);
     }
-    
+
+    private static @NonNull HikariConfig getHikariConfig(DatabaseConfig dbConfig, int poolSize) {
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl(dbConfig.getJdbcUrl());
+        config.setUsername(dbConfig.getUsername());
+        config.setPassword(dbConfig.getPassword());
+
+        // Pool configuration
+        config.setMaximumPoolSize(poolSize);
+        config.setMinimumIdle(Math.max(1, poolSize / 2));
+        config.setConnectionTimeout(30000);
+        config.setIdleTimeout(600000);
+        config.setMaxLifetime(1800000);
+
+        // Performance settings
+        config.setAutoCommit(false);  // Explicit transaction control
+        return config;
+    }
+
     @Override
     public Connection getConnection() throws SQLException {
         return dataSource.getConnection();

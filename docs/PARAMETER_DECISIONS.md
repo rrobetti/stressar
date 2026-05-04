@@ -3,7 +3,7 @@
 ## Purpose
 
 This document explains the reasoning behind every significant numeric constant, threshold, and
-configuration choice made in the OJP Performance Benchmark. Readers who wish to reproduce the
+configuration choice made in Stressar. Readers who wish to reproduce the
 benchmark, adapt it to different hardware, or critique the experimental design should read this
 document alongside [BENCHMARKING_GUIDE.md](BENCHMARKING_GUIDE.md).
 

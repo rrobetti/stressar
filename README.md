@@ -1,6 +1,6 @@
-# OJP Performance Benchmark Tool
+# Stressar
 
-Comprehensive tooling to assess the performance of OJP (Open J Proxy) and compare it with other connection pooling approaches including direct JDBC (HikariCP) and PgBouncer.
+A benchmark tool to stress test JDBC-based solutions, including but not limited to connection pooling (HikariCP) and proxied solutions (OJP, PgBouncer). Stressar enables rigorous, reproducible comparison of PostgreSQL connection strategies from a standard JDBC client perspective.
 
 ---
 
@@ -13,19 +13,18 @@ See [BENCHMARKING_GUIDE.md](docs/BENCHMARKING_GUIDE.md) for the full protocol.
 
 ### Test A — Capacity Sweep (Increasing Load)
 
-| SUT | Clients | Starting RPS | p50 (ms) | p95 (ms) | p99 (ms) | Max Sustainable Throughput (RPS) | Error Rate |
-|-----|---------|-------------|----------|----------|----------|----------------------------------|-----------|
-| HikariCP Direct (disciplined baseline) | 16 | 16 × 63 ≈ 1,000 | TBD | TBD | TBD | TBD | TBD |
-| OJP — 3 nodes, client-side LB | 16 | 16 × 63 ≈ 1,000 | TBD | TBD | TBD | TBD | TBD |
-| PgBouncer — 3 nodes + HAProxy | 16 | 16 × 63 ≈ 1,000 | TBD | TBD | TBD | TBD | TBD |
+| SUT                                    | Clients | Starting RPS    | p50 (ms) | p95 (ms) | p99 (ms) | Max Sustainable Throughput (RPS) | Error Rate |
+|----------------------------------------|---------|-----------------|----------|----------|----------|----------------------------------|------------|
+| HikariCP Direct (disciplined baseline) | 16      | 16 × 63 ≈ 1,000 | TBD      | TBD      | TBD      | TBD                              | TBD        |
+| OJP — 3 nodes, client-side LB          | 16      | 16 × 63 ≈ 1,000 | TBD      | TBD      | TBD      | TBD                              | TBD        || PgBouncer — 3 nodes + HAProxy          | 16      | 16 × 63 ≈ 1,000 | TBD | TBD | TBD | TBD | TBD |
 
 ### Test B — Overload & Recovery (130 % of Max Sustainable Throughput)
 
-| SUT | Overload Level | Peak p99 (ms) | Error Rate During Overload | Recovery Time (s) |
-|-----|---------------|---------------|---------------------------|------------------|
-| HikariCP Direct (disciplined baseline) | 130 % MST | TBD | TBD | TBD |
-| OJP — 3 nodes, client-side LB | 130 % MST | TBD | TBD | TBD |
-| PgBouncer — 3 nodes + HAProxy | 130 % MST | TBD | TBD | TBD |
+| SUT                                    | Overload Level | Peak p99 (ms) | Error Rate During Overload | Recovery Time (s) |
+|----------------------------------------|----------------|---------------|----------------------------|-------------------|
+| HikariCP Direct (disciplined baseline) | 130 % MST      | TBD           | TBD                        | TBD               |
+| OJP — 3 nodes, client-side LB          | 130 % MST      | TBD           | TBD                        | TBD               |
+| PgBouncer — 3 nodes + HAProxy          | 130 % MST      | TBD           | TBD                        | TBD               |
 
 ---
 
@@ -35,10 +34,10 @@ See [BENCHMARKING_GUIDE.md](docs/BENCHMARKING_GUIDE.md) for the full protocol.
 
 Two tests are run, each against three different systems under test (SUTs):
 
-| # | What we run | Why |
-|---|-------------|-----|
-| **Test A** | Gradually increase the request rate in 15 % steps until the system can no longer keep up (p95 latency > 50 ms or error rate > 0.1 %). Record the maximum sustainable throughput for each SUT. | Finds each system's breaking point and compares throughput capacity. |
-| **Test B** | Push each system to 130 % of its maximum throughput for 5 minutes, then drop back to 70 % and measure how long it takes to recover. | Reveals queue management, back-pressure behaviour, and resilience under overload. |
+| #          | What we run                                                                                                                                                                                   | Why                                                                               |
+|------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------|
+| **Test A** | Gradually increase the request rate in 15 % steps until the system can no longer keep up (p95 latency > 50 ms or error rate > 0.1 %). Record the maximum sustainable throughput for each SUT. | Finds each system's breaking point and compares throughput capacity.              |
+| **Test B** | Push each system to 130 % of its maximum throughput for 5 minutes, then drop back to 70 % and measure how long it takes to recover.                                                           | Reveals queue management, back-pressure behaviour, and resilience under overload. |
 
 The three systems under test (run in this order):
 

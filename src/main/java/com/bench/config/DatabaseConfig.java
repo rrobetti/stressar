@@ -9,16 +9,9 @@ public class DatabaseConfig {
     private String jdbcUrl;
     private String username;
     private String password;
-    private Properties properties;
+    private final Properties properties;
 
     public DatabaseConfig() {
-        this.properties = new Properties();
-    }
-
-    public DatabaseConfig(String jdbcUrl, String username, String password) {
-        this.jdbcUrl = jdbcUrl;
-        this.username = username;
-        this.password = password;
         this.properties = new Properties();
     }
 
@@ -48,10 +41,6 @@ public class DatabaseConfig {
 
     public Properties getProperties() {
         return properties;
-    }
-
-    public void setProperty(String key, String value) {
-        properties.setProperty(key, value);
     }
 
     public String getProperty(String key) {

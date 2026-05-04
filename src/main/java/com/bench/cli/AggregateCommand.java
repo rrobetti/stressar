@@ -12,6 +12,7 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Aggregates benchmark results across multiple runs.
@@ -71,20 +72,22 @@ public class AggregateCommand implements Callable<Integer> {
         Map<String, List<RunData>> grouped = new HashMap<>();
         
         // Walk directory tree looking for summary.json files
-        Files.walk(rootPath)
-            .filter(p -> p.getFileName().toString().equals("summary.json"))
-            .forEach(summaryPath -> {
-                try {
-                    // Parse the directory structure to extract metadata
-                    RunData runData = parseRunMetadata(rootPath, summaryPath);
-                    if (runData != null) {
-                        String key = generateGroupKey(runData);
-                        grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(runData);
+        try (Stream<Path> paths = Files.walk(rootPath)) {
+            paths
+                .filter(p -> p.getFileName().toString().equals("summary.json"))
+                .forEach(summaryPath -> {
+                    try {
+                        // Parse the directory structure to extract metadata
+                        RunData runData = parseRunMetadata(rootPath, summaryPath);
+                        if (runData != null) {
+                            String key = generateGroupKey(runData);
+                            grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(runData);
+                        }
+                    } catch (Exception e) {
+                        logger.warn("Failed to process: {}", summaryPath, e);
                     }
-                } catch (Exception e) {
-                    logger.warn("Failed to process: {}", summaryPath, e);
-                }
-            });
+                });
+        }
         
         return grouped;
     }
