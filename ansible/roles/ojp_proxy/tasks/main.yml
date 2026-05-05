@@ -15,10 +15,14 @@
   become: true
 
 - name: Download Adoptium GPG key
-  ansible.builtin.get_url:
-    url: https://packages.adoptium.net/artifactory/api/gpg/key/public
-    dest: /tmp/adoptium.asc
-    mode: "0644"
+  ansible.builtin.command:
+    argv:
+      - curl
+      - -fsSL
+      - -o
+      - /tmp/adoptium.asc
+      - https://packages.adoptium.net/artifactory/api/gpg/key/public
+    creates: /tmp/adoptium.asc
 
 - name: Dearmor and install Adoptium GPG key
   ansible.builtin.shell: |
@@ -70,19 +74,25 @@
 # ── Download artefacts ────────────────────────────────────────────────────────
 
 - name: Download OJP Server {{ ojp_version }} shaded JAR
-  ansible.builtin.get_url:
-    url: >-
-      https://repo1.maven.org/maven2/org/openjproxy/ojp-server/{{ ojp_version }}/ojp-server-{{ ojp_version }}-shaded.jar
-    dest: "{{ ojp_install_dir }}/bin/ojp-server-{{ ojp_version }}-shaded.jar"
-    mode: "0644"
+  ansible.builtin.command:
+    argv:
+      - curl
+      - -fsSL
+      - -o
+      - "{{ ojp_install_dir }}/bin/ojp-server-{{ ojp_version }}-shaded.jar"
+      - "https://repo1.maven.org/maven2/org/openjproxy/ojp-server/{{ ojp_version }}/ojp-server-{{ ojp_version }}-shaded.jar"
+    creates: "{{ ojp_install_dir }}/bin/ojp-server-{{ ojp_version }}-shaded.jar"
   become: true
 
 - name: Download PostgreSQL JDBC driver {{ pg_jdbc_driver_version }}
-  ansible.builtin.get_url:
-    url: >-
-      https://repo1.maven.org/maven2/org/postgresql/postgresql/{{ pg_jdbc_driver_version }}/postgresql-{{ pg_jdbc_driver_version }}.jar
-    dest: "{{ ojp_install_dir }}/ojp-libs/postgresql-{{ pg_jdbc_driver_version }}.jar"
-    mode: "0644"
+  ansible.builtin.command:
+    argv:
+      - curl
+      - -fsSL
+      - -o
+      - "{{ ojp_install_dir }}/ojp-libs/postgresql-{{ pg_jdbc_driver_version }}.jar"
+      - "https://repo1.maven.org/maven2/org/postgresql/postgresql/{{ pg_jdbc_driver_version }}/postgresql-{{ pg_jdbc_driver_version }}.jar"
+    creates: "{{ ojp_install_dir }}/ojp-libs/postgresql-{{ pg_jdbc_driver_version }}.jar"
   become: true
 
 # ── Systemd service ───────────────────────────────────────────────────────────
