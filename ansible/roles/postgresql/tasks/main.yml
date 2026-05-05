@@ -87,6 +87,12 @@
 - name: Flush handlers to apply configuration before creating DB objects
   ansible.builtin.meta: flush_handlers
 
+- name: Wait for PostgreSQL socket to be available
+  ansible.builtin.wait_for:
+    path: /var/run/postgresql/.s.PGSQL.5432
+    state: present
+    timeout: 30
+
 - name: Create benchmark database
   become: true
   become_user: postgres
