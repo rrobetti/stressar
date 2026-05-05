@@ -49,5 +49,4 @@ CREATE TABLE order_lines (
     UNIQUE(order_id, line_no)
 );
 
--- Enable pg_stat_statements if available
-CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+

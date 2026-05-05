@@ -159,6 +159,14 @@
     name: "{{ db_name }}"
     state: present
 
+- name: Enable pg_stat_statements extension in benchmark database
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_ext:
+    name: pg_stat_statements
+    db: "{{ db_name }}"
+    state: present
+
 - name: Create benchmark user
   become: true
   become_user: postgres
