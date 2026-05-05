@@ -30,7 +30,7 @@ Both artefacts are published to **Maven Central** — no source checkout or buil
 
 ## Prerequisites
 
-- **Java 21 or higher** (OJP Server requirement) — see [JAVA.md](JAVA.md)
+- **Java 24 or higher** (OJP Server requirement) — see [JAVA.md](JAVA.md)
 - **PostgreSQL 12+** must be running and accessible from each proxy node — see [POSTGRESQL.md](POSTGRESQL.md)
 
 > The OJP JDBC Driver (load-generator side) requires **Java 11 or higher** — see

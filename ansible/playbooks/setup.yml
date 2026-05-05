@@ -3,7 +3,7 @@
 #
 # Full infrastructure setup:
 #   1. Installs and configures PostgreSQL 16 on the db group.
-#   2. Installs Java 21 + OJP Server on every proxy node.
+#   2. Installs Java 24 + OJP Server on every proxy node.
 #   3. Initialises the benchmark database from the control node.
 #   4. Builds the bench tool on the control node.
 #

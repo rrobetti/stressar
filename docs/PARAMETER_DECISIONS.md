@@ -748,7 +748,7 @@ proxy overhead that is the subject of study. The 64 GB allocation requires a mac
   affect other replicas on the same machine. 8 GB stays well within the 32 GB machine RAM,
   leaving ample memory for the OS and network stack.
 
-- **Java 21:** Long-term-support release with stable G1GC and Virtual Threads available as a
+- **Java 24:** Latest release with stable G1GC and Virtual Threads available as a
   standard feature (not used in this benchmark, but ensures forward compatibility).
 
 ---

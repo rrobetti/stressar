@@ -12,7 +12,7 @@ Step-by-step instructions for deploying and running the OJP Performance Benchmar
 | 3 | Every machine has unrestricted outbound internet access (`curl`, `apt-get`, etc. work). |
 | 4 | OJP version **0.4.8-beta** is used for both the server and the JDBC driver. |
 | 5 | The `bench` tool is **built and run on the control node only**. No bench process is deployed on remote machines. |
-| 6 | The OJP Server requires **Java 21+** on each proxy node. The control node (bench tool) requires **Java 11+**. |
+| 6 | The OJP Server requires **Java 24+** on each proxy node. The control node (bench tool) requires **Java 11+**. |
 
 ---
 
@@ -260,7 +260,7 @@ for PROXY_IP in "${PROXY1_IP}" "${PROXY2_IP}" "${PROXY3_IP}"; do
   echo "=== Setting up OJP on ${PROXY_IP} ==="
   ssh ${SSH_USER}@${PROXY_IP} bash -s << ENDSSH
 
-# Install Java 21 (OJP Server requires Java 21+)
+# Install Java 24 (OJP Server requires Java 24+)
 sudo apt-get update
 sudo apt-get install -y wget apt-transport-https gpg
 wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public \
@@ -268,7 +268,7 @@ wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public \
 echo "deb https://packages.adoptium.net/artifactory/deb \$(. /etc/os-release; echo \$VERSION_CODENAME) main" \
     | sudo tee /etc/apt/sources.list.d/adoptium.list
 sudo apt-get update
-sudo apt-get install -y temurin-21-jdk
+sudo apt-get install -y temurin-24-jdk
 
 # Create OJP directories
 sudo mkdir -p /opt/ojp/bin /opt/ojp/ojp-libs
