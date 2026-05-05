@@ -15,6 +15,9 @@ db_user:     benchuser
 db_password: benchpass
 db_port:     5432
 
+# ── OJP proxy port (must match ojp_server_port in group_vars/proxy.yml) ──────
+ojp_server_port:  1059
+
 # ── Benchmark dataset size (must match init-db call) ─────────────────────────
 bench_num_accounts: 1000000
 bench_num_items:    100000
