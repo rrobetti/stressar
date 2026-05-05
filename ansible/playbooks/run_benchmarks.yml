@@ -158,7 +158,7 @@
         set -euo pipefail
         mkdir -p "{{ bench_results_dir }}/{{ run_name }}"
         pids=()
-        for ID in $(seq 0 $(( {{ bench_replica_count }} - 1 )) ); do
+        for ID in $(seq 0 {{ bench_replica_count | int - 1 }}); do
           "{{ bench_binary }}" run \
             --config     "{{ bench_config_file }}" \
             --output     "{{ bench_results_dir }}/{{ run_name }}/replica-${ID}/" \
