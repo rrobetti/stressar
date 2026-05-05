@@ -30,6 +30,15 @@ Remote machines require only **SSH access** and **outbound internet** (for packa
 
 ---
 
+## Machine requirements
+
+| Mode | Machines | Hardware |
+|------|----------|----------|
+| Dry-run | **5** — 1 control (local) + 1 DB + 3 proxy | 1 vCPU / 1 GB RAM each |
+| Production run | **5** — 1 control (local) + 1 DB + 3 proxy | See [Hardware Specifications](../docs/BENCHMARKING_GUIDE.md#2-hardware-specifications) |
+
+---
+
 ## Quick start
 
 ### 1. Create your inventory
@@ -67,7 +76,7 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml
 
 ## Dry-run on minimal hardware
 
-`ansible/vars/dryrun.yml` contains pre-tuned values for **7 × 1 vCPU / 1 GB RAM** machines.
+`ansible/vars/dryrun.yml` contains pre-tuned values for **5 × 1 vCPU / 1 GB RAM** machines (1 control + 1 DB + 3 proxy).
 Use it to verify the scripts end-to-end before provisioning full-size hardware.
 Expected run time: ≈ 5 minutes (seed + warmup + 60 s bench + report).
 
