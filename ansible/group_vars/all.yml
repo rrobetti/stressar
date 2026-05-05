@@ -18,6 +18,16 @@ db_port:     5432
 # ── OJP proxy port (must match ojp_server_port in group_vars/proxy.yml) ──────
 ojp_server_port:  1059
 
+# ── Benchmark run defaults ────────────────────────────────────────────────────
+bench_replica_count:        4
+bench_target_rps:           500
+bench_warmup_seconds:       60
+bench_duration_seconds:     300
+bench_cooldown_seconds:     30
+bench_workload_type:        "W2_MIXED"
+bench_connection_mode:      "OJP"
+bench_db_connection_budget: 19
+
 # ── Benchmark dataset size (must match init-db call) ─────────────────────────
 bench_num_accounts: 1000000
 bench_num_items:    100000
