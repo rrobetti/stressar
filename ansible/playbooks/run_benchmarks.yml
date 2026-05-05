@@ -38,7 +38,7 @@
       {{
         groups['proxy']
           | map('extract', hostvars, 'ansible_host')
-          | map('regex_replace', '^(.*)$', '\\1:' + (ojp_server_port | string))
+          | map('regex_replace', '$', ':' + (ojp_server_port | string))
           | list
       }}
     bench_config_file: "/tmp/ojp-benchmark-{{ run_name }}.yaml"
