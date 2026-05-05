@@ -50,11 +50,13 @@
     update_cache: true
   become: true
 
-- name: Start and enable PostgreSQL service
-  ansible.builtin.systemd:
-    name: "{{ pg_service_name }}"
-    state: started
-    enabled: true
+- name: Initialize PostgreSQL cluster
+  ansible.builtin.command:
+    argv:
+      - pg_createcluster
+      - "{{ pg_version }}"
+      - main
+    creates: "/var/lib/postgresql/{{ pg_version }}/main/PG_VERSION"
   become: true
 
 - name: Deploy postgresql.conf tuning
@@ -76,6 +78,13 @@
     mode: "0640"
   become: true
   notify: reload postgresql
+
+- name: Start and enable PostgreSQL service
+  ansible.builtin.systemd:
+    name: "{{ pg_service_name }}"
+    state: started
+    enabled: true
+  become: true
 
 - name: Flush handlers to apply configuration before creating DB objects
   ansible.builtin.meta: flush_handlers
