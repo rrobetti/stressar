@@ -65,12 +65,6 @@ SET total_cents = (
     WHERE ol.order_id = o.order_id
 );
 
--- Final vacuum and analyze
-VACUUM ANALYZE accounts;
-VACUUM ANALYZE items;
-VACUUM ANALYZE orders;
-VACUUM ANALYZE order_lines;
-
 -- Print statistics
 SELECT 'Data generation complete' AS status;
 SELECT COUNT(*) AS account_count FROM accounts;

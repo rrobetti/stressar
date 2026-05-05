@@ -5,10 +5,15 @@
 pg_version: 16
 
 # ── Performance tuning ────────────────────────────────────────────────────────
-# Adjust shared_buffers / effective_cache_size to roughly 25 % / 75 % of RAM.
-pg_shared_buffers:           "4GB"
-pg_effective_cache_size:     "12GB"
-pg_maintenance_work_mem:     "1GB"
+# Memory settings are derived at play time from the host's actual RAM
+# (ansible_memtotal_mb) so the cluster is startable on any VM size.
+# 25 % of total RAM for shared_buffers; 75 % for effective_cache_size.
+# maintenance_work_mem is 5 % of RAM, clamped to [64 MB, 2 GB].
+# Override individual settings in host_vars or with -e if needed.
+pg_shared_buffers:           "{{ (ansible_memtotal_mb * 0.25) | int }}MB"
+pg_effective_cache_size:     "{{ (ansible_memtotal_mb * 0.75) | int }}MB"
+# clamp(5 % of RAM, min=64 MB, max=2 GB)
+pg_maintenance_work_mem:     "{{ [[ansible_memtotal_mb // 20, 64] | max, 2048] | min }}MB"
 pg_work_mem:                 "32MB"
 pg_wal_buffers:              "16MB"
 pg_min_wal_size:             "2GB"

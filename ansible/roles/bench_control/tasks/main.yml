@@ -14,7 +14,7 @@
 
 - name: Build bench tool (./gradlew installDist)
   ansible.builtin.command:
-    cmd: ./gradlew installDist
+    cmd: ./gradlew --no-daemon installDist
     chdir: "{{ bench_repo_dir }}"
   register: gradle_build
   changed_when: "'BUILD SUCCESSFUL' in gradle_build.stdout"
