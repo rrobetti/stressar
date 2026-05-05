@@ -79,32 +79,30 @@
   become: true
   notify: reload postgresql
 
-- name: Reset any failed PostgreSQL service state
-  ansible.builtin.command: systemctl reset-failed "{{ pg_service_name }}"
+- name: Ensure postgres user is in ssl-cert group (required to read snakeoil SSL key)
+  ansible.builtin.user:
+    name: postgres
+    groups: ssl-cert
+    append: true
   become: true
-  failed_when: false
-  changed_when: false
 
 - name: Start and enable PostgreSQL service
-  ansible.builtin.systemd:
-    name: "{{ pg_service_name }}"
-    state: started
-    enabled: true
-  become: true
-
-- name: Flush handlers to apply configuration before creating DB objects
-  ansible.builtin.meta: flush_handlers
-
-- name: Wait for PostgreSQL socket to be available
   block:
-    - name: Wait for PostgreSQL socket
-      ansible.builtin.wait_for:
-        path: /var/run/postgresql/.s.PGSQL.5432
-        state: present
-        delay: 2
-        timeout: 60
+    - name: Reset any failed PostgreSQL service state
+      ansible.builtin.command: systemctl reset-failed "{{ pg_service_name }}"
+      become: true
+      failed_when: false
+      changed_when: false
+
+    - name: Start and enable PostgreSQL service
+      ansible.builtin.systemd:
+        name: "{{ pg_service_name }}"
+        state: started
+        enabled: true
+      become: true
+
   rescue:
-    - name: Dump PostgreSQL cluster journal on socket timeout
+    - name: Dump journal on service start failure
       ansible.builtin.command:
         argv:
           - journalctl
@@ -112,37 +110,47 @@
           - "{{ pg_service_name }}"
           - --no-pager
           - -n
-          - "80"
+          - "100"
       become: true
-      register: _pg_journal
+      register: _pg_start_journal
       changed_when: false
 
-    - name: Show PostgreSQL cluster journal
+    - name: Show journal on service start failure
       ansible.builtin.debug:
-        var: _pg_journal.stdout_lines
+        var: _pg_start_journal.stdout_lines
 
-    - name: Dump PostgreSQL log file on socket timeout
+    - name: Dump PostgreSQL log file on service start failure
       ansible.builtin.command:
         argv:
           - tail
           - -n
-          - "80"
+          - "100"
           - "/var/log/postgresql/postgresql-{{ pg_version }}-main.log"
       become: true
-      register: _pg_logfile
+      register: _pg_start_logfile
       changed_when: false
       failed_when: false
 
-    - name: Show PostgreSQL log file
+    - name: Show PostgreSQL log file on service start failure
       ansible.builtin.debug:
-        var: _pg_logfile.stdout_lines
+        var: _pg_start_logfile.stdout_lines
 
-    - name: Fail with clear message
+    - name: Fail after showing diagnostics
       ansible.builtin.fail:
         msg: >
-          PostgreSQL socket /var/run/postgresql/.s.PGSQL.5432 did not appear
-          within 60 seconds. Check the journal output above for the real cause
-          (config error, missing extension, OOM, etc.).
+          PostgreSQL service {{ pg_service_name }} failed to start.
+          Check the journal and log output above for the real cause
+          (config error, missing extension, SSL permissions, OOM, etc.).
+
+- name: Flush handlers to apply configuration before creating DB objects
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for PostgreSQL socket to be available
+  ansible.builtin.wait_for:
+    path: /var/run/postgresql/.s.PGSQL.5432
+    state: present
+    delay: 2
+    timeout: 60
 
 - name: Create benchmark database
   become: true
