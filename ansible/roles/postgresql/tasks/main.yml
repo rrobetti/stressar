@@ -43,7 +43,6 @@
   ansible.builtin.apt:
     name:
       - "postgresql-{{ pg_version }}"
-      - "postgresql-{{ pg_version }}-contrib"
       - "postgresql-client-{{ pg_version }}"
     state: present
     update_cache: true
