@@ -79,6 +79,12 @@
   become: true
   notify: reload postgresql
 
+- name: Reset any failed PostgreSQL service state
+  ansible.builtin.command: systemctl reset-failed "{{ pg_service_name }}"
+  become: true
+  failed_when: false
+  changed_when: false
+
 - name: Start and enable PostgreSQL service
   ansible.builtin.systemd:
     name: "{{ pg_service_name }}"
