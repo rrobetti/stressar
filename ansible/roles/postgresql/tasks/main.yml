@@ -20,10 +20,13 @@
   become: true
 
 - name: Download PGDG signing key
-  ansible.builtin.shell:
-    cmd: >
-      curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc
-      -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+  ansible.builtin.command:
+    argv:
+      - curl
+      - -fsSL
+      - -o
+      - /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+      - https://www.postgresql.org/media/keys/ACCC4CF8.asc
     creates: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
   become: true
 
