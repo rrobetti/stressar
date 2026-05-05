@@ -167,7 +167,7 @@
           pids+=($!)
           echo "Started replica ${ID} (PID ${pids[-1]})"
         done
-        echo "Waiting for all ${#pids[@]} replicas..."
+        echo "Waiting for all {{ bench_replica_count }} replicas..."
         failed=0
         for pid in "${pids[@]}"; do
           if ! wait "$pid"; then
