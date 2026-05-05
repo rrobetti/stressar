@@ -82,19 +82,21 @@
       community.postgresql.postgresql_query:
         db: "{{ db_name }}"
         query: "SELECT pg_stat_reset();"
-        login_host: "{{ db_host }}"
+        login_host: localhost
         login_user: "{{ db_user }}"
         login_password: "{{ db_password }}"
         port: "{{ db_port }}"
+      delegate_to: "{{ groups['db'][0] }}"
 
     - name: Reset pg_stat_bgwriter counters
       community.postgresql.postgresql_query:
         db: "{{ db_name }}"
         query: "SELECT pg_stat_reset_shared('bgwriter');"
-        login_host: "{{ db_host }}"
+        login_host: localhost
         login_user: "{{ db_user }}"
         login_password: "{{ db_password }}"
         port: "{{ db_port }}"
+      delegate_to: "{{ groups['db'][0] }}"
 
     # ── Deploy and start OJP JVM metrics side-car on each proxy node ──────────
 
