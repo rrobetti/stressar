@@ -1,7 +1,7 @@
 ---
 # ansible/vars/dryrun.yml
 #
-# Minimal-hardware override for 7 × 1 vCPU / 1 GB RAM nodes.
+# Minimal-hardware override for 5 × 1 vCPU / 1 GB RAM nodes (1 control + 1 DB + 3 proxy).
 # Use this to validate the scripts cheaply before provisioning full hardware.
 #
 # Usage (add to any playbook invocation):
