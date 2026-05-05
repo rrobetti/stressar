@@ -20,10 +20,11 @@
   become: true
 
 - name: Download PGDG signing key
-  ansible.builtin.get_url:
-    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
-    dest: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
-    mode: "0644"
+  ansible.builtin.shell:
+    cmd: >
+      curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc
+      -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+    creates: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
   become: true
 
 - name: Add PGDG apt repository
