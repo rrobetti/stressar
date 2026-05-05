@@ -2,6 +2,17 @@
 # /etc/postgresql/{{ pg_version }}/main/postgresql.conf
 # Deployed by Ansible — OJP benchmark tuning
 
+# ── Debian/Ubuntu required paths ─────────────────────────────────────────────
+data_directory           = '/var/lib/postgresql/{{ pg_version }}/main'
+hba_file                 = '/etc/postgresql/{{ pg_version }}/main/pg_hba.conf'
+ident_file               = '/etc/postgresql/{{ pg_version }}/main/pg_ident.conf'
+external_pid_file        = '/var/run/postgresql/{{ pg_version }}-main.pid'
+
+# ── SSL ──────────────────────────────────────────────────────────────────────
+ssl                      = on
+ssl_cert_file            = '/etc/ssl/certs/ssl-cert-snakeoil.pem'
+ssl_key_file             = '/etc/ssl/private/ssl-cert-snakeoil.key'
+
 # ── Connections ──────────────────────────────────────────────────────────────
 listen_addresses         = '*'
 max_connections          = {{ pg_max_connections }}
