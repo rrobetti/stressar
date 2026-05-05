@@ -79,23 +79,19 @@
     # ── Reset PostgreSQL statistics (clean baseline) ──────────────────────────
 
     - name: Reset pg_stat_database counters
+      become: true
+      become_user: postgres
       community.postgresql.postgresql_query:
         db: "{{ db_name }}"
         query: "SELECT pg_stat_reset();"
-        login_host: localhost
-        login_user: "{{ db_user }}"
-        login_password: "{{ db_password }}"
-        port: "{{ db_port }}"
       delegate_to: "{{ groups['db'][0] }}"
 
     - name: Reset pg_stat_bgwriter counters
+      become: true
+      become_user: postgres
       community.postgresql.postgresql_query:
         db: "{{ db_name }}"
         query: "SELECT pg_stat_reset_shared('bgwriter');"
-        login_host: localhost
-        login_user: "{{ db_user }}"
-        login_password: "{{ db_password }}"
-        port: "{{ db_port }}"
       delegate_to: "{{ groups['db'][0] }}"
 
     # ── Deploy and start OJP JVM metrics side-car on each proxy node ──────────
