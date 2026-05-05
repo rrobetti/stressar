@@ -52,7 +52,7 @@
 
 - name: Start and enable PostgreSQL service
   ansible.builtin.systemd:
-    name: "postgresql@{{ pg_version }}-main"
+    name: "{{ pg_service_name }}"
     state: started
     enabled: true
   become: true
@@ -94,7 +94,7 @@
         argv:
           - journalctl
           - -u
-          - "postgresql@{{ pg_version }}-main"
+          - "{{ pg_service_name }}"
           - --no-pager
           - -n
           - "80"

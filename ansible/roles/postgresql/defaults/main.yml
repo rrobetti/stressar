@@ -3,6 +3,7 @@
 # Role-level defaults; override via group_vars/db.yml or host_vars.
 
 pg_version: 16
+pg_service_name: "postgresql@{{ pg_version }}-main"
 pg_shared_buffers:           "256MB"
 pg_effective_cache_size:     "768MB"
 pg_maintenance_work_mem:     "128MB"
