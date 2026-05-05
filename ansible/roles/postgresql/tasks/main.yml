@@ -8,6 +8,7 @@
       - curl
       - ca-certificates
       - gnupg
+      - ssl-cert
     state: present
     update_cache: true
   become: true
@@ -51,7 +52,7 @@
 
 - name: Start and enable PostgreSQL service
   ansible.builtin.systemd:
-    name: postgresql
+    name: "{{ pg_service_name }}"
     state: started
     enabled: true
   become: true
@@ -76,14 +77,6 @@
   become: true
   notify: reload postgresql
 
-- name: Ensure PostgreSQL is listening on all interfaces
-  ansible.builtin.lineinfile:
-    path: "/etc/postgresql/{{ pg_version }}/main/postgresql.conf"
-    regexp: "^#?listen_addresses\\s*="
-    line: "listen_addresses = '*'"
-  become: true
-  notify: restart postgresql
-
 - name: Flush handlers to apply configuration before creating DB objects
   ansible.builtin.meta: flush_handlers
 
@@ -96,22 +89,38 @@
         delay: 2
         timeout: 60
   rescue:
-    - name: Dump PostgreSQL journal on socket timeout
+    - name: Dump PostgreSQL cluster journal on socket timeout
       ansible.builtin.command:
         argv:
           - journalctl
           - -u
-          - postgresql
+          - "{{ pg_service_name }}"
           - --no-pager
           - -n
-          - "50"
+          - "80"
       become: true
       register: _pg_journal
       changed_when: false
 
-    - name: Show PostgreSQL journal
+    - name: Show PostgreSQL cluster journal
       ansible.builtin.debug:
         var: _pg_journal.stdout_lines
+
+    - name: Dump PostgreSQL log file on socket timeout
+      ansible.builtin.command:
+        argv:
+          - tail
+          - -n
+          - "80"
+          - "/var/log/postgresql/postgresql-{{ pg_version }}-main.log"
+      become: true
+      register: _pg_logfile
+      changed_when: false
+      failed_when: false
+
+    - name: Show PostgreSQL log file
+      ansible.builtin.debug:
+        var: _pg_logfile.stdout_lines
 
     - name: Fail with clear message
       ansible.builtin.fail:
