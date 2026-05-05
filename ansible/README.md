@@ -7,7 +7,7 @@ collecting results, and generating a report — all from a single control node.
 
 | Step | Playbook / Script | What happens |
 |------|------------------|--------------|
-| 1 | `setup.yml` | Installs PostgreSQL 16 on the DB node and tunes it for benchmarking. Installs Java 21 + OJP Server on each proxy node (as a `systemd` service). Builds the `bench` tool on the control node. Initialises the benchmark database. |
+| 1 | `setup.yml` | Installs PostgreSQL 16 on the DB node and tunes it for benchmarking. Installs Java 24 + OJP Server on each proxy node (as a `systemd` service). Builds the `bench` tool on the control node. Initialises the benchmark database. |
 | 2 | `run_benchmarks.yml` | Renders a parameterised bench config, runs a warmup pass, then launches `N` bench JVM replicas in parallel. Waits for all replicas, then generates a Markdown report. |
 | 3 | `teardown.yml` | Stops OJP Server on all proxy nodes and resets PostgreSQL statistics for the next run. |
 | — | `scripts/generate_report.sh` | Pure shell + `jq` script called automatically by `run_benchmarks.yml`; can also be run standalone. |
@@ -126,7 +126,7 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \
 | Tag | What runs |
 |-----|-----------|
 | `db` | PostgreSQL install + configure |
-| `proxy` | Java 21 + OJP Server install |
+| `proxy` | Java 24 + OJP Server install |
 | `bench` | Build bench tool |
 | `init-db` | Seed benchmark database |
 
@@ -168,7 +168,7 @@ ansible/
 │   │   └── templates/
 │   │       ├── postgresql.conf.j2
 │   │       └── pg_hba.conf.j2
-│   ├── ojp_proxy/                     # Install Java 21 + OJP Server (systemd)
+│   ├── ojp_proxy/                     # Install Java 24 + OJP Server (systemd)
 │   │   ├── defaults/main.yml
 │   │   ├── handlers/main.yml
 │   │   ├── tasks/main.yml

@@ -1,8 +1,8 @@
 ---
 # ansible/roles/ojp_proxy/tasks/main.yml
-# Installs Java 21 and the OJP Server on each proxy node.
+# Installs Java 24 and the OJP Server on each proxy node.
 
-# ── Java 21 (Temurin) ─────────────────────────────────────────────────────────
+# ── Java 24 (Temurin) ─────────────────────────────────────────────────────────
 
 - name: Install prerequisite packages for Adoptium repository
   ansible.builtin.apt:

@@ -4,4 +4,4 @@
 ojp_install_dir:  "/opt/ojp"
 ojp_server_port:  1059
 ojp_log_file:     "/var/log/ojp-server.log"
-java_package:     "temurin-21-jdk"
+java_package:     "temurin-24-jdk"
