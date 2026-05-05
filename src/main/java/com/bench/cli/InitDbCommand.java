@@ -81,6 +81,16 @@ public class InitDbCommand implements Callable<Integer> {
             }
             conn.commit();
             
+            // VACUUM ANALYZE must run outside a transaction block
+            logger.info("Running VACUUM ANALYZE to update planner statistics...");
+            conn.setAutoCommit(true);
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute("VACUUM ANALYZE accounts");
+                stmt.execute("VACUUM ANALYZE items");
+                stmt.execute("VACUUM ANALYZE orders");
+                stmt.execute("VACUUM ANALYZE order_lines");
+            }
+            
             logger.info("Database initialization complete!");
             return 0;
             

@@ -19,7 +19,7 @@ db_port:     5432
 bench_num_accounts: 1000000
 bench_num_items:    100000
 bench_num_orders:   10000000
-bench_seed:         42
+bench_seed:         0.42
 
 # ── Paths on the control node ─────────────────────────────────────────────────
 # playbook_dir resolves to ansible/playbooks/ — go two levels up to reach the repo root.

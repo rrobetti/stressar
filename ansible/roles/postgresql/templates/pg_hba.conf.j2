@@ -11,5 +11,5 @@ local   all             postgres                        peer
 local   all             all                             md5
 
 # Benchmark user — allow from any host (tighten to a CIDR in production)
-host    {{ db_name }}   {{ db_user }}   0.0.0.0/0       md5
-host    {{ db_name }}   {{ db_user }}   ::/0            md5
+host    {{ db_name }}   {{ db_user }}   0.0.0.0/0       scram-sha-256
+host    {{ db_name }}   {{ db_user }}   ::/0            scram-sha-256
