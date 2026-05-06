@@ -1,0 +1,37 @@
+---
+# ansible/templates/pgbouncer-benchmark.yaml.j2
+#
+# Jinja2 template for a PgBouncer benchmark run (SUT-C).
+# Rendered by run_benchmarks_pgbouncer.yml into /tmp/pgbouncer-benchmark-{{ run_name }}.yaml
+# before each bench invocation.
+
+database:
+  # Points to the HAProxy load balancer, which distributes across 3 × PgBouncer instances.
+  jdbcUrl: "jdbc:postgresql://{{ pgbouncer_lb_host }}:{{ pgbouncer_port }}/{{ db_name }}"
+  username: "{{ db_user }}"
+  password: "{{ db_password }}"
+
+connectionMode: PGBOUNCER
+
+# Use minimal client-side connections; PgBouncer holds the real backend pool.
+poolSize: {{ pgbouncer_pool_size }}
+replicas: {{ bench_replica_count }}
+
+workload:
+  type: {{ bench_workload_type }}
+  openLoop: true
+  targetRps: {{ bench_target_rps }}
+  warmupSeconds: {{ bench_warmup_seconds }}
+  durationSeconds: {{ bench_duration_seconds }}
+  cooldownSeconds: {{ bench_cooldown_seconds }}
+
+numAccounts: {{ bench_num_accounts }}
+numItems:    {{ bench_num_items }}
+numOrders:   {{ bench_num_orders }}
+
+metricsIntervalSeconds: 1
+outputDir: "{{ bench_results_dir }}/{{ run_name }}"
+
+sweepIncrementPercent: 15.0
+sloP95Ms: 50
+errorRateThreshold: 0.001

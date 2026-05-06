@@ -18,6 +18,10 @@ db_port:     5432
 # ── OJP proxy port (must match ojp_server_port in group_vars/proxy.yml) ──────
 ojp_server_port:  1059
 
+# ── pgBouncer settings (SUT-C) ────────────────────────────────────────────────
+pgbouncer_port:      6432
+pgbouncer_pool_size: 2
+
 # ── Benchmark run defaults ────────────────────────────────────────────────────
 bench_replica_count:        4
 bench_target_rps:           500
