@@ -14,10 +14,29 @@
     update_cache: true
   become: true
 
-- name: Add HAProxy 2.8 PPA (Ubuntu/Debian)
-  ansible.builtin.apt_repository:
-    repo: "ppa:vbernat/haproxy-2.8"
-    state: present
+- name: Add HAProxy 2.8 signing key
+  ansible.builtin.shell: |
+    curl -fsSL https://haproxy.debian.net/bernat.debian.org.gpg | \
+      gpg --dearmor -o /usr/share/keyrings/haproxy.gpg
+  args:
+    creates: /usr/share/keyrings/haproxy.gpg
+  become: true
+  when: ansible_distribution == "Ubuntu"
+
+- name: Add HAProxy 2.8 apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/haproxy.list
+    content: |
+      deb [signed-by=/usr/share/keyrings/haproxy.gpg] https://haproxy.debian.net {{ ansible_distribution_release }}-backports-2.8 main
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: ansible_distribution == "Ubuntu"
+
+- name: Update apt cache after adding HAProxy repository
+  ansible.builtin.apt:
+    update_cache: true
   become: true
   when: ansible_distribution == "Ubuntu"
 
