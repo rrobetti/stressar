@@ -1,0 +1,24 @@
+{{ ansible_managed }}
+# /etc/haproxy/haproxy.cfg — managed by Ansible
+
+global
+    maxconn {{ haproxy_maxconn }}
+    log /dev/log local0
+
+defaults
+    mode    tcp
+    log     global
+    option  tcplog
+    timeout connect {{ haproxy_timeout_connect }}
+    timeout client  {{ haproxy_timeout_client }}
+    timeout server  {{ haproxy_timeout_server }}
+
+frontend pgbouncer_front
+    bind *:{{ haproxy_frontend_port }}
+    default_backend pgbouncer_back
+
+backend pgbouncer_back
+    balance leastconn
+{% for host in groups['proxy'] %}
+    server {{ host }} {{ hostvars[host]['ansible_host'] }}:{{ pgbouncer_port }} check inter {{ haproxy_check_inter }}
+{% endfor %}

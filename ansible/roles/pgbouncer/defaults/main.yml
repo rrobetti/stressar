@@ -1,0 +1,12 @@
+---
+# ansible/roles/pgbouncer/defaults/main.yml
+
+pgbouncer_config_dir:    "/etc/pgbouncer"
+pgbouncer_config_file:   "/etc/pgbouncer/pgbouncer.ini"
+pgbouncer_userlist_file: "/etc/pgbouncer/userlist.txt"
+pgbouncer_port:          6432
+pgbouncer_pool_size:     16
+pgbouncer_max_client_conn: 2000
+pgbouncer_reserve_pool_size: 4
+pgbouncer_reserve_pool_timeout: 5
+pgbouncer_pool_mode:     "transaction"

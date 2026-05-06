@@ -1,0 +1,4 @@
+{{ ansible_managed }}
+; /etc/pgbouncer/userlist.txt — managed by Ansible
+; Plain-text password entry (sufficient for benchmarking; use md5 hash in production).
+"{{ db_user }}" "{{ db_password }}"

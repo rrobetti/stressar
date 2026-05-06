@@ -1,0 +1,13 @@
+---
+# ansible/roles/pgbouncer/handlers/main.yml
+
+- name: reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+
+- name: restart pgbouncer
+  ansible.builtin.systemd:
+    name: pgbouncer
+    state: restarted
+  become: true

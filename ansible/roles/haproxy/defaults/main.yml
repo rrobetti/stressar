@@ -1,0 +1,11 @@
+---
+# ansible/roles/haproxy/defaults/main.yml
+
+haproxy_config_file:  "/etc/haproxy/haproxy.cfg"
+haproxy_maxconn:      10000
+haproxy_timeout_connect: "5s"
+haproxy_timeout_client:  "300s"
+haproxy_timeout_server:  "300s"
+haproxy_check_inter:  "2s"
+# Port HAProxy listens on — must match pgbouncer_port on the proxy nodes.
+haproxy_frontend_port: "{{ pgbouncer_port }}"
