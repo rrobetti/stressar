@@ -75,7 +75,7 @@ for f in "${SUMMARY_FILES[@]}"; do
   total_error_rate=$(jq -r ".errorRate // 0" "${f}" | awk -v acc="${total_error_rate}" '{print acc + $1}')
   total_total_requests=$(jq -r ".totalRequests // 0"  "${f}" | awk -v acc="${total_total_requests}"  '{print acc + $1}')
   total_failed_requests=$(jq -r ".failedRequests // 0" "${f}" | awk -v acc="${total_failed_requests}" '{print acc + $1}')
-  (( instance_count++ ))
+  (( ++instance_count ))
 done
 
 avg() { awk "BEGIN {printf \"%.2f\", $1 / $2}"; }
@@ -101,12 +101,12 @@ for f in "${SUMMARY_FILES[@]}"; do
   v=$(jq -r ".appCpuMedian // empty" "${f}")
   if [[ -n "${v}" ]]; then
     cpu_sum=$(awk "BEGIN {print ${cpu_sum} + ${v}}")
-    (( cpu_count++ ))
+    (( ++cpu_count ))
   fi
   v=$(jq -r ".gcPauseMsTotal // empty" "${f}")
   if [[ -n "${v}" ]]; then
     gc_sum=$(awk "BEGIN {print ${gc_sum} + ${v}}")
-    (( gc_count++ ))
+    (( ++gc_count ))
   fi
 done
 

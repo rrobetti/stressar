@@ -38,7 +38,7 @@
       {{
         groups['proxy']
           | map('extract', hostvars, 'ansible_host')
-          | map('regex_replace', '^(.*)$', '\\1:' + (ojp_server_port | string))
+          | map('regex_replace', '$', ':' + (ojp_server_port | string))
           | list
       }}
     bench_config_file: "/tmp/ojp-benchmark-{{ run_name }}.yaml"
@@ -79,22 +79,20 @@
     # ── Reset PostgreSQL statistics (clean baseline) ──────────────────────────
 
     - name: Reset pg_stat_database counters
+      become: true
+      become_user: postgres
       community.postgresql.postgresql_query:
         db: "{{ db_name }}"
         query: "SELECT pg_stat_reset();"
-        login_host: "{{ db_host }}"
-        login_user: "{{ db_user }}"
-        login_password: "{{ db_password }}"
-        port: "{{ db_port }}"
+      delegate_to: "{{ groups['db'][0] }}"
 
     - name: Reset pg_stat_bgwriter counters
+      become: true
+      become_user: postgres
       community.postgresql.postgresql_query:
         db: "{{ db_name }}"
         query: "SELECT pg_stat_reset_shared('bgwriter');"
-        login_host: "{{ db_host }}"
-        login_user: "{{ db_user }}"
-        login_password: "{{ db_password }}"
-        port: "{{ db_port }}"
+      delegate_to: "{{ groups['db'][0] }}"
 
     # ── Deploy and start OJP JVM metrics side-car on each proxy node ──────────
 
@@ -158,7 +156,7 @@
         set -euo pipefail
         mkdir -p "{{ bench_results_dir }}/{{ run_name }}"
         pids=()
-        for ID in $(seq 0 $(( {{ bench_replica_count }} - 1 )) ); do
+        for ID in $(seq 0 {{ bench_replica_count | int - 1 }}); do
           "{{ bench_binary }}" run \
             --config     "{{ bench_config_file }}" \
             --output     "{{ bench_results_dir }}/{{ run_name }}/replica-${ID}/" \
@@ -167,7 +165,7 @@
           pids+=($!)
           echo "Started replica ${ID} (PID ${pids[-1]})"
         done
-        echo "Waiting for all ${#pids[@]} replicas..."
+        echo "Waiting for all {{ bench_replica_count }} replicas..."
         failed=0
         for pid in "${pids[@]}"; do
           if ! wait "$pid"; then
@@ -180,6 +178,8 @@
           exit 1
         fi
         echo "All replicas finished successfully"
+      args:
+        executable: /bin/bash
       register: bench_run_out
       changed_when: true
       # Allow up to 45 minutes for a full run (warmup + duration + cooldown).
@@ -211,6 +211,7 @@
         dest: "{{ local_jvm_csv_dir }}/{{ item }}_jvm_metrics.csv"
         flat: true
         fail_on_missing: false
+        validate_checksum: false
       delegate_to: "{{ item }}"
       loop: "{{ groups['proxy'] }}"
 
@@ -237,6 +238,7 @@
         dest: "{{ local_pg_csv }}"
         flat: true
         fail_on_missing: false
+        validate_checksum: false
       delegate_to: "{{ groups['db'][0] }}"
 
     # ── Report ────────────────────────────────────────────────────────────────
