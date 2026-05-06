@@ -5,11 +5,13 @@
 #   1. Renders a bench config from the Jinja2 template.
 #   2. Resets PostgreSQL statistics so the run starts from a clean baseline.
 #   3. Deploys and starts side-car metric collectors on OJP proxy + DB nodes.
-#   4. Runs a warmup pass (single instance).
-#   5. Launches {{ bench_replica_count }} bench JVMs in parallel.
-#   6. Waits for all replicas to finish.
-#   7. Stops side-car collectors and fetches their CSV files to the control node.
-#   8. Runs generate_report.sh to produce a Markdown report.
+#   4. Pre-flight: ensures the ojp-server systemd service is running on every
+#      proxy node and that port {{ ojp_server_port }} is open before continuing.
+#   5. Runs a warmup pass (single instance).
+#   6. Launches {{ bench_replica_count }} bench JVMs in parallel.
+#   7. Waits for all replicas to finish.
+#   8. Stops side-car collectors and fetches their CSV files to the control node.
+#   9. Runs generate_report.sh to produce a Markdown report.
 #
 # Side-car scripts:
 #   ansible/scripts/collect_jvm_metrics.sh  — runs on each proxy node via jstat;
@@ -142,6 +144,28 @@
       become_user: postgres
       delegate_to: "{{ groups['db'][0] }}"
       changed_when: true
+
+    # ── Pre-flight: ensure OJP proxy service is up on every proxy node ───────
+
+    - name: Ensure ojp-server service is started on proxy nodes
+      ansible.builtin.systemd:
+        name: ojp-server
+        state: started
+        enabled: true
+      become: true
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['proxy'] }}"
+
+    - name: Wait for OJP Server port {{ ojp_server_port }} on every proxy node
+      ansible.builtin.wait_for:
+        host: "{{ hostvars[item]['ansible_host'] }}"
+        port: "{{ ojp_server_port }}"
+        timeout: 30
+        msg: >-
+          OJP Server on {{ item }} ({{ hostvars[item]['ansible_host'] }}) is not
+          listening on port {{ ojp_server_port }} after 30 s — re-run
+          setup.yml --tags proxy to re-install it.
+      loop: "{{ groups['proxy'] }}"
 
     # ── Warmup ───────────────────────────────────────────────────────────────
 
