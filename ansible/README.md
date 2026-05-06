@@ -17,8 +17,8 @@ Two benchmark scenarios are supported:
 | Step | Playbook / Script | What happens |
 |------|------------------|--------------|
 | 1 | `setup.yml` | Installs PostgreSQL 16 on the DB node and tunes it for benchmarking. Installs Java 24 + OJP Server on each proxy node (SUT-B). Installs pgBouncer on each proxy node and HAProxy on the LB node (SUT-C, via `--tags pgbouncer,haproxy`). Builds the `bench` tool on the control node. Initialises the benchmark database. |
-| 2a | `run_benchmarks.yml` | **OJP (SUT-B):** Renders a parameterised bench config, runs a warmup pass, then launches `N` bench JVM replicas in parallel. Collects OJP JVM metrics and PostgreSQL metrics. Generates a Markdown report. |
-| 2b | `run_benchmarks_pgbouncer.yml` | **pgBouncer (SUT-C):** Same as above but connects through HAProxy → pgBouncer instead of OJP. Collects PostgreSQL metrics only (pgBouncer has no JVM). |
+| 2a | `run_benchmarks.yml` | **OJP (SUT-B):** Pre-flight verifies `ojp-server` is active on every proxy node (fails fast if not). Renders a parameterised bench config, runs a warmup pass, then launches `N` bench JVM replicas in parallel. Collects OJP JVM metrics and PostgreSQL metrics. Generates a Markdown report. |
+| 2b | `run_benchmarks_pgbouncer.yml` | **pgBouncer (SUT-C):** Pre-flight verifies `pgbouncer` is active on every proxy node and `haproxy` is active on the lb node (fails fast if not). Same benchmark flow as SUT-B but connects through HAProxy → pgBouncer. Collects PostgreSQL metrics only (pgBouncer has no JVM). |
 | 3 | `teardown.yml` | Stops OJP Server, pgBouncer, and HAProxy on their respective nodes and resets PostgreSQL statistics for the next run. |
 | — | `scripts/generate_report.sh` | Pure shell + `jq` script called automatically by both run playbooks; can also be run standalone. |
 
