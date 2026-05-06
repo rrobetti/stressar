@@ -31,13 +31,18 @@ public class PgbouncerProvider implements ConnectionProvider {
         config.setConnectionTimeout(30000);
         config.setIdleTimeout(600000);
         config.setMaxLifetime(1800000);
-        
+
         // Performance settings
         config.setAutoCommit(false);
-        config.addDataSourceProperty("cachePrepStmts", "true");
-        config.addDataSourceProperty("prepStmtCacheSize", "250");
-        config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
-        config.addDataSourceProperty("useServerPrepStmts", "true");
+        // prepareThreshold=0 disables server-side prepared statements.
+        // Server-side prepared statements are session-scoped in PostgreSQL; in
+        // pgBouncer transaction pooling mode each transaction may be routed to a
+        // different backend server connection, so a statement prepared on one
+        // server does not exist on another. Leaving the PostgreSQL JDBC default
+        // (prepareThreshold=5) causes "prepared statement does not exist" errors
+        // after the 5th execution of every unique SQL, producing transaction
+        // rollbacks throughout the benchmark run.
+        config.addDataSourceProperty("prepareThreshold", "0");
         
         // Add any additional properties
         dbConfig.getProperties().forEach((key, value) -> 

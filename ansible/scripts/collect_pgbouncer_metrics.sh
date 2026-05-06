@@ -6,26 +6,27 @@
 # Stops when killed.
 #
 # Usage:
-#   collect_pgbouncer_metrics.sh <output_csv> [admin_host] [admin_port] [interval_seconds] [admin_user]
+#   collect_pgbouncer_metrics.sh <output_csv> [socket_dir] [admin_port] [interval_seconds] [admin_user]
 #
 # Defaults:
-#   admin_host      127.0.0.1
+#   socket_dir      /tmp           (pgBouncer unix socket directory)
 #   admin_port      6432
 #   interval_seconds  5
 #   admin_user      postgres
 #
-# Requirements: psql (postgresql-client), bash >= 4.
+# Authentication:
+#   Connects via Unix socket to the pgBouncer admin console.  When the script
+#   runs as the postgres OS user (become_user: postgres in Ansible), pgBouncer
+#   grants access without a password challenge because the connecting OS user
+#   is the pgBouncer process owner.  This works regardless of auth_type and
+#   requires no password in userlist.txt.
 #
-# pgBouncer admin access notes:
-#   By default pgBouncer allows only the OS user that owns the pgBouncer process
-#   (typically 'postgres' on Ubuntu) to connect to the 'pgbouncer' admin database.
-#   Run this script as the 'postgres' OS user (become_user: postgres in Ansible)
-#   or add the target user to admin_users/stats_users in pgbouncer.ini.
+# Requirements: psql (postgresql-client), bash >= 4.
 
 set -uo pipefail
 
 OUTPUT="${1:-/tmp/pgbouncer_admin_metrics.csv}"
-ADMIN_HOST="${2:-127.0.0.1}"
+SOCKET_DIR="${2:-/tmp}"
 ADMIN_PORT="${3:-6432}"
 INTERVAL="${4:-5}"
 ADMIN_USER="${5:-postgres}"
@@ -58,12 +59,13 @@ printf 'timestamp,database,total_xact_count,total_query_count,avg_xact_time_us,a
   > "${OUTPUT}"
 
 # ── psql helper ───────────────────────────────────────────────────────────────
-# PGPASSWORD="" matches the empty-password entry for "postgres" in userlist.txt.
-# The -w flag suppresses any interactive password prompt so the script can run
-# unattended as a background process.
+# Connect via Unix socket (-h SOCKET_DIR resolves to SOCKET_DIR/.s.PGSQL.PORT).
+# When run as the postgres OS user (the pgBouncer process owner), pgBouncer
+# grants admin console access without a password challenge regardless of
+# auth_type, so no PGPASSWORD is needed.
 
 pgb_query() {
-  PGPASSWORD="" psql -h "${ADMIN_HOST}" -p "${ADMIN_PORT}" -U "${ADMIN_USER}" pgbouncer \
+  psql -h "${SOCKET_DIR}" -p "${ADMIN_PORT}" -U "${ADMIN_USER}" pgbouncer \
     -w -t -A -F',' -c "$1" 2>/dev/null || true
 }
 
