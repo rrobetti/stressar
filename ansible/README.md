@@ -112,8 +112,8 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml --tags db,
 Automated Ansible roles for pgBouncer and HAProxy are not included.
 Follow the manual installation steps in the deployment guide:
 
-- **HAProxy** on the LB node → [docs/DEPLOYMENT_GUIDE.md § 3.3](../docs/DEPLOYMENT_GUIDE.md#33-install-haproxy-on-lb-t3-only)
-- **pgBouncer** on each proxy node → [docs/DEPLOYMENT_GUIDE.md § 5](../docs/DEPLOYMENT_GUIDE.md#5-pgbouncer-configuration)
+- **HAProxy** on the LB node → [docs/BENCHMARKING_GUIDE.md § 3.3](../docs/BENCHMARKING_GUIDE.md#33-install-haproxy-on-lb-t3-only)
+- **pgBouncer** on each proxy node → [docs/BENCHMARKING_GUIDE.md § 5](../docs/BENCHMARKING_GUIDE.md#5-pgbouncer-configuration)
 - Full installation reference → [docs/install/PGBOUNCER.md](../docs/install/PGBOUNCER.md)
 
 ### 4. Run the benchmark

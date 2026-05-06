@@ -6,8 +6,8 @@
 # before each bench invocation.
 
 database:
-  # Points to the HAProxy load balancer, which distributes across 3 × PgBouncer instances.
-  jdbcUrl: "jdbc:postgresql://{{ pgbouncer_lb_host }}:{{ pgbouncer_port }}/{{ db_name }}"
+  # Points to the HAProxy load balancer, which distributes across 3 × pgBouncer instances.
+  jdbcUrl: "jdbc:postgresql://{{ lb_host }}:{{ pgbouncer_port }}/{{ db_name }}"
   username: "{{ db_user }}"
   password: "{{ db_password }}"
 

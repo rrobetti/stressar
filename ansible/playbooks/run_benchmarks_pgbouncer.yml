@@ -35,7 +35,7 @@
     run_name:   "pgbouncer-run-{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
     db_host:    "{{ hostvars[groups['db'][0]]['ansible_host'] }}"
     # Traffic is sent through the HAProxy load balancer, which distributes across pgBouncer nodes.
-    pgbouncer_lb_host: "{{ hostvars[groups['lb'][0]]['ansible_host'] }}"
+    lb_host: "{{ hostvars[groups['lb'][0]]['ansible_host'] }}"
     bench_config_file: "/tmp/pgbouncer-benchmark-{{ run_name }}.yaml"
     # Remote path for pg side-car output file (written on the DB node)
     remote_pg_csv:   "/tmp/pg_metrics_{{ run_name }}.csv"
