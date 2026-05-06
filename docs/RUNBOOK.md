@@ -362,7 +362,7 @@ Uses PgBouncer for connection pooling. Client uses minimal connections.
 
 > **pgBouncer runs on the same PROXY-1/2/3 nodes as OJP.** No additional machines are needed for
 > the SUT-C scenario. To switch from OJP to pgBouncer (or back), stop the active service and start
-> the other — see [docs/BENCHMARKING_GUIDE.md § Switching](BENCHMARKING_GUIDE.md#switching-between-proxy-services)
+> the other — see [Switching between proxy services](BENCHMARKING_GUIDE.md#switching-between-proxy-services)
 > for the step-by-step procedure.
 
 **Configuration:**

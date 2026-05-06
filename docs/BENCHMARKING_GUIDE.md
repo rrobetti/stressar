@@ -331,8 +331,8 @@ sudo systemctl reload haproxy
 
 > **Note:** pgBouncer is installed on the **same PROXY-1/2/3 machines** used for OJP (SUT-B). No
 > additional nodes are required for SUT-C. Stop the OJP service before starting pgBouncer on those
-> nodes (see [§ 6.1 below](#61-ojp-server-startup-each-of-proxy-1-proxy-2-proxy-3) for OJP startup,
-> and [Switching between proxy services](#switching-between-proxy-services) for the switch procedure).
+> nodes — see [Switching between proxy services](#switching-between-proxy-services) for the
+> step-by-step procedure.
 
 ```bash
 sudo apt-get install -y pgbouncer
