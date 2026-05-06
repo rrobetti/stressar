@@ -20,7 +20,7 @@ ojp_server_port:  1059
 
 # ── pgBouncer settings (SUT-C) ────────────────────────────────────────────────
 # pool_size per pgBouncer instance.  The default topology has 3 proxy nodes,
-# so total backend connections = pgbouncer_pool_size × 3 ≈ bench_db_connection_budget (19).
+# so total backend connections = pgbouncer_pool_size × 3 = bench_db_connection_budget (18).
 pgbouncer_port:      6432
 pgbouncer_pool_size: 6
 
@@ -32,7 +32,7 @@ bench_duration_seconds:     300
 bench_cooldown_seconds:     30
 bench_workload_type:        "W2_MIXED"
 bench_connection_mode:      "OJP"
-bench_db_connection_budget: 19
+bench_db_connection_budget: 18
 
 # ── Benchmark dataset size (must match init-db call) ─────────────────────────
 bench_num_accounts: 1000000
