@@ -329,6 +329,11 @@ sudo systemctl reload haproxy
 
 > Full installation and configuration instructions: [install/PGBOUNCER.md](install/PGBOUNCER.md)
 
+> **Note:** pgBouncer is installed on the **same PROXY-1/2/3 machines** used for OJP (SUT-B). No
+> additional nodes are required for SUT-C. Stop the OJP service before starting pgBouncer on those
+> nodes (see [§ 6.1 below](#61-ojp-server-startup-each-of-proxy-1-proxy-2-proxy-3) for OJP startup,
+> and [Switching between proxy services](#switching-between-proxy-services) for the switch procedure).
+
 ```bash
 sudo apt-get install -y pgbouncer
 pgbouncer --version  # Must report 1.21 or later
@@ -536,6 +541,60 @@ jdbc:ojp[<PROXY1_IP>:1059,<PROXY2_IP>:1059,<PROXY3_IP>:1059]_postgresql://<DB_IP
 
 Consult the OJP JDBC driver documentation at [install/OJP_JDBC_DRIVER.md](install/OJP_JDBC_DRIVER.md)
 for the exact URL syntax and driver properties.
+
+---
+
+## Switching between proxy services
+
+PROXY-1, PROXY-2, and PROXY-3 are **shared by both SUT-B (OJP) and SUT-C (pgBouncer)**. To run
+a different SUT, stop the active proxy service and start the other. The machines themselves do not
+need to be reprovisioned.
+
+### Stop OJP → Start pgBouncer (switching to SUT-C)
+
+Run on each of PROXY-1, PROXY-2, PROXY-3 (or use Ansible — see
+[ansible/README.md § Switching](../ansible/README.md#switching-between-ojp-sut-b-and-pgbouncer-sut-c)):
+
+```bash
+# 1. Stop OJP Server
+sudo systemctl stop ojp-server
+sudo systemctl disable ojp-server
+
+# 2. Verify OJP port is free
+ss -tlnp | grep 1059   # Should show nothing
+
+# 3. Start pgBouncer (must already be installed and configured — see § 5)
+sudo systemctl start pgbouncer
+sudo systemctl enable pgbouncer
+
+# 4. Verify pgBouncer is listening
+ss -tlnp | grep 6432   # Should show pgbouncer
+psql -h 127.0.0.1 -p 6432 -U benchuser -d benchdb -c "SELECT 1;"
+```
+
+### Stop pgBouncer → Start OJP (switching to SUT-B)
+
+```bash
+# 1. Stop pgBouncer
+sudo systemctl stop pgbouncer
+
+# 2. Start OJP Server
+sudo systemctl start ojp-server
+sudo systemctl enable ojp-server
+
+# 3. Verify OJP is listening
+ss -tlnp | grep 1059   # Should show ojp-server
+```
+
+> **Always reset PostgreSQL statistics** between scenario runs to prevent metrics from one SUT
+> from contaminating the next:
+>
+> ```bash
+> psql -h <DB_IP> -U benchuser -d benchdb <<'EOF'
+> SELECT pg_stat_statements_reset();
+> SELECT pg_stat_reset();
+> EOF
+> ```
 
 ---
 

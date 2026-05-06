@@ -27,7 +27,15 @@ all:
           # ansible_user: ec2-user   # uncomment to override per host
 
     # ─────────────────────────────────────────────────────────────
-    # OJP proxy nodes — three hosts
+    # Proxy nodes — three hosts (shared by BOTH scenarios)
+    #
+    # SUT-B (OJP):       OJP Server is installed and runs here.
+    # SUT-C (pgBouncer): pgBouncer is installed and runs here INSTEAD.
+    #
+    # The same PROXY-1/2/3 machines are reused across both scenarios.
+    # To switch from OJP to pgBouncer (or vice-versa), stop the
+    # current service on these nodes and start the other.
+    # See ansible/README.md § "Switching between OJP and pgBouncer".
     # ─────────────────────────────────────────────────────────────
     proxy:
       hosts:
