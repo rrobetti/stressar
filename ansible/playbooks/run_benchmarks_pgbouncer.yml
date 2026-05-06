@@ -1,0 +1,210 @@
+---
+# ansible/playbooks/run_benchmarks_pgbouncer.yml
+#
+# Executes the PgBouncer benchmark suite (SUT-C) from the control node:
+#   1. Renders a bench config from the pgBouncer Jinja2 template.
+#   2. Resets PostgreSQL statistics so the run starts from a clean baseline.
+#   3. Deploys and starts a side-car metric collector on the DB node.
+#   4. Runs a warmup pass (single instance).
+#   5. Launches {{ bench_replica_count }} bench JVMs in parallel.
+#   6. Waits for all replicas to finish.
+#   7. Stops the DB side-car collector and fetches its CSV to the control node.
+#   8. Runs generate_report.sh to produce a Markdown report.
+#
+# Prerequisites (infrastructure must be set up before running this playbook):
+#   - PostgreSQL installed and running  → setup.yml --tags db
+#   - pgBouncer running on proxy nodes  → docs/DEPLOYMENT_GUIDE.md § 5
+#   - HAProxy running on the lb node    → docs/DEPLOYMENT_GUIDE.md § 3.3
+#   - bench tool built                  → setup.yml --tags bench,init-db
+#   - Inventory must define lb, db, proxy, and control groups
+#
+# Usage:
+#   ansible-playbook -i inventory.yml playbooks/run_benchmarks_pgbouncer.yml
+#
+# Optional overrides:
+#   -e run_name=pgbouncer-run-1
+#   -e bench_target_rps=500
+#   -e bench_duration_seconds=300
+#   -e bench_replica_count=4
+
+- name: Run pgBouncer benchmark from control node
+  hosts: control
+  gather_facts: false
+
+  vars:
+    run_name:   "pgbouncer-run-{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
+    db_host:    "{{ hostvars[groups['db'][0]]['ansible_host'] }}"
+    # Traffic is sent through the HAProxy load balancer, which distributes across pgBouncer nodes.
+    lb_host: "{{ hostvars[groups['lb'][0]]['ansible_host'] }}"
+    bench_config_file: "/tmp/pgbouncer-benchmark-{{ run_name }}.yaml"
+    # Remote path for pg side-car output file (written on the DB node)
+    remote_pg_csv:   "/tmp/pg_metrics_{{ run_name }}.csv"
+    # Local (control-node) path where the side-car CSV is fetched to
+    local_pg_csv:    "{{ bench_results_dir }}/{{ run_name }}/node_metrics/pg_metrics.csv"
+    # Paths to side-car script on the control node (copied to the DB node)
+    pg_script_src:   "{{ bench_repo_dir }}/ansible/scripts/collect_pg_metrics.sh"
+    remote_pg_script: "/tmp/collect_pg_metrics.sh"
+
+  tasks:
+    # ── Pre-run setup ─────────────────────────────────────────────────────────
+
+    - name: Ensure results directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ bench_results_dir }}/{{ run_name }}"
+        - "{{ bench_results_dir }}/{{ run_name }}/node_metrics"
+
+    - name: Render pgBouncer benchmark configuration
+      ansible.builtin.template:
+        src: "{{ bench_repo_dir }}/ansible/templates/pgbouncer-benchmark.yaml.j2"
+        dest: "{{ bench_config_file }}"
+        mode: "0644"
+
+    - name: Show rendered config path
+      ansible.builtin.debug:
+        msg: "Benchmark config written to {{ bench_config_file }}"
+
+    # ── Reset PostgreSQL statistics (clean baseline) ──────────────────────────
+
+    - name: Reset pg_stat_database counters
+      become: true
+      become_user: postgres
+      community.postgresql.postgresql_query:
+        db: "{{ db_name }}"
+        query: "SELECT pg_stat_reset();"
+      delegate_to: "{{ groups['db'][0] }}"
+
+    - name: Reset pg_stat_bgwriter counters
+      become: true
+      become_user: postgres
+      community.postgresql.postgresql_query:
+        db: "{{ db_name }}"
+        query: "SELECT pg_stat_reset_shared('bgwriter');"
+      delegate_to: "{{ groups['db'][0] }}"
+
+    # ── Deploy and start PostgreSQL metrics side-car on the DB node ───────────
+
+    - name: Copy PostgreSQL metrics collection script to DB node
+      ansible.builtin.copy:
+        src: "{{ pg_script_src }}"
+        dest: "{{ remote_pg_script }}"
+        mode: "0755"
+      delegate_to: "{{ groups['db'][0] }}"
+
+    - name: Start PostgreSQL metrics collection on DB node
+      ansible.builtin.shell: |
+        nohup "{{ remote_pg_script }}" "{{ remote_pg_csv }}" \
+          "{{ db_name }}" postgres \
+          </dev/null >"{{ remote_pg_csv }}.log" 2>&1 &
+        echo $! > "{{ remote_pg_csv }}.pid"
+      args:
+        executable: /bin/bash
+      become: true
+      become_user: postgres
+      delegate_to: "{{ groups['db'][0] }}"
+      changed_when: true
+
+    # ── Warmup ───────────────────────────────────────────────────────────────
+
+    - name: Run warmup pass
+      ansible.builtin.command: >
+        {{ bench_binary }} warmup --config {{ bench_config_file }}
+      register: warmup_out
+      changed_when: true
+
+    - name: Print warmup output
+      ansible.builtin.debug:
+        msg: "{{ warmup_out.stdout_lines[-10:] }}"
+
+    # ── Parallel benchmark replicas ──────────────────────────────────────────
+
+    - name: Launch {{ bench_replica_count }} bench replicas in parallel
+      ansible.builtin.shell: |
+        set -euo pipefail
+        mkdir -p "{{ bench_results_dir }}/{{ run_name }}"
+        pids=()
+        for ID in $(seq 0 {{ bench_replica_count | int - 1 }}); do
+          "{{ bench_binary }}" run \
+            --config     "{{ bench_config_file }}" \
+            --output     "{{ bench_results_dir }}/{{ run_name }}/replica-${ID}/" \
+            --instance-id "${ID}" \
+            > "{{ bench_results_dir }}/{{ run_name }}/replica-${ID}.log" 2>&1 &
+          pids+=($!)
+          echo "Started replica ${ID} (PID ${pids[-1]})"
+        done
+        echo "Waiting for all {{ bench_replica_count }} replicas..."
+        failed=0
+        for pid in "${pids[@]}"; do
+          if ! wait "$pid"; then
+            echo "ERROR: replica PID ${pid} exited non-zero"
+            failed=$(( failed + 1 ))
+          fi
+        done
+        if [ "$failed" -gt 0 ]; then
+          echo "FAILED: ${failed} replica(s) did not complete successfully"
+          exit 1
+        fi
+        echo "All replicas finished successfully"
+      args:
+        executable: /bin/bash
+      register: bench_run_out
+      changed_when: true
+      # Allow up to 45 minutes for a full run (warmup + duration + cooldown).
+      timeout: 2700
+
+    - name: Print bench run output
+      ansible.builtin.debug:
+        msg: "{{ bench_run_out.stdout_lines }}"
+
+    # ── Stop PostgreSQL metrics side-car; fetch CSV ───────────────────────────
+
+    - name: Stop PostgreSQL metrics collection on DB node
+      ansible.builtin.shell: |
+        PID_FILE="{{ remote_pg_csv }}.pid"
+        if [ -f "${PID_FILE}" ]; then
+          kill "$(cat "${PID_FILE}")" 2>/dev/null || true
+          rm -f "${PID_FILE}"
+        fi
+      args:
+        executable: /bin/bash
+      become: true
+      become_user: postgres
+      delegate_to: "{{ groups['db'][0] }}"
+      changed_when: true
+      ignore_errors: true
+
+    - name: Fetch PostgreSQL metrics CSV from DB node
+      ansible.builtin.fetch:
+        src: "{{ remote_pg_csv }}"
+        dest: "{{ local_pg_csv }}"
+        flat: true
+        fail_on_missing: false
+        validate_checksum: false
+      delegate_to: "{{ groups['db'][0] }}"
+
+    # ── Report ────────────────────────────────────────────────────────────────
+
+    - name: Generate Markdown report
+      ansible.builtin.command: >
+        {{ bench_repo_dir }}/ansible/scripts/generate_report.sh
+          "{{ bench_results_dir }}/{{ run_name }}"
+          "{{ bench_results_dir }}/{{ run_name }}/report.md"
+      register: report_out
+      changed_when: true
+
+    - name: Print report location
+      ansible.builtin.debug:
+        msg: "Report written to {{ bench_results_dir }}/{{ run_name }}/report.md"
+
+    - name: Print report summary
+      ansible.builtin.command: >
+        cat "{{ bench_results_dir }}/{{ run_name }}/report.md"
+      register: report_content
+      changed_when: false
+
+    - name: Show report
+      ansible.builtin.debug:
+        msg: "{{ report_content.stdout_lines }}"

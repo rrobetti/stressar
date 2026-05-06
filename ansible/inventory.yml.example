@@ -39,6 +39,17 @@ all:
           ansible_host: <PROXY3_IP>
 
     # ─────────────────────────────────────────────────────────────
+    # Load balancer — required for SUT-C (PgBouncer) only
+    # HAProxy distributes connections across the three pgBouncer nodes.
+    # Not needed for SUT-B (OJP): the OJP JDBC driver does client-side load balancing.
+    # ─────────────────────────────────────────────────────────────
+    lb:
+      hosts:
+        lb-node:
+          ansible_host: <LB_IP>
+          # ansible_user: ec2-user   # uncomment to override per host
+
+    # ─────────────────────────────────────────────────────────────
     # Control node (your laptop) — always localhost
     # bench is built and run here; no SSH needed
     # ─────────────────────────────────────────────────────────────
