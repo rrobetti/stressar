@@ -98,7 +98,7 @@ cp ansible/inventory.yml.example ansible/inventory.yml
 ### 2. Install PostgreSQL and build the bench tool
 
 ```bash
-# Install PostgreSQL and seed the database (proxy tag installs OJP — safe to skip for SUT-C)
+# Install PostgreSQL and seed the database (ojp tag installs OJP — safe to skip for SUT-C)
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml --tags db,bench,init-db
 ```
 
@@ -191,18 +191,18 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml
 
 ### OJP dry-run (5 × 1 vCPU / 1 GB RAM)
 
-`ansible/vars/dryrun.yml` contains pre-tuned values for **5 × 1 vCPU / 1 GB RAM** machines
-(1 control + 1 DB + 3 proxy). Use it to verify the scripts end-to-end before provisioning
+`ansible/vars/dryrun-ojp.yml` contains pre-tuned values for **5 × 1 vCPU / 1 GB RAM** machines
+(1 control + 1 DB + 3 proxy). Use it to verify the OJP scripts end-to-end before provisioning
 full-size hardware. Expected run time: ≈ 5 minutes (seed + warmup + 60 s bench + report).
 
 ```bash
-# Setup
+# Setup (OJP only — skips pgBouncer and HAProxy)
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
-  -e @ansible/vars/dryrun.yml
+  --tags db,ojp,bench,init-db  -e @ansible/vars/dryrun-ojp.yml
 
 # Run (each invocation creates a new timestamped folder under results/)
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \
-  -e @ansible/vars/dryrun.yml
+  -e @ansible/vars/dryrun-ojp.yml
 ```
 
 ### pgBouncer dry-run (6 × 1 vCPU / 1 GB RAM)
@@ -267,7 +267,7 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_pgbou
 | Tag | What runs |
 |-----|-----------|
 | `db` | PostgreSQL install + configure |
-| `proxy` | Java 24 + OJP Server install (SUT-B only) |
+| `ojp` | Java 24 + OJP Server install (SUT-B only) |
 | `pgbouncer` | pgBouncer install + configure on proxy nodes (SUT-C only) |
 | `haproxy` | HAProxy install + configure on the LB node (SUT-C only) |
 | `bench` | Build bench tool |
@@ -296,7 +296,7 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml --tags pgb
 Example — re-run only the OJP proxy setup after a server replacement:
 
 ```bash
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml --tags proxy
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml --tags ojp
 ```
 
 ---
@@ -363,8 +363,8 @@ ansible/
 │   ├── run_benchmarks_pgbouncer.yml   # Execute pgBouncer benchmarks (SUT-C) + generate report
 │   └── teardown.yml                   # Stop OJP/pgBouncer/HAProxy services, reset DB stats
 ├── vars/
-│   ├── dryrun.yml                     # Minimal-hardware overrides for OJP dry run
-│   └── dryrun-pgbouncer.yml           # Minimal-hardware overrides for pgBouncer dry run
+│   ├── dryrun-ojp.yml                 # Minimal-hardware overrides for OJP (SUT-B) dry run
+│   └── dryrun-pgbouncer.yml           # Minimal-hardware overrides for pgBouncer (SUT-C) dry run
 ├── templates/
 │   ├── ojp-benchmark.yaml.j2          # Parameterised bench config template for OJP (SUT-B)
 │   └── pgbouncer-benchmark.yaml.j2    # Parameterised bench config template for pgBouncer (SUT-C)

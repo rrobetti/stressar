@@ -37,6 +37,8 @@ public class SummaryWriter {
             ((snapshot.getTimestampMs() - snapshot.getStartTimeMs()) / 1000.0);
         summary.achievedThroughputRps = snapshot.getAchievedThroughput();
         summary.errorRate = snapshot.getErrorRate();
+        summary.totalRequests = snapshot.getCompletedRequests() + snapshot.getErrors();
+        summary.failedRequests = snapshot.getErrors();
         
         // Latency metrics
         summary.latencyMs = new LatencyMetrics();
@@ -49,6 +51,7 @@ public class SummaryWriter {
         
         // Error breakdown
         summary.errorsByType = snapshot.getErrorsByType();
+        summary.firstErrorMessageByType = snapshot.getFirstErrorMessageByType();
         
         // System metrics
         if (snapshot.getAppCpuMedian() != null) {
@@ -75,8 +78,11 @@ public class SummaryWriter {
         public double attemptedRps;
         public double achievedThroughputRps;
         public double errorRate;
+        public long totalRequests;
+        public long failedRequests;
         public LatencyMetrics latencyMs;
         public Map<String, Long> errorsByType = new HashMap<>();
+        public Map<String, String> firstErrorMessageByType = new HashMap<>();
         
         // Optional system metrics
         public Double appCpuMedian;
@@ -105,6 +111,8 @@ public class SummaryWriter {
         public int instanceId;
         public int totalInstances;
         public long seed;
+        public int durationSeconds;
+        public String timestamp;
         
         // Replica barrier coordination
         public Long barrierStartEpochMillis;

@@ -303,7 +303,18 @@ for f in "${SUMMARY_FILES[@]}"; do
   echo "| ${inst} | ${p50} | ${p95} | ${p99} | ${rps} | ${err} | ${cpu} | ${gc} |"
 done
 
-# OJP proxy JVM section (only present when side-car CSVs were fetched)
+# ── Error breakdown section (only when errors occurred) ───────────────────────
+
+if awk "BEGIN {exit !(${total_failed_requests} > 0)}"; then
+  printf '\n---\n\n## Error Breakdown\n\n'
+  printf '| Instance | Error type | Count | First error message |\n'
+  printf '|----------|------------|-------|---------------------|\n'
+  for f in "${SUMMARY_FILES[@]}"; do
+    inst=$(jq -r ".runInfo.instanceId // \"?\"" "${f}")
+    # Emit one row per error type with first sample error message
+    jq -r --arg inst "${inst}" '. as $root | .errorsByType // {} | to_entries[] | "| \($inst) | \(.key) | \(.value) | \($root.firstErrorMessageByType[.key] // "—") |"' "${f}"
+  done
+fi
 if [[ -n "${jvm_section}" ]]; then
   printf '%s' "---${jvm_section}"
 fi

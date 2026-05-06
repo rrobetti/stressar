@@ -17,6 +17,9 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
@@ -196,6 +199,10 @@ public class BenchmarkRunner {
             runInfo.instanceId = config.getInstanceId();
             runInfo.totalInstances = config.getReplicas();
             runInfo.seed = config.getWorkload().getSeed();
+            runInfo.durationSeconds = durationSec;
+            runInfo.timestamp = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                    .withZone(ZoneOffset.UTC)
+                    .format(Instant.ofEpochMilli(steadyStateStart));
 
             // Add open-loop specific metrics if applicable
             if (trueOpenLoop != null) {

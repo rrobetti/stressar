@@ -1,9 +1,18 @@
 ---
-# ansible/vars/dryrun.yml
+# ansible/vars/dryrun-ojp.yml
 #
-# DEPRECATED: replaced by dryrun-ojp.yml.
-# This file is kept for backwards compatibility; please switch to dryrun-ojp.yml.
-# See ansible/vars/dryrun-ojp.yml for the recommended OJP (SUT-B) setup command.
+# Minimal-hardware overrides for an OJP (SUT-B) dry run.
+# Requires 5 machines: 1 control (local) + 1 DB + 3 OJP proxy nodes.
+# Use this to validate the OJP setup end-to-end before provisioning full hardware.
+# Expected run time: ≈ 5 minutes (seed + warmup + 60 s bench + report).
+#
+# Setup (OJP only — skips pgBouncer and HAProxy):
+#   ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
+#     --tags db,ojp,bench,init-db  -e @ansible/vars/dryrun-ojp.yml
+#
+# Run:
+#   ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \
+#     -e @ansible/vars/dryrun-ojp.yml
 
 # ── Dataset (fast to seed) ────────────────────────────────────────────────────
 bench_num_accounts: 10000

@@ -193,7 +193,7 @@ ENDSQL
 
 > **These settings are sized for production hardware (DB server with ≥16 GB RAM).**
 > For 1 vCPU / 1 GB machines (dry-run), use the PostgreSQL values in
-> [`ansible/vars/dryrun.yml`](../ansible/vars/dryrun.yml) instead.
+> [`ansible/vars/dryrun-ojp.yml`](../ansible/vars/dryrun-ojp.yml) instead.
 
 ```bash
 ssh ${SSH_USER}@${DB_IP} bash -s << 'ENDSSH'
