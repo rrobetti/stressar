@@ -2,8 +2,8 @@
 # ansible/vars/dryrun-pgbouncer.yml
 #
 # Minimal-hardware override for a pgBouncer dry run (SUT-C).
-# Requires 4 machines: 1 control (local) + 1 DB + 1 combined LB/pgBouncer node + 1 proxy node,
-# or more simply 3 remote machines: 1 DB, 1 LB, and at least 1 pgBouncer proxy.
+# Requires 6 machines: 1 control (local) + 1 DB + 1 LB + 3 proxy nodes,
+# or more simply 5 remote machines: 1 DB, 1 LB, and 3 pgBouncer proxy nodes.
 #
 # NOTE: pgBouncer and HAProxy infrastructure must be set up manually before running the benchmark.
 # See docs/DEPLOYMENT_GUIDE.md sections 3–5 for installation and configuration instructions.
