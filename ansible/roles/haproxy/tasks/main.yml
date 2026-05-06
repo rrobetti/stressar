@@ -19,7 +19,9 @@
     cmd: "curl -fsSL {{ haproxy_gpg_url }} -o /usr/share/keyrings/haproxy.gpg"
     creates: /usr/share/keyrings/haproxy.gpg
   become: true
-  when: ansible_distribution == "Ubuntu"
+  when:
+    - ansible_distribution == "Ubuntu"
+    - ansible_distribution_release in haproxy_backport_distros
 
 - name: Add HAProxy {{ haproxy_version }} apt repository
   ansible.builtin.copy:
@@ -30,13 +32,17 @@
     group: root
     mode: "0644"
   become: true
-  when: ansible_distribution == "Ubuntu"
+  when:
+    - ansible_distribution == "Ubuntu"
+    - ansible_distribution_release in haproxy_backport_distros
 
 - name: Update apt cache after adding HAProxy repository
   ansible.builtin.apt:
     update_cache: true
   become: true
-  when: ansible_distribution == "Ubuntu"
+  when:
+    - ansible_distribution == "Ubuntu"
+    - ansible_distribution_release in haproxy_backport_distros
 
 - name: Install haproxy
   ansible.builtin.apt:
