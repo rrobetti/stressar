@@ -98,7 +98,7 @@ cp ansible/inventory.yml.example ansible/inventory.yml
 ### 2. Install PostgreSQL and build the bench tool
 
 ```bash
-# Install PostgreSQL and seed the database (proxy tag installs OJP — safe to skip for SUT-C)
+# Install PostgreSQL and seed the database (ojp tag installs OJP — safe to skip for SUT-C)
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml --tags db,bench,init-db
 ```
 
@@ -198,7 +198,7 @@ full-size hardware. Expected run time: ≈ 5 minutes (seed + warmup + 60 s bench
 ```bash
 # Setup (OJP only — skips pgBouncer and HAProxy)
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
-  --tags db,proxy,bench,init-db  -e @ansible/vars/dryrun-ojp.yml
+  --tags db,ojp,bench,init-db  -e @ansible/vars/dryrun-ojp.yml
 
 # Run (each invocation creates a new timestamped folder under results/)
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \
@@ -267,7 +267,7 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_pgbou
 | Tag | What runs |
 |-----|-----------|
 | `db` | PostgreSQL install + configure |
-| `proxy` | Java 24 + OJP Server install (SUT-B only) |
+| `ojp` | Java 24 + OJP Server install (SUT-B only) |
 | `pgbouncer` | pgBouncer install + configure on proxy nodes (SUT-C only) |
 | `haproxy` | HAProxy install + configure on the LB node (SUT-C only) |
 | `bench` | Build bench tool |
@@ -296,7 +296,7 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml --tags pgb
 Example — re-run only the OJP proxy setup after a server replacement:
 
 ```bash
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml --tags proxy
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml --tags ojp
 ```
 
 ---

@@ -8,7 +8,7 @@
 #
 # Setup (OJP only — skips pgBouncer and HAProxy):
 #   ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
-#     --tags db,proxy,bench,init-db  -e @ansible/vars/dryrun-ojp.yml
+#     --tags db,ojp,bench,init-db  -e @ansible/vars/dryrun-ojp.yml
 #
 # Run:
 #   ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \

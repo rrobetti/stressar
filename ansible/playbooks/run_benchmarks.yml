@@ -6,7 +6,7 @@
 #   2. Resets PostgreSQL statistics so the run starts from a clean baseline.
 #   3. Deploys and starts side-car metric collectors on OJP proxy + DB nodes.
 #   4. Pre-flight: verifies the ojp-server systemd service is active on every
-#      proxy node and fails fast if any are down — re-run setup.yml --tags proxy
+#      proxy node and fails fast if any are down — re-run setup.yml --tags ojp
 #      to bring them up.
 #   5. Runs a warmup pass (single instance).
 #   6. Launches {{ bench_replica_count }} bench JVMs in parallel.
@@ -33,7 +33,7 @@
 - name: Pre-flight — verify OJP proxy service is running on every proxy node
   # run_benchmarks.yml never starts services — that is setup.yml's job.
   # If ojp-server is not active on any proxy node, fail fast so the operator
-  # knows to re-run: ansible-playbook setup.yml --tags proxy
+  # knows to re-run: ansible-playbook setup.yml --tags ojp
   hosts: proxy
   gather_facts: false
 
@@ -49,7 +49,7 @@
         fail_msg: >-
           ojp-server is not running on {{ inventory_hostname }}
           (state: {{ ansible_facts.services.get('ojp-server.service', {}).get('state', 'not-installed') }})
-          — re-run setup.yml --tags proxy to install/start it.
+          — re-run setup.yml --tags ojp to install/start it.
         success_msg: "ojp-server is running on {{ inventory_hostname }}"
 
 - name: Run benchmark from control node

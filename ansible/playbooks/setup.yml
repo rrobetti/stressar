@@ -3,7 +3,7 @@
 #
 # Full infrastructure setup:
 #   1. Installs and configures PostgreSQL 16 on the db group.
-#   2. Installs Java 24 + OJP Server on every proxy node.          (SUT-B only)
+#   2. Installs Java 24 + OJP Server on every proxy node.          (SUT-B only, --tags ojp)
 #   3. Installs pgBouncer on every proxy node.                      (SUT-C only, --tags pgbouncer)
 #   4. Installs HAProxy on the lb node.                             (SUT-C only, --tags haproxy)
 #   5. Initialises the benchmark database from the control node.
@@ -14,14 +14,14 @@
 #
 # To limit to a single step, use --tags:
 #   ansible-playbook -i inventory.yml playbooks/setup.yml --tags db
-#   ansible-playbook -i inventory.yml playbooks/setup.yml --tags proxy
+#   ansible-playbook -i inventory.yml playbooks/setup.yml --tags ojp
 #   ansible-playbook -i inventory.yml playbooks/setup.yml --tags pgbouncer
 #   ansible-playbook -i inventory.yml playbooks/setup.yml --tags haproxy
 #   ansible-playbook -i inventory.yml playbooks/setup.yml --tags bench
 #
 # SUT-B quick setup (OJP only, skips pgBouncer and HAProxy):
 #   ansible-playbook -i inventory.yml playbooks/setup.yml \
-#     --tags db,proxy,bench,init-db  -e @ansible/vars/dryrun-ojp.yml
+#     --tags db,ojp,bench,init-db  -e @ansible/vars/dryrun-ojp.yml
 #
 # SUT-C quick setup (pgBouncer + HAProxy only, skipping OJP):
 #   ansible-playbook -i inventory.yml playbooks/setup.yml \
@@ -37,7 +37,7 @@
 - name: Set up OJP proxy nodes
   hosts: proxy
   gather_facts: true
-  tags: proxy
+  tags: ojp
   roles:
     - role: ojp_proxy
 
