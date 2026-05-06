@@ -26,7 +26,7 @@ accepted.
 10. [Measurement Duration — 600 Seconds](#10-measurement-duration--600-seconds)
 11. [Cooldown Duration — 120 Seconds](#11-cooldown-duration--120-seconds)
 12. [Repeat Count — 5 Runs](#12-repeat-count--5-runs)
-13. [SLO Threshold — p95 < 50 ms](#13-slo-threshold--p95--50-ms)
+13. [SLO Threshold — p95 < 50 ms (production) / 300 ms (dry run)](#13-slo-threshold--p95--50-ms-production--300-ms-dry-run)
 14. [Error Rate Threshold — 0.1 %](#14-error-rate-threshold--01-)
 15. [Sweep Increment — 15 %](#15-sweep-increment--15-)
 16. [Overload Level — 130 % of MST](#16-overload-level--130--of-mst)
@@ -333,7 +333,7 @@ correct summary statistic.
 
 ---
 
-## 13. SLO Threshold — p95 < 50 ms
+## 13. SLO Threshold — p95 < 50 ms (production) / 300 ms (dry run)
 
 **Value:** `sloP95Ms: 50` — the capacity sweep declares a load level unsustainable when the median
 p95 latency across five runs exceeds 50 ms.
@@ -351,6 +351,16 @@ transitions from comfortable to stressed.
 **Trade-off:** A tighter SLO (e.g., 20 ms) would find a lower MST and would more closely model
 latency-sensitive applications. A looser SLO (e.g., 200 ms) would find a higher MST but would
 allow excessive queueing. 50 ms is a reasonable middle ground for a comparative study.
+
+**Dry-run override — 300 ms:** The Ansible dry-run profiles (`ansible/vars/dryrun-ojp.yml` and
+`ansible/vars/dryrun-pgbouncer.yml`) override this value to `sloP95Ms: 300`. Dry runs are
+typically executed by engineers from their local machines against cloud instances that may be
+located in a different region from the engineer. The resulting cross-region WAN round-trip time
+can easily exceed 50 ms on its own, which would cause every sweep step to fail immediately — well
+before any connection-pooling stress is applied. A 300 ms threshold is loose enough to tolerate
+typical engineer-to-cloud latencies while still detecting genuine overload. The 50 ms default
+applies only to full-hardware production runs where the benchmark client and the SUT are
+co-located in the same data centre.
 
 ---
 
