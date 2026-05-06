@@ -151,6 +151,9 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml --skip-
 **PROXY-1, PROXY-2, and PROXY-3 are shared by both scenarios.** To switch proxy services on those
 nodes, stop the current service and start the other. You do not need to re-provision the machines.
 
+SUT-C also requires **HAProxy on the LB node**. OJP (SUT-B) does not use HAProxy (it does
+client-side load balancing). Follow the steps below to install, start, and stop it when switching.
+
 ### OJP → pgBouncer
 
 ```bash
@@ -167,22 +170,59 @@ ansible -i ansible/inventory.yml proxy \
 ansible -i ansible/inventory.yml proxy \
   -m systemd -a "name=pgbouncer state=started enabled=true" --become
 
-# 4. Run the pgBouncer benchmark
+# 4. Install HAProxy on the LB node (if not already installed)
+ansible -i ansible/inventory.yml lb \
+  -m apt -a "name=haproxy state=present update_cache=yes" --become
+
+# 5. Deploy HAProxy config to the LB node
+#    Config template (replace PROXY1/2/3_IP with actual IPs):
+#
+#      global
+#          maxconn 10000
+#      defaults
+#          mode    tcp
+#          timeout connect 5s
+#          timeout client  300s
+#          timeout server  300s
+#      frontend pgbouncer_front
+#          bind *:6432
+#          default_backend pgbouncer_back
+#      backend pgbouncer_back
+#          balance leastconn
+#          server proxy1 <PROXY1_IP>:6432 check inter 2s
+#          server proxy2 <PROXY2_IP>:6432 check inter 2s
+#          server proxy3 <PROXY3_IP>:6432 check inter 2s
+#
+#    Full reference: docs/install/HAPROXY.md
+#    After copying /etc/haproxy/haproxy.cfg to the LB node:
+ansible -i ansible/inventory.yml lb \
+  -m systemd -a "name=haproxy state=started enabled=true" --become
+
+# 6. Verify HAProxy is forwarding connections through pgBouncer to PostgreSQL
+#    (run from the control node)
+ansible -i ansible/inventory.yml lb \
+  -m command -a "psql -h 127.0.0.1 -p 6432 -U benchuser -d benchdb -c 'SELECT 1;'" --become
+
+# 7. Run the pgBouncer benchmark
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_pgbouncer.yml
 ```
 
 ### pgBouncer → OJP
 
 ```bash
-# 1. Stop pgBouncer on all proxy nodes
+# 1. Stop HAProxy on the LB node (not needed for OJP)
+ansible -i ansible/inventory.yml lb \
+  -m systemd -a "name=haproxy state=stopped" --become
+
+# 2. Stop pgBouncer on all proxy nodes
 ansible -i ansible/inventory.yml proxy \
   -m systemd -a "name=pgbouncer state=stopped" --become
 
-# 2. Start OJP on all proxy nodes
+# 3. Start OJP on all proxy nodes
 ansible -i ansible/inventory.yml proxy \
   -m systemd -a "name=ojp-server state=started enabled=true" --become
 
-# 3. Run the OJP benchmark
+# 4. Run the OJP benchmark
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml
 ```
 

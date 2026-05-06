@@ -550,12 +550,16 @@ PROXY-1, PROXY-2, and PROXY-3 are **shared by both SUT-B (OJP) and SUT-C (pgBoun
 a different SUT, stop the active proxy service and start the other. The machines themselves do not
 need to be reprovisioned.
 
-### Stop OJP → Start pgBouncer (switching to SUT-C)
+SUT-C additionally requires **HAProxy on the LB node**; OJP (SUT-B) does not use it.
+
+### Stop OJP → Start pgBouncer + HAProxy (switching to SUT-C)
 
 Run on each of PROXY-1, PROXY-2, PROXY-3 (or use Ansible — see
 [ansible/README.md § Switching](../ansible/README.md#switching-between-ojp-sut-b-and-pgbouncer-sut-c)):
 
 ```bash
+# On each of PROXY-1, PROXY-2, PROXY-3:
+
 # 1. Stop OJP Server
 sudo systemctl stop ojp-server
 sudo systemctl disable ojp-server
@@ -572,17 +576,39 @@ ss -tlnp | grep 6432   # Should show pgbouncer
 psql -h 127.0.0.1 -p 6432 -U benchuser -d benchdb -c "SELECT 1;"
 ```
 
-### Stop pgBouncer → Start OJP (switching to SUT-B)
+Then on the **LB node**, install and start HAProxy (§ 3.3, [install/HAPROXY.md](install/HAPROXY.md)):
 
 ```bash
-# 1. Stop pgBouncer
+# On LB:
+
+# 5. Install HAProxy (if not already installed) — see § 3.3 for the full config
+sudo apt-get install -y haproxy
+
+# 6. Verify the config references the correct pgBouncer IPs, then start:
+sudo haproxy -c -f /etc/haproxy/haproxy.cfg   # Validate config
+sudo systemctl start haproxy
+sudo systemctl enable haproxy
+
+# 7. Verify end-to-end (HAProxy → pgBouncer → PostgreSQL)
+psql -h <LB_IP> -p 6432 -U benchuser -d benchdb -c "SELECT 1;"
+```
+
+### Stop HAProxy + pgBouncer → Start OJP (switching to SUT-B)
+
+```bash
+# On LB:
+# 1. Stop HAProxy (not needed for OJP)
+sudo systemctl stop haproxy
+
+# On each of PROXY-1, PROXY-2, PROXY-3:
+# 2. Stop pgBouncer
 sudo systemctl stop pgbouncer
 
-# 2. Start OJP Server
+# 3. Start OJP Server
 sudo systemctl start ojp-server
 sudo systemctl enable ojp-server
 
-# 3. Verify OJP is listening
+# 4. Verify OJP is listening
 ss -tlnp | grep 1059   # Should show ojp-server
 ```
 
