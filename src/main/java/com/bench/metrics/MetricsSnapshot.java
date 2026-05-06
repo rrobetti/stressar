@@ -13,6 +13,7 @@ public class MetricsSnapshot {
     private long completedRequests;
     private long errors;
     private Map<String, Long> errorsByType = new HashMap<>();
+    private Map<String, String> firstErrorMessageByType = new HashMap<>();
     
     // Latency percentiles in milliseconds
     private double p50;
@@ -92,6 +93,14 @@ public class MetricsSnapshot {
 
     public void setErrorsByType(Map<String, Long> errorsByType) {
         this.errorsByType = errorsByType;
+    }
+
+    public Map<String, String> getFirstErrorMessageByType() {
+        return firstErrorMessageByType;
+    }
+
+    public void setFirstErrorMessageByType(Map<String, String> firstErrorMessageByType) {
+        this.firstErrorMessageByType = firstErrorMessageByType;
     }
 
     public double getP50() {

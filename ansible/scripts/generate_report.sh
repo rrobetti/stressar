@@ -307,14 +307,12 @@ done
 
 if awk "BEGIN {exit !(${total_failed_requests} > 0)}"; then
   printf '\n---\n\n## Error Breakdown\n\n'
-  printf '| Instance | Error type | Count |\n'
-  printf '|----------|------------|-------|\n'
+  printf '| Instance | Error type | Count | First error message |\n'
+  printf '|----------|------------|-------|---------------------|\n'
   for f in "${SUMMARY_FILES[@]}"; do
     inst=$(jq -r ".runInfo.instanceId // \"?\"" "${f}")
-    # Emit one row per error type; skip if map is empty or null
-    jq -r --arg inst "${inst}" \
-      '.errorsByType // {} | to_entries[] | "| \($inst) | \(.key) | \(.value) |"' \
-      "${f}"
+    # Emit one row per error type with first sample error message
+    jq -r --arg inst "${inst}" '. as $root | .errorsByType // {} | to_entries[] | "| \($inst) | \(.key) | \(.value) | \($root.firstErrorMessageByType[.key] // "—") |"' "${f}"
   done
 fi
 if [[ -n "${jvm_section}" ]]; then

@@ -2,6 +2,7 @@ package com.bench.metrics;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -14,6 +15,8 @@ public class MetricsCollector {
     private final AtomicLong completedRequests;
     private final AtomicLong errors;
     private final Map<String, AtomicLong> errorsByType;
+    /** Captures the first error message seen for each error type, for diagnostics. */
+    private final Map<String, String> firstErrorMessageByType;
     
     private final long startTimeMs;
     
@@ -23,6 +26,7 @@ public class MetricsCollector {
         this.completedRequests = new AtomicLong(0);
         this.errors = new AtomicLong(0);
         this.errorsByType = new HashMap<>();
+        this.firstErrorMessageByType = new ConcurrentHashMap<>();
         this.startTimeMs = System.currentTimeMillis();
     }
     
@@ -47,8 +51,21 @@ public class MetricsCollector {
      * @param errorType Type of error (e.g., "timeout", "sql_exception", "rejected")
      */
     public void recordError(String errorType) {
+        recordError(errorType, null);
+    }
+
+    /**
+     * Record an error with a diagnostic message.
+     * The first message seen for each error type is retained for inclusion in the summary.
+     * @param errorType Type of error (e.g., "timeout", "sql_exception", "rejected")
+     * @param message   Error message from the exception, or null
+     */
+    public void recordError(String errorType, String message) {
         errors.incrementAndGet();
         errorsByType.computeIfAbsent(errorType, k -> new AtomicLong(0)).incrementAndGet();
+        if (message != null && !message.isBlank()) {
+            firstErrorMessageByType.putIfAbsent(errorType, message);
+        }
     }
     
     /**
@@ -66,6 +83,9 @@ public class MetricsCollector {
         Map<String, Long> errorBreakdown = new HashMap<>();
         errorsByType.forEach((key, value) -> errorBreakdown.put(key, value.get()));
         snapshot.setErrorsByType(errorBreakdown);
+
+        // First error messages per type
+        snapshot.setFirstErrorMessageByType(new HashMap<>(firstErrorMessageByType));
         
         // Latency percentiles
         long count = latencyRecorder.getCount();
@@ -89,6 +109,7 @@ public class MetricsCollector {
         completedRequests.set(0);
         errors.set(0);
         errorsByType.clear();
+        firstErrorMessageByType.clear();
         latencyRecorder.reset();
     }
     

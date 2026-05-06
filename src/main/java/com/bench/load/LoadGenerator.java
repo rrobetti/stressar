@@ -59,8 +59,8 @@ public abstract class LoadGenerator {
             intervalMetrics.recordSuccess(latencyNanos);
             
         } catch (java.sql.SQLTimeoutException e) {
-            metrics.recordError("timeout");
-            intervalMetrics.recordError("timeout");
+            metrics.recordError("timeout", e.getMessage());
+            intervalMetrics.recordError("timeout", e.getMessage());
             long n = timeoutWarnCount.incrementAndGet();
             if (n <= WARN_ERROR_LIMIT) {
                 logger.warn("Request timeout (occurrence {}): {}", n, e.getMessage());
@@ -69,8 +69,8 @@ public abstract class LoadGenerator {
             }
             
         } catch (java.sql.SQLException e) {
-            metrics.recordError("sql_exception");
-            intervalMetrics.recordError("sql_exception");
+            metrics.recordError("sql_exception", e.getMessage());
+            intervalMetrics.recordError("sql_exception", e.getMessage());
             long n = sqlErrorWarnCount.incrementAndGet();
             if (n <= WARN_ERROR_LIMIT) {
                 logger.warn("SQL exception (occurrence {}): {}", n, e.getMessage());

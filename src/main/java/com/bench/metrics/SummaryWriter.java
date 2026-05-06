@@ -51,6 +51,7 @@ public class SummaryWriter {
         
         // Error breakdown
         summary.errorsByType = snapshot.getErrorsByType();
+        summary.firstErrorMessageByType = snapshot.getFirstErrorMessageByType();
         
         // System metrics
         if (snapshot.getAppCpuMedian() != null) {
@@ -81,6 +82,7 @@ public class SummaryWriter {
         public long failedRequests;
         public LatencyMetrics latencyMs;
         public Map<String, Long> errorsByType = new HashMap<>();
+        public Map<String, String> firstErrorMessageByType = new HashMap<>();
         
         // Optional system metrics
         public Double appCpuMedian;
