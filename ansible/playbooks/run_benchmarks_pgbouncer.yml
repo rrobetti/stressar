@@ -33,9 +33,11 @@
 
   vars:
     run_name:   "pgbouncer-run-{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
-    db_host:    "{{ hostvars[groups['db'][0]]['ansible_host'] }}"
+    # Resolved from inventory 'db' group, or override via -e db_host=<IP>.
+    db_host:    "{{ hostvars[groups['db'][0]]['ansible_host'] if 'db' in groups and groups['db'] | length > 0 else '' }}"
     # Traffic is sent through the HAProxy load balancer, which distributes across pgBouncer nodes.
-    lb_host: "{{ hostvars[groups['lb'][0]]['ansible_host'] }}"
+    # Resolved from inventory 'lb' group, or override via -e lb_host=<IP>.
+    lb_host: "{{ hostvars[groups['lb'][0]]['ansible_host'] if 'lb' in groups and groups['lb'] | length > 0 else '' }}"
     bench_config_file: "/tmp/pgbouncer-benchmark-{{ run_name }}.yaml"
     # Remote path for pg side-car output file (written on the DB node)
     remote_pg_csv:   "/tmp/pg_metrics_{{ run_name }}.csv"
@@ -48,17 +50,16 @@
   tasks:
     # ── Preflight checks ──────────────────────────────────────────────────────
 
-    - name: Assert required inventory groups are present
+    - name: Assert required hosts are configured
       ansible.builtin.assert:
         that:
-          - "'lb' in groups"
-          - "groups['lb'] | length > 0"
-          - "'db' in groups"
-          - "groups['db'] | length > 0"
+          - lb_host | length > 0
+          - db_host | length > 0
         fail_msg: >-
-          Inventory is missing required groups.
-          This playbook requires 'lb' (HAProxy load balancer) and 'db' (PostgreSQL) groups.
-          Check ansible/inventory.yml.example for the expected structure.
+          Required host addresses are not configured.
+          Define an 'lb' group (HAProxy) and a 'db' group (PostgreSQL) in your inventory,
+          or provide them directly: -e lb_host=<IP> -e db_host=<IP>.
+          Check ansible/inventory.yml.example for the expected inventory structure.
 
     # ── Pre-run setup ─────────────────────────────────────────────────────────
 
