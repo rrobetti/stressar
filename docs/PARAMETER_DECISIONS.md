@@ -18,7 +18,7 @@ accepted.
 2. [Client Split — 8 Processes per Machine](#2-client-split--8-processes-per-machine)
 3. [Connection Budget — Differentiated by SUT](#3-connection-budget--differentiated-by-sut)
 4. [Per-Proxy Pool — 16 Connections per Node](#4-per-proxy-pool--16-connections-per-node)
-5. [Per-Replica Pool — 19 Connections](#5-per-replica-pool--19-connections)
+5. [Per-Replica Pool — 19 Connections (SUT-A) / 18 Connections (SUT-B)](#5-per-replica-pool--19-connections-sut-a--18-connections-sut-b)
 6. [Proxy Tier — 3 Nodes](#6-proxy-tier--3-nodes)
 7. [Aggregate Baseline Load — 1,000 RPS](#7-aggregate-baseline-load--1000-rps)
 8. [Per-Client Target — 63 RPS](#8-per-client-target--63-rps)
@@ -170,10 +170,10 @@ reducing backend connections, and the sweep will reveal whether it manifests in 
 
 ---
 
-## 5. Per-Replica Pool — 19 Connections
+## 5. Per-Replica Pool — 19 Connections (SUT-A) / 18 Connections (SUT-B)
 
 **Value:** Each of the 16 client replicas holds a HikariCP pool of 19 connections in SUT-A
-(HikariCP Disciplined). In SUT-B (OJP), each replica targets 19 *virtual* connections per replica
+(HikariCP Disciplined). In SUT-B (OJP), each replica targets 18 *virtual* connections per replica
 on the client side; these are multiplexed onto the 48-connection backend pool by the OJP proxy
 tier. In SUT-C (PgBouncer), each replica holds only 2 JDBC connections to HAProxy; PgBouncer
 handles the server-side multiplexing against its 48-connection backend pool.
@@ -673,7 +673,7 @@ at least one pre-established connection during pool initialisation.
 
 **Value:** `queueLimit: 200` in `ta-ojp.yaml`.
 
-**Reason:** When all 19 virtual connections per replica are busy, new requests are placed in OJP's
+**Reason:** When all 18 virtual connections per replica are busy, new requests are placed in OJP's
 internal queue. The queue limit caps the number of requests that can wait before the client
 receives an error. 200 provides enough buffering to absorb short bursts (at 63 RPS per replica, 200
 queued requests represent approximately 3 seconds of backlog) while preventing indefinite memory

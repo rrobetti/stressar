@@ -813,7 +813,7 @@ Each replica's 19-connection pool provides ample headroom at the baseline load o
 **SUT-B / SUT-C (proxy tier):**
 
 ```
-Client-side virtual connections per replica = 19 (OJP) / 2 JDBC (PgBouncer) — mapped by the proxy
+Client-side virtual connections per replica = 18 (OJP) / 2 JDBC (PgBouncer) — mapped by the proxy
 Total proxy backend connections = 48 (3 nodes × 16)
 Target RPS per replica  = 1,000 / 16 ≈ 63 RPS
 Active backend conns at 1,000 RPS total, 4 ms avg = 1,000 × 0.004 = 4 out of 48 available
@@ -937,7 +937,7 @@ database:
   password: "${DB_PASSWORD}"
 
 connectionMode: OJP
-dbConnectionBudget: 19   # Per-replica virtual connection budget (300 / 16 ≈ 19)
+dbConnectionBudget: 18   # Per-replica virtual connection budget
 replicas: 16
 
 ojp:
