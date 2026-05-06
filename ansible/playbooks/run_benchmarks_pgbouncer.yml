@@ -71,7 +71,7 @@
         fail_msg: >-
           Required host addresses are not configured.
           For lb_host, add an 'lb' group (dedicated HAProxy node) to your inventory,
-          OR an 'proxy' group (combined LB+pgBouncer node), OR pass -e lb_host=<IP> directly.
+          OR a 'proxy' group (combined LB+pgBouncer node), OR pass -e lb_host=<IP> directly.
           For db_host, add a 'db' group to your inventory, OR pass -e db_host=<IP> directly.
           Check ansible/inventory.yml.example for the expected inventory structure.
 
