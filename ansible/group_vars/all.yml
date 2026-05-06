@@ -19,8 +19,10 @@ db_port:     5432
 ojp_server_port:  1059
 
 # ── pgBouncer settings (SUT-C) ────────────────────────────────────────────────
+# pool_size per pgBouncer instance.  The default topology has 3 proxy nodes,
+# so total backend connections = pgbouncer_pool_size × 3 ≈ bench_db_connection_budget (19).
 pgbouncer_port:      6432
-pgbouncer_pool_size: 2
+pgbouncer_pool_size: 6
 
 # ── Benchmark run defaults ────────────────────────────────────────────────────
 bench_replica_count:        4

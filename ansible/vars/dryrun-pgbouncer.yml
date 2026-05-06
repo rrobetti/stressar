@@ -32,8 +32,9 @@ bench_duration_seconds:  60
 bench_cooldown_seconds:  10
 
 # ── pgBouncer — tuned for single-node dry run ─────────────────────────────────
-# Minimal pool: 1 replica × 2 client connections per replica
-pgbouncer_pool_size: 2
+# Single pgBouncer instance: pool_size equals bench_db_connection_budget (19)
+# so the total backend connections to PostgreSQL matches the OJP allocation.
+pgbouncer_pool_size: 19
 
 # ── PostgreSQL — tuned for 1 vCPU / 1 GB RAM ─────────────────────────────────
 # shared_buffers  ≈ 128 MB (25 % of ~512 MB usable after OS overhead)
