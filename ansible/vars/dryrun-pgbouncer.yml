@@ -11,6 +11,14 @@
 # Usage (add to any playbook invocation):
 #   ansible-playbook ... -e @ansible/vars/dryrun-pgbouncer.yml
 
+# ── Required host addresses ───────────────────────────────────────────────────
+# lb_host and db_host are resolved automatically from your inventory:
+#   • lb_host → 'lb' group (dedicated HAProxy node), OR 'proxy' group (combined LB+pgBouncer)
+#   • db_host → 'db' group
+#
+# If your inventory does not define these groups, pass the IPs directly:
+#   ansible-playbook ... -e lb_host=<LB_OR_PROXY_IP> -e db_host=<DB_IP>
+
 # ── Dataset (fast to seed) ────────────────────────────────────────────────────
 bench_num_accounts: 10000
 bench_num_items:    1000
