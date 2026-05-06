@@ -372,9 +372,9 @@ poolSize: 2  # Minimal client-side connections
 
 database:
   # In multi-node setup, point to HAProxy LB (port 6432) — not directly to a pgBouncer instance.
-  # In single-node / dry-run, point directly to the one proxy node running pgBouncer.
-  jdbcUrl: "jdbc:postgresql://<LB_IP>:6432/benchdb"   # multi-node (SUT-C)
-  # jdbcUrl: "jdbc:postgresql://<PROXY1_IP>:6432/benchdb"  # single-node / dry-run
+  # In single-node setup (not dry-run), point directly to the one proxy node running pgBouncer.
+  jdbcUrl: "jdbc:postgresql://<LB_IP>:6432/benchdb"   # multi-node and dry-run (SUT-C)
+  # jdbcUrl: "jdbc:postgresql://<PROXY1_IP>:6432/benchdb"  # single-node only
   username: "benchuser"
   password: "benchpass"
 ```
@@ -382,7 +382,7 @@ database:
 **Prerequisites:**
 - pgBouncer must be running on each proxy node (PROXY-1/2/3) — see [install/PGBOUNCER.md](install/PGBOUNCER.md)
 - HAProxy must be running on the LB node (multi-node setup only) — see [install/HAPROXY.md](install/HAPROXY.md)
-- Database URL should point to HAProxy (multi-node) or directly to pgBouncer (single-node)
+- Database URL should point to HAProxy (multi-node and dry-run) or directly to pgBouncer (single-node only)
 
 **PgBouncer Setup Example:**
 

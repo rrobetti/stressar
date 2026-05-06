@@ -52,7 +52,7 @@ Remote machines require only **SSH access** and **outbound internet** (for packa
 | Scenario | Machines | Hardware |
 |----------|----------|----------|
 | SUT-B dry-run (OJP) | **5** — 1 control (local) + 1 DB + 3 proxy | 1 vCPU / 1 GB RAM each |
-| SUT-C dry-run (pgBouncer) | **4** — 1 control (local) + 1 DB + 1 LB + 1 proxy | 1 vCPU / 1 GB RAM each |
+| SUT-C dry-run (pgBouncer) | **6** — 1 control (local) + 1 DB + 1 LB + 3 proxy | 1 vCPU / 1 GB RAM each |
 | SUT-B production (OJP) | **7** — 1 control (local) + 2 load generators + 1 DB + 3 proxy | See [Hardware Specifications](../docs/BENCHMARKING_GUIDE.md#2-hardware-specifications) |
 | SUT-C production (pgBouncer) | **8** — 1 control (local) + 2 load generators + 1 DB + 1 LB + 3 proxy | See [Hardware Specifications](../docs/BENCHMARKING_GUIDE.md#2-hardware-specifications) |
 
@@ -253,10 +253,10 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \
   -e @ansible/vars/dryrun.yml  -e run_name=dryrun-ojp-1
 ```
 
-### pgBouncer dry-run (4 × 1 vCPU / 1 GB RAM)
+### pgBouncer dry-run (6 × 1 vCPU / 1 GB RAM)
 
 `ansible/vars/dryrun-pgbouncer.yml` contains pre-tuned values for a minimal pgBouncer setup
-(1 control + 1 DB + 1 LB + 1 pgBouncer proxy). pgBouncer and HAProxy must be installed manually
+(1 control + 1 DB + 1 LB + 3 pgBouncer proxies). pgBouncer and HAProxy must be installed manually
 first (see [Quick start — pgBouncer](#quick-start--pgbouncer-sut-c) step 3 above).
 
 ```bash
