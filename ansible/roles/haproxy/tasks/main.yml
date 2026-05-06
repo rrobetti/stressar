@@ -98,6 +98,12 @@
     daemon_reload: true
   become: true
 
+# Flush handlers here so the "reload haproxy" handler fires before wait_for.
+# Without this, a fresh install has HAProxy running on the default config
+# (not binding 6432) until the play ends, causing the port check to time out.
+- name: Flush handlers to apply haproxy.cfg before port check
+  ansible.builtin.meta: flush_handlers
+
 - name: Wait for HAProxy to open port {{ haproxy_frontend_port }}
   ansible.builtin.wait_for:
     port: "{{ haproxy_frontend_port }}"
