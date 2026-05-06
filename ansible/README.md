@@ -17,8 +17,8 @@ Two benchmark scenarios are supported:
 | Step | Playbook / Script | What happens |
 |------|------------------|--------------|
 | 1 | `setup.yml` | Installs PostgreSQL 16 on the DB node and tunes it for benchmarking. Installs Java 24 + OJP Server on each proxy node (SUT-B). Installs pgBouncer on each proxy node and HAProxy on the LB node (SUT-C, via `--tags pgbouncer,haproxy`). Builds the `bench` tool on the control node. Initialises the benchmark database. |
-| 2a | `run_benchmarks.yml` | **OJP (SUT-B):** Renders a parameterised bench config, runs a warmup pass, then launches `N` bench JVM replicas in parallel. Collects OJP JVM metrics and PostgreSQL metrics. Generates a Markdown report. |
-| 2b | `run_benchmarks_pgbouncer.yml` | **pgBouncer (SUT-C):** Same as above but connects through HAProxy → pgBouncer instead of OJP. Collects PostgreSQL metrics only (pgBouncer has no JVM). |
+| 2a | `run_benchmarks.yml` | **OJP (SUT-B):** Pre-flight verifies `ojp-server` is active on every proxy node (fails fast if not). Renders a parameterised bench config, runs a warmup pass, then launches `N` bench JVM replicas in parallel. Collects OJP JVM metrics and PostgreSQL metrics. Generates a Markdown report. |
+| 2b | `run_benchmarks_pgbouncer.yml` | **pgBouncer (SUT-C):** Pre-flight verifies `pgbouncer` is active on every proxy node and `haproxy` is active on the lb node (fails fast if not). Same benchmark flow as SUT-B but connects through HAProxy → pgBouncer. Collects PostgreSQL metrics only (pgBouncer has no JVM). |
 | 3 | `teardown.yml` | Stops OJP Server, pgBouncer, and HAProxy on their respective nodes and resets PostgreSQL statistics for the next run. |
 | — | `scripts/generate_report.sh` | Pure shell + `jq` script called automatically by both run playbooks; can also be run standalone. |
 
@@ -229,10 +229,20 @@ Key differences between the two dry-run profiles:
 | `bench_replica_count` | 1 | 1 | 4 |
 | `bench_target_rps` | 25 | 25 | 500 |
 | `bench_duration_seconds` | 60 | 60 | 300 |
+| `bench_slo_p95_ms` | 300 ms | 300 ms | 50 ms |
 | `pgbouncer_pool_size` | — | 18 | 6 |
 | `pgbouncer_min_pool_size` | — | 18 | 6 |
 | `pg_shared_buffers` | 128 MB | 128 MB | 4 GB |
 | `pg_max_connections` | 50 | 50 | 400 |
+
+> **Why 300 ms for dry runs?**  
+> Dry runs are typically executed by engineers from their local machines against cloud instances
+> that may be in a different region. Cross-region WAN latency alone can exceed the 50 ms
+> production SLO, which would cause every dry-run sweep step to fail immediately — making the
+> threshold useless for its intended purpose of catching *overload*. 300 ms is loose enough to
+> tolerate typical engineer-to-cloud round-trip times while still flagging genuinely degraded
+> behaviour. The 50 ms SLO remains the default for production full-hardware runs where the
+> benchmark client and the SUT are co-located in the same datacenter.
 
 ---
 
