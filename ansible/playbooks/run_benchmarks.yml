@@ -15,10 +15,12 @@
 #   9. Runs generate_report.sh to produce a Markdown report.
 #
 # Side-car scripts:
-#   ansible/scripts/collect_jvm_metrics.sh  — runs on each proxy node via jstat;
+#   ansible/scripts/collect_jvm_metrics.sh     — runs on each proxy node via jstat;
 #       captures actual JVM heap (not OS RSS) + GC stats once per second.
-#   ansible/scripts/collect_pg_metrics.sh   — runs on the DB node; polls
+#   ansible/scripts/collect_pg_metrics.sh      — runs on the DB node; polls
 #       pg_stat_database, pg_stat_bgwriter, and pg_locks every 5 seconds.
+#   ansible/scripts/collect_process_metrics.sh — runs on each proxy node and on the
+#       DB node; captures OS-level CPU% and RSS/VSZ for ojp-server and PostgreSQL.
 #
 # Usage:
 #   ansible-playbook -i inventory.yml playbooks/run_benchmarks.yml \
@@ -71,14 +73,22 @@
     # Remote paths for side-car output files (written on each remote node)
     remote_jvm_csv:  "/tmp/jvm_metrics_{{ run_name }}.csv"
     remote_pg_csv:   "/tmp/pg_metrics_{{ run_name }}.csv"
+    # Remote paths for process metrics side-car CSVs
+    remote_ojp_proc_csv: "/tmp/ojp_proc_metrics_{{ run_name }}.csv"
+    remote_db_proc_csv:  "/tmp/db_proc_metrics_{{ run_name }}.csv"
     # Local (control-node) paths where side-car CSVs are fetched to
-    local_jvm_csv_dir: "{{ bench_results_dir }}/{{ run_name }}/node_metrics/proxy"
-    local_pg_csv:      "{{ bench_results_dir }}/{{ run_name }}/node_metrics/pg_metrics.csv"
+    local_jvm_csv_dir:    "{{ bench_results_dir }}/{{ run_name }}/node_metrics/proxy"
+    local_pg_csv:         "{{ bench_results_dir }}/{{ run_name }}/node_metrics/pg_metrics.csv"
+    local_db_metrics_dir: "{{ bench_results_dir }}/{{ run_name }}/node_metrics/db"
     # Paths to side-car scripts on the control node (copied to remote nodes)
-    jvm_script_src: "{{ bench_repo_dir }}/ansible/scripts/collect_jvm_metrics.sh"
-    pg_script_src:  "{{ bench_repo_dir }}/ansible/scripts/collect_pg_metrics.sh"
-    remote_jvm_script: "/tmp/collect_jvm_metrics.sh"
-    remote_pg_script:  "/tmp/collect_pg_metrics.sh"
+    jvm_script_src:  "{{ bench_repo_dir }}/ansible/scripts/collect_jvm_metrics.sh"
+    pg_script_src:   "{{ bench_repo_dir }}/ansible/scripts/collect_pg_metrics.sh"
+    proc_script_src: "{{ bench_repo_dir }}/ansible/scripts/collect_process_metrics.sh"
+    remote_jvm_script:  "/tmp/collect_jvm_metrics.sh"
+    remote_pg_script:   "/tmp/collect_pg_metrics.sh"
+    remote_proc_script: "/tmp/collect_process_metrics.sh"
+    # PostgreSQL systemd service name — matches pg_service_name role default
+    pg_service: "postgresql@{{ hostvars[groups['db'][0]]['pg_version'] | default(16) }}-main"
 
   tasks:
     # ── Freeze run_name so the timestamp is evaluated exactly once ────────────
@@ -97,6 +107,7 @@
       loop:
         - "{{ bench_results_dir }}/{{ run_name }}"
         - "{{ local_jvm_csv_dir }}"
+        - "{{ local_db_metrics_dir }}"
 
     - name: Render benchmark configuration
       ansible.builtin.template:
@@ -166,6 +177,44 @@
         executable: /bin/bash
       become: true
       become_user: postgres
+      delegate_to: "{{ groups['db'][0] }}"
+      changed_when: true
+
+    # ── Deploy and start process metrics side-cars (CPU + RSS) ───────────────
+
+    - name: Copy process metrics collection script to proxy nodes
+      ansible.builtin.copy:
+        src: "{{ proc_script_src }}"
+        dest: "{{ remote_proc_script }}"
+        mode: "0755"
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['proxy'] }}"
+
+    - name: Start process metrics collection on proxy nodes (ojp-server)
+      ansible.builtin.shell: |
+        nohup "{{ remote_proc_script }}" ojp-server "{{ remote_ojp_proc_csv }}" \
+          </dev/null >"{{ remote_ojp_proc_csv }}.log" 2>&1 &
+        echo $! > "{{ remote_ojp_proc_csv }}.pid"
+      args:
+        executable: /bin/bash
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['proxy'] }}"
+      changed_when: true
+
+    - name: Copy process metrics collection script to DB node
+      ansible.builtin.copy:
+        src: "{{ proc_script_src }}"
+        dest: "{{ remote_proc_script }}"
+        mode: "0755"
+      delegate_to: "{{ groups['db'][0] }}"
+
+    - name: Start process metrics collection on DB node (PostgreSQL)
+      ansible.builtin.shell: |
+        nohup "{{ remote_proc_script }}" "{{ pg_service }}" "{{ remote_db_proc_csv }}" \
+          </dev/null >"{{ remote_db_proc_csv }}.log" 2>&1 &
+        echo $! > "{{ remote_db_proc_csv }}.pid"
+      args:
+        executable: /bin/bash
       delegate_to: "{{ groups['db'][0] }}"
       changed_when: true
 
@@ -268,6 +317,54 @@
       ansible.builtin.fetch:
         src: "{{ remote_pg_csv }}"
         dest: "{{ local_pg_csv }}"
+        flat: true
+        fail_on_missing: false
+        validate_checksum: false
+      delegate_to: "{{ groups['db'][0] }}"
+
+    # ── Stop process metrics side-cars; fetch CSVs ────────────────────────────
+
+    - name: Stop process metrics collection on proxy nodes
+      ansible.builtin.shell: |
+        PID_FILE="{{ remote_ojp_proc_csv }}.pid"
+        if [ -f "${PID_FILE}" ]; then
+          kill "$(cat "${PID_FILE}")" 2>/dev/null || true
+          rm -f "${PID_FILE}"
+        fi
+      args:
+        executable: /bin/bash
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['proxy'] }}"
+      changed_when: true
+      ignore_errors: true
+
+    - name: Fetch OJP process metrics CSV from each proxy node
+      ansible.builtin.fetch:
+        src: "{{ remote_ojp_proc_csv }}"
+        dest: "{{ local_jvm_csv_dir }}/{{ item }}_proc_metrics.csv"
+        flat: true
+        fail_on_missing: false
+        validate_checksum: false
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['proxy'] }}"
+
+    - name: Stop process metrics collection on DB node
+      ansible.builtin.shell: |
+        PID_FILE="{{ remote_db_proc_csv }}.pid"
+        if [ -f "${PID_FILE}" ]; then
+          kill "$(cat "${PID_FILE}")" 2>/dev/null || true
+          rm -f "${PID_FILE}"
+        fi
+      args:
+        executable: /bin/bash
+      delegate_to: "{{ groups['db'][0] }}"
+      changed_when: true
+      ignore_errors: true
+
+    - name: Fetch DB process metrics CSV from DB node
+      ansible.builtin.fetch:
+        src: "{{ remote_db_proc_csv }}"
+        dest: "{{ local_db_metrics_dir }}/db_proc_metrics.csv"
         flat: true
         fail_on_missing: false
         validate_checksum: false
