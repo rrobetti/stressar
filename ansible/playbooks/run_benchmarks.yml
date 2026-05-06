@@ -377,6 +377,7 @@
         {{ bench_repo_dir }}/ansible/scripts/generate_report.sh
           "{{ bench_results_dir }}/{{ run_name }}"
           "{{ bench_results_dir }}/{{ run_name }}/report.md"
+          "{{ bench_slo_p95_ms | default(50) }}"
       register: report_out
       changed_when: true
 

@@ -9,13 +9,14 @@
 # collect_pg_metrics.sh when they are present under node_metrics/.
 #
 # Usage:
-#   generate_report.sh <RESULTS_DIR> [OUTPUT_FILE]
+#   generate_report.sh <RESULTS_DIR> [OUTPUT_FILE] [SLO_P95_MS]
 #
 # Arguments:
 #   RESULTS_DIR   Directory produced by a bench run (e.g. results/ojp-run-1).
 #                 May contain multiple replica-N/ subdirectories and a
 #                 node_metrics/ subdirectory with side-car CSVs.
 #   OUTPUT_FILE   Path to the generated report (default: RESULTS_DIR/report.md).
+#   SLO_P95_MS    p95 latency SLO threshold in milliseconds (default: 50).
 #
 # Requirements: jq >= 1.6, awk, bash >= 4.
 
@@ -30,6 +31,7 @@ fi
 
 RESULTS_DIR="${1%/}"   # strip trailing slash
 OUTPUT_FILE="${2:-${RESULTS_DIR}/report.md}"
+SLO_P95_MS="${3:-50}"
 
 if [[ ! -d "${RESULTS_DIR}" ]]; then
   echo "ERROR: results directory '${RESULTS_DIR}' does not exist." >&2
@@ -305,7 +307,7 @@ if [[ ${#PGB_ADMIN_CSV_FILES[@]} -gt 0 ]]; then
   done
 fi
 
-slo_p95_limit=50
+slo_p95_limit=${SLO_P95_MS}
 slo_error_limit=0.001
 p95_pass=$(awk "BEGIN {print (${agg_p95} < ${slo_p95_limit}) ? \"✅ PASS\" : \"❌ FAIL\"}")
 error_pass=$(awk "BEGIN {print (${agg_error_rate} < ${slo_error_limit}) ? \"✅ PASS\" : \"❌ FAIL\"}")
