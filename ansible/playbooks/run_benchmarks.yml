@@ -55,6 +55,12 @@
     remote_pg_script:  "/tmp/collect_pg_metrics.sh"
 
   tasks:
+    # ── Freeze run_name so the timestamp is evaluated exactly once ────────────
+
+    - name: Fix run name timestamp
+      ansible.builtin.set_fact:
+        run_name: "{{ run_name }}"
+
     # ── Pre-run setup ─────────────────────────────────────────────────────────
 
     - name: Ensure results directories exist
