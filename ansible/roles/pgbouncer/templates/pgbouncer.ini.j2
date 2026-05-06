@@ -1,4 +1,4 @@
-{{ ansible_managed }}
+; {{ ansible_managed }}
 ; /etc/pgbouncer/pgbouncer.ini — managed by Ansible
 
 [databases]
@@ -7,7 +7,7 @@
 [pgbouncer]
 listen_port               = {{ pgbouncer_port }}
 listen_addr               = *
-auth_type                 = plain
+auth_type                 = md5
 auth_file                 = {{ pgbouncer_userlist_file }}
 pool_mode                 = {{ pgbouncer_pool_mode }}
 default_pool_size         = {{ pgbouncer_pool_size }}
