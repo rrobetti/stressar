@@ -217,7 +217,93 @@ if [[ -f "${PG_CSV}" ]]; then
   pg_section+="| Checkpoint write time (ms) | ${pg_ckpt_ms} | Cumulative; high → I/O-bound checkpoint |"$'\n'
 fi
 
-# ── SLO evaluation ────────────────────────────────────────────────────────────
+# ── Parse process metrics side-car CSVs ──────────────────────────────────────
+# Expected locations:
+#   RESULTS_DIR/node_metrics/proxy/<host>_proc_metrics.csv — proxy process
+#       (OJP or pgBouncer, depending on the SUT)
+#   RESULTS_DIR/node_metrics/db/<host>_proc_metrics.csv   — PostgreSQL
+#   RESULTS_DIR/node_metrics/lb/<host>_proc_metrics.csv   — HAProxy (SUT-C only)
+# Columns: timestamp,pid,cpu_pct,rss_mb,vsz_mb
+
+proc_section=""
+proc_rows=""
+
+for subdir in proxy db lb; do
+  mapfile -t PROC_CSV_FILES < <(find "${NODE_METRICS_DIR}/${subdir}" \
+    -name "*_proc_metrics.csv" 2>/dev/null | sort)
+
+  for csv in "${PROC_CSV_FILES[@]}"; do
+    case "${subdir}" in
+      proxy) component="Proxy (OJP / pgBouncer)" ;;
+      db)    component="PostgreSQL" ;;
+      lb)    component="HAProxy" ;;
+    esac
+    host=$(basename "${csv}" _proc_metrics.csv)
+
+    # Peak and average CPU%
+    peak_cpu=$(awk -F',' 'NR>1 && $3+0>0 {if($3+0>max) max=$3+0} END{printf "%.1f", max+0}' "${csv}")
+    avg_cpu=$(awk -F',' 'NR>1 && $3+0>0 {sum+=$3+0; n++} END{
+        if (n>0) printf "%.1f", sum/n; else printf "N/A"}' "${csv}")
+
+    # Peak and average RSS (MiB)
+    peak_rss=$(awk -F',' 'NR>1 && $4+0>0 {if($4+0>max) max=$4+0} END{printf "%.1f", max+0}' "${csv}")
+    avg_rss=$(awk -F',' 'NR>1 && $4+0>0 {sum+=$4+0; n++} END{
+        if (n>0) printf "%.1f", sum/n; else printf "N/A"}' "${csv}")
+
+    proc_rows+="| ${component} | ${host} | ${avg_cpu} | ${peak_cpu} | ${avg_rss} | ${peak_rss} |"$'\n'
+  done
+done
+
+if [[ -n "${proc_rows}" ]]; then
+  proc_section=$'\n## Process Resource Utilization\n\n'
+  proc_section+='> CPU% is normalised to a single core (100% = 1 CPU fully busy).'$'\n'
+  proc_section+='> Memory values are Resident Set Size (RSS) — physical RAM in use.'$'\n\n'
+  proc_section+='| Component | Node | Avg CPU (%) | Peak CPU (%) | Avg RSS (MiB) | Peak RSS (MiB) |'$'\n'
+  proc_section+='|-----------|------|-------------|--------------|---------------|----------------|'$'\n'
+  proc_section+="${proc_rows}"
+fi
+
+# ── Parse pgBouncer admin console side-car CSVs ───────────────────────────────
+# Expected location: RESULTS_DIR/node_metrics/proxy/<host>_pgbouncer_admin_metrics.csv
+# Columns: timestamp,database,total_xact_count,total_query_count,
+#          avg_xact_time_us,avg_query_time_us,avg_wait_time_us,
+#          cl_active,cl_waiting,sv_active,sv_idle,maxwait_s
+
+pgb_admin_section=""
+mapfile -t PGB_ADMIN_CSV_FILES < <(find "${NODE_METRICS_DIR}/proxy" \
+  -name "*_pgbouncer_admin_metrics.csv" 2>/dev/null | sort)
+
+if [[ ${#PGB_ADMIN_CSV_FILES[@]} -gt 0 ]]; then
+  pgb_admin_section=$'\n## pgBouncer Pool Statistics\n\n'
+  pgb_admin_section+='| Node | Database | Avg wait time (µs) | Peak clients waiting | Peak max wait (s) |'$'\n'
+  pgb_admin_section+='|------|----------|--------------------|----------------------|-------------------|'$'\n'
+
+  for csv in "${PGB_ADMIN_CSV_FILES[@]}"; do
+    host=$(basename "${csv}" _pgbouncer_admin_metrics.csv)
+
+    # Collect unique logical databases from column 2
+    mapfile -t pgb_databases < <(awk -F',' 'NR>1 && $2!="" {print $2}' "${csv}" | sort -u)
+
+    for db in "${pgb_databases[@]}"; do
+      [[ -z "${db}" ]] && continue
+
+      # Average wait time (µs) across all samples for this database
+      avg_wait=$(awk -F',' -v d="${db}" \
+        'NR>1 && $2==d && $7+0>0 {sum+=$7+0; n++} END{
+          if(n>0) printf "%.0f", sum/n; else printf "0"}' "${csv}")
+
+      # Peak instantaneous clients waiting
+      peak_waiting=$(awk -F',' -v d="${db}" \
+        'NR>1 && $2==d {if($9+0>max) max=$9+0} END{printf "%d", max+0}' "${csv}")
+
+      # Peak maxwait_s
+      peak_maxwait=$(awk -F',' -v d="${db}" \
+        'NR>1 && $2==d {if($12+0>max) max=$12+0} END{printf "%.3f", max+0}' "${csv}")
+
+      pgb_admin_section+="| ${host} | ${db} | ${avg_wait} | ${peak_waiting} | ${peak_maxwait} |"$'\n'
+    done
+  done
+fi
 
 slo_p95_limit=50
 slo_error_limit=0.001
@@ -322,6 +408,16 @@ fi
 # PostgreSQL section (only present when side-car CSV was fetched)
 if [[ -n "${pg_section}" ]]; then
   printf '%s' "---${pg_section}"
+fi
+
+# Process resource utilization (present when process metrics CSVs were fetched)
+if [[ -n "${proc_section}" ]]; then
+  printf '%s' "---${proc_section}"
+fi
+
+# pgBouncer pool statistics (present only for pgBouncer SUT runs)
+if [[ -n "${pgb_admin_section}" ]]; then
+  printf '%s' "---${pgb_admin_section}"
 fi
 
 cat <<FOOTER

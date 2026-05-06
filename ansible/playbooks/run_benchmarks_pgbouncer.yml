@@ -7,12 +7,22 @@
 #      Re-run setup.yml --tags pgbouncer,haproxy to bring them up.
 #   2. Renders a bench config from the pgBouncer Jinja2 template.
 #   3. Resets PostgreSQL statistics so the run starts from a clean baseline.
-#   4. Deploys and starts a side-car metric collector on the DB node.
+#   4. Deploys and starts side-car metric collectors on proxy, lb, and DB nodes.
 #   5. Runs a warmup pass (single instance).
 #   6. Launches {{ bench_replica_count }} bench JVMs in parallel.
 #   7. Waits for all replicas to finish.
-#   8. Stops the DB side-car collector and fetches its CSV to the control node.
+#   8. Stops all side-car collectors and fetches their CSVs to the control node.
 #   9. Runs generate_report.sh to produce a Markdown report.
+#
+# Side-car scripts:
+#   ansible/scripts/collect_pg_metrics.sh        — runs on the DB node; polls
+#       pg_stat_database, pg_stat_bgwriter, and pg_locks every 5 seconds.
+#   ansible/scripts/collect_process_metrics.sh   — runs on each proxy node
+#       (pgbouncer), the lb node (haproxy), and the DB node (postgresql);
+#       captures OS-level CPU% and RSS/VSZ once per second.
+#   ansible/scripts/collect_pgbouncer_metrics.sh — runs on each proxy node;
+#       polls SHOW STATS and SHOW POOLS from the pgBouncer admin console
+#       every 5 seconds for connection pool throughput and wait-time metrics.
 #
 # Prerequisites (infrastructure must be set up before running this playbook):
 #   - PostgreSQL installed and running  → setup.yml --tags db
@@ -100,11 +110,26 @@
     bench_config_file: "/tmp/pgbouncer-benchmark-{{ run_name }}.yaml"
     # Remote path for pg side-car output file (written on the DB node)
     remote_pg_csv:   "/tmp/pg_metrics_{{ run_name }}.csv"
-    # Local (control-node) path where the side-car CSV is fetched to
-    local_pg_csv:    "{{ bench_results_dir }}/{{ run_name }}/node_metrics/pg_metrics.csv"
-    # Paths to side-car script on the control node (copied to the DB node)
-    pg_script_src:   "{{ bench_repo_dir }}/ansible/scripts/collect_pg_metrics.sh"
-    remote_pg_script: "/tmp/collect_pg_metrics.sh"
+    # Remote paths for process metrics side-car CSVs
+    remote_pgb_proc_csv:     "/tmp/pgbouncer_proc_metrics_{{ run_name }}.csv"
+    remote_haproxy_proc_csv: "/tmp/haproxy_proc_metrics_{{ run_name }}.csv"
+    remote_db_proc_csv:      "/tmp/db_proc_metrics_{{ run_name }}.csv"
+    # Remote path for pgBouncer admin console side-car CSV
+    remote_pgb_admin_csv: "/tmp/pgbouncer_admin_metrics_{{ run_name }}.csv"
+    # Local (control-node) paths where side-car CSVs are fetched to
+    local_pg_csv:         "{{ bench_results_dir }}/{{ run_name }}/node_metrics/pg_metrics.csv"
+    local_proxy_csv_dir:  "{{ bench_results_dir }}/{{ run_name }}/node_metrics/proxy"
+    local_lb_csv_dir:     "{{ bench_results_dir }}/{{ run_name }}/node_metrics/lb"
+    local_db_csv_dir:     "{{ bench_results_dir }}/{{ run_name }}/node_metrics/db"
+    # Paths to side-car scripts on the control node (copied to remote nodes)
+    pg_script_src:         "{{ bench_repo_dir }}/ansible/scripts/collect_pg_metrics.sh"
+    proc_script_src:       "{{ bench_repo_dir }}/ansible/scripts/collect_process_metrics.sh"
+    pgb_metrics_script_src: "{{ bench_repo_dir }}/ansible/scripts/collect_pgbouncer_metrics.sh"
+    remote_pg_script:          "/tmp/collect_pg_metrics.sh"
+    remote_proc_script:        "/tmp/collect_process_metrics.sh"
+    remote_pgb_metrics_script: "/tmp/collect_pgbouncer_metrics.sh"
+    # PostgreSQL systemd service name — matches pg_service_name role default
+    pg_service: "postgresql@{{ hostvars[groups['db'][0]]['pg_version'] | default(16) }}-main"
 
   tasks:
     # ── Freeze run_name so the timestamp is evaluated exactly once ────────────
@@ -137,6 +162,9 @@
       loop:
         - "{{ bench_results_dir }}/{{ run_name }}"
         - "{{ bench_results_dir }}/{{ run_name }}/node_metrics"
+        - "{{ local_proxy_csv_dir }}"
+        - "{{ local_lb_csv_dir }}"
+        - "{{ local_db_csv_dir }}"
 
     - name: Render pgBouncer benchmark configuration
       ansible.builtin.template:
@@ -186,6 +214,86 @@
       become: true
       become_user: postgres
       delegate_to: "{{ groups['db'][0] }}"
+      changed_when: true
+
+    # ── Deploy and start process metrics side-cars (CPU + RSS) ───────────────
+
+    - name: Copy process metrics collection script to proxy nodes
+      ansible.builtin.copy:
+        src: "{{ proc_script_src }}"
+        dest: "{{ remote_proc_script }}"
+        mode: "0755"
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['proxy'] }}"
+
+    - name: Start process metrics collection on proxy nodes (pgbouncer)
+      ansible.builtin.shell: |
+        nohup "{{ remote_proc_script }}" pgbouncer "{{ remote_pgb_proc_csv }}" \
+          </dev/null >"{{ remote_pgb_proc_csv }}.log" 2>&1 &
+        echo $! > "{{ remote_pgb_proc_csv }}.pid"
+      args:
+        executable: /bin/bash
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['proxy'] }}"
+      changed_when: true
+
+    - name: Copy process metrics collection script to lb node
+      ansible.builtin.copy:
+        src: "{{ proc_script_src }}"
+        dest: "{{ remote_proc_script }}"
+        mode: "0755"
+      delegate_to: "{{ groups['lb'][0] }}"
+      when: "'lb' in groups and groups['lb'] | length > 0"
+
+    - name: Start process metrics collection on lb node (haproxy)
+      ansible.builtin.shell: |
+        nohup "{{ remote_proc_script }}" haproxy "{{ remote_haproxy_proc_csv }}" \
+          </dev/null >"{{ remote_haproxy_proc_csv }}.log" 2>&1 &
+        echo $! > "{{ remote_haproxy_proc_csv }}.pid"
+      args:
+        executable: /bin/bash
+      delegate_to: "{{ groups['lb'][0] }}"
+      when: "'lb' in groups and groups['lb'] | length > 0"
+      changed_when: true
+
+    - name: Copy process metrics collection script to DB node
+      ansible.builtin.copy:
+        src: "{{ proc_script_src }}"
+        dest: "{{ remote_proc_script }}"
+        mode: "0755"
+      delegate_to: "{{ groups['db'][0] }}"
+
+    - name: Start process metrics collection on DB node (PostgreSQL)
+      ansible.builtin.shell: |
+        nohup "{{ remote_proc_script }}" "{{ pg_service }}" "{{ remote_db_proc_csv }}" \
+          </dev/null >"{{ remote_db_proc_csv }}.log" 2>&1 &
+        echo $! > "{{ remote_db_proc_csv }}.pid"
+      args:
+        executable: /bin/bash
+      delegate_to: "{{ groups['db'][0] }}"
+      changed_when: true
+
+    # ── Deploy and start pgBouncer admin console side-car ─────────────────────
+
+    - name: Copy pgBouncer admin metrics collection script to proxy nodes
+      ansible.builtin.copy:
+        src: "{{ pgb_metrics_script_src }}"
+        dest: "{{ remote_pgb_metrics_script }}"
+        mode: "0755"
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['proxy'] }}"
+
+    - name: Start pgBouncer admin metrics collection on proxy nodes
+      ansible.builtin.shell: |
+        nohup "{{ remote_pgb_metrics_script }}" "{{ remote_pgb_admin_csv }}" \
+          </dev/null >"{{ remote_pgb_admin_csv }}.log" 2>&1 &
+        echo $! > "{{ remote_pgb_admin_csv }}.pid"
+      args:
+        executable: /bin/bash
+      become: true
+      become_user: postgres
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['proxy'] }}"
       changed_when: true
 
     # ── Warmup ───────────────────────────────────────────────────────────────
@@ -265,6 +373,108 @@
         fail_on_missing: false
         validate_checksum: false
       delegate_to: "{{ groups['db'][0] }}"
+
+    # ── Stop process metrics side-cars; fetch CSVs ────────────────────────────
+
+    - name: Stop process metrics collection on proxy nodes
+      ansible.builtin.shell: |
+        PID_FILE="{{ remote_pgb_proc_csv }}.pid"
+        if [ -f "${PID_FILE}" ]; then
+          kill "$(cat "${PID_FILE}")" 2>/dev/null || true
+          rm -f "${PID_FILE}"
+        fi
+      args:
+        executable: /bin/bash
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['proxy'] }}"
+      changed_when: true
+      ignore_errors: true
+
+    - name: Fetch pgBouncer process metrics CSV from each proxy node
+      ansible.builtin.fetch:
+        src: "{{ remote_pgb_proc_csv }}"
+        dest: "{{ local_proxy_csv_dir }}/{{ item }}_proc_metrics.csv"
+        flat: true
+        fail_on_missing: false
+        validate_checksum: false
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['proxy'] }}"
+
+    - name: Stop process metrics collection on lb node
+      ansible.builtin.shell: |
+        PID_FILE="{{ remote_haproxy_proc_csv }}.pid"
+        if [ -f "${PID_FILE}" ]; then
+          kill "$(cat "${PID_FILE}")" 2>/dev/null || true
+          rm -f "${PID_FILE}"
+        fi
+      args:
+        executable: /bin/bash
+      delegate_to: "{{ groups['lb'][0] }}"
+      when: "'lb' in groups and groups['lb'] | length > 0"
+      changed_when: true
+      ignore_errors: true
+
+    - name: Fetch HAProxy process metrics CSV from lb node
+      ansible.builtin.fetch:
+        src: "{{ remote_haproxy_proc_csv }}"
+        dest: "{{ local_lb_csv_dir }}/lb_proc_metrics.csv"
+        flat: true
+        fail_on_missing: false
+        validate_checksum: false
+      delegate_to: "{{ groups['lb'][0] }}"
+      when: "'lb' in groups and groups['lb'] | length > 0"
+
+    - name: Stop process metrics collection on DB node
+      ansible.builtin.shell: |
+        PID_FILE="{{ remote_db_proc_csv }}.pid"
+        if [ -f "${PID_FILE}" ]; then
+          kill "$(cat "${PID_FILE}")" 2>/dev/null || true
+          rm -f "${PID_FILE}"
+        fi
+      args:
+        executable: /bin/bash
+      delegate_to: "{{ groups['db'][0] }}"
+      changed_when: true
+      ignore_errors: true
+
+    - name: Fetch DB process metrics CSV from DB node
+      ansible.builtin.fetch:
+        src: "{{ remote_db_proc_csv }}"
+        dest: "{{ local_db_csv_dir }}/db_proc_metrics.csv"
+        flat: true
+        fail_on_missing: false
+        validate_checksum: false
+      delegate_to: "{{ groups['db'][0] }}"
+
+    # ── Stop pgBouncer admin console side-car; fetch CSVs ─────────────────────
+
+    - name: Stop pgBouncer admin metrics collection on proxy nodes
+      ansible.builtin.shell: |
+        PID_FILE="{{ remote_pgb_admin_csv }}.pid"
+        if [ -f "${PID_FILE}" ]; then
+          kill "$(cat "${PID_FILE}")" 2>/dev/null || true
+          rm -f "${PID_FILE}"
+        fi
+      args:
+        executable: /bin/bash
+      become: true
+      become_user: postgres
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['proxy'] }}"
+      changed_when: true
+      ignore_errors: true
+
+    - name: Fetch pgBouncer admin metrics CSV from each proxy node
+      ansible.builtin.fetch:
+        src: "{{ remote_pgb_admin_csv }}"
+        dest: "{{ local_proxy_csv_dir }}/{{ item }}_pgbouncer_admin_metrics.csv"
+        flat: true
+        fail_on_missing: false
+        validate_checksum: false
+      become: true
+      become_user: postgres
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['proxy'] }}"
 
     # ── Report ────────────────────────────────────────────────────────────────
 
