@@ -21,7 +21,8 @@
 #       pg_stat_database, pg_stat_bgwriter, and pg_locks every 5 seconds.
 #
 # Usage:
-#   ansible-playbook -i inventory.yml playbooks/run_benchmarks.yml
+#   ansible-playbook -i inventory.yml playbooks/run_benchmarks.yml \
+#     -e @ansible/vars/dryrun-ojp.yml
 #
 # Optional overrides:
 #   -e run_name=ojp-run-1          # subdirectory under results/
