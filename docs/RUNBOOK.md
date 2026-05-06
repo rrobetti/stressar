@@ -360,36 +360,46 @@ database:
 
 Uses PgBouncer for connection pooling. Client uses minimal connections.
 
+> **pgBouncer runs on the same PROXY-1/2/3 nodes as OJP.** No additional machines are needed for
+> the SUT-C scenario. To switch from OJP to pgBouncer (or back), stop the active service and start
+> the other — see [Switching between proxy services](BENCHMARKING_GUIDE.md#switching-between-proxy-services)
+> for the step-by-step procedure.
+
 **Configuration:**
 ```yaml
 connectionMode: PGBOUNCER
 poolSize: 2  # Minimal client-side connections
 
 database:
-  jdbcUrl: "jdbc:postgresql://pgbouncer-host:6432/benchdb"
+  # In multi-node setup, point to HAProxy LB (port 6432) — not directly to a pgBouncer instance.
+  # In single-node / dry-run, point directly to the one proxy node running pgBouncer.
+  jdbcUrl: "jdbc:postgresql://<LB_IP>:6432/benchdb"   # multi-node (SUT-C)
+  # jdbcUrl: "jdbc:postgresql://<PROXY1_IP>:6432/benchdb"  # single-node / dry-run
   username: "benchuser"
   password: "benchpass"
 ```
 
 **Prerequisites:**
-- PgBouncer must be running and configured — see [install/PGBOUNCER.md](install/PGBOUNCER.md)
-- Database URL should point to PgBouncer (not directly to PostgreSQL)
+- pgBouncer must be running on each proxy node (PROXY-1/2/3) — see [install/PGBOUNCER.md](install/PGBOUNCER.md)
+- HAProxy must be running on the LB node (multi-node setup only) — see [install/HAPROXY.md](install/HAPROXY.md)
+- Database URL should point to HAProxy (multi-node) or directly to pgBouncer (single-node)
 
 **PgBouncer Setup Example:**
 
 ```ini
-# /etc/pgbouncer/pgbouncer.ini
+# /etc/pgbouncer/pgbouncer.ini  — apply identically on PROXY-1, PROXY-2, PROXY-3
 [databases]
-benchdb = host=localhost port=5432 dbname=benchdb
+benchdb = host=<DB_IP> port=5432 dbname=benchdb
 
 [pgbouncer]
 listen_addr = *
 listen_port = 6432
-auth_type = md5
+auth_type = scram-sha-256
 auth_file = /etc/pgbouncer/userlist.txt
 pool_mode = transaction
 max_client_conn = 2000
 default_pool_size = 16
+ignore_startup_parameters = extra_float_digits
 ```
 
 **Use Case:** Testing PgBouncer performance
