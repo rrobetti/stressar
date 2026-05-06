@@ -173,7 +173,7 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml \
 ansible -i ansible/inventory.yml proxy \
   -m systemd -a "name=ojp-server state=started enabled=true" --become
 
-# 2. Run the OJP benchmark
+# 2. Run the benchmark
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml
 ```
 
@@ -358,7 +358,7 @@ ansible/
 │       └── tasks/main.yml
 ├── playbooks/
 │   ├── setup.yml                      # Full infrastructure setup (PostgreSQL + OJP/pgBouncer/HAProxy + bench)
-│   ├── run_benchmarks.yml             # Execute OJP benchmarks (SUT-B) + generate report
+│   ├── run_benchmarks.yml             # Execute benchmarks (SUT-B) + generate report
 │   ├── run_benchmarks_pgbouncer.yml   # Execute pgBouncer benchmarks (SUT-C) + generate report
 │   └── teardown.yml                   # Stop OJP/pgBouncer/HAProxy services, reset DB stats
 ├── vars/

@@ -200,7 +200,7 @@ ssh ${SSH_USER}@${DB_IP} bash -s << 'ENDSSH'
 PG_CONF=/etc/postgresql/16/main/postgresql.conf
 sudo tee -a "${PG_CONF}" > /dev/null << 'EOF'
 
-# --- OJP benchmark settings ---
+# --- benchmark settings ---
 shared_preload_libraries = 'pg_stat_statements'
 pg_stat_statements.track = all
 pg_stat_statements.max   = 10000
