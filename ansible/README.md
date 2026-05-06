@@ -125,10 +125,14 @@ A Markdown report is written to `results/<run-name>/report.md`.
 
 ### 5. Tear down (before the next run)
 
-pgBouncer has no Ansible-managed service, so only reset the PostgreSQL statistics:
+```bash
+# Stop pgBouncer, HAProxy, and reset PostgreSQL statistics
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml --skip-tags ojp
+```
+
+To reset PostgreSQL statistics only (leaving pgBouncer and HAProxy running):
 
 ```bash
-# Reset PostgreSQL statistics (pgBouncer and HAProxy are left running)
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml \
   --skip-tags ojp,pgbouncer,haproxy
 ```
