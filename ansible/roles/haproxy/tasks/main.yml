@@ -14,12 +14,10 @@
     update_cache: true
   become: true
 
-- name: Download HAProxy {{ haproxy_version }} signing key
-  ansible.builtin.get_url:
-    url: "{{ haproxy_gpg_url }}"
-    dest: /usr/share/keyrings/haproxy.gpg
-    mode: "0644"
-    force: false
+- name: Download HAProxy {{ haproxy_version }} signing key via curl
+  ansible.builtin.shell:
+    cmd: "curl -fsSL {{ haproxy_gpg_url }} -o /usr/share/keyrings/haproxy.gpg"
+    creates: /usr/share/keyrings/haproxy.gpg
   become: true
   when: ansible_distribution == "Ubuntu"
 
