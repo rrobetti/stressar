@@ -33,5 +33,5 @@ metricsIntervalSeconds: 1
 outputDir: "{{ bench_results_dir }}/{{ run_name }}"
 
 sweepIncrementPercent: 15.0
-sloP95Ms: 50
+sloP95Ms: {{ bench_slo_p95_ms | default(50) }}
 errorRateThreshold: 0.001
