@@ -16,18 +16,11 @@ Two benchmark scenarios are supported:
 
 | Step | Playbook / Script | What happens |
 |------|------------------|--------------|
-| 1 | `setup.yml` | Installs PostgreSQL 16 on the DB node and tunes it for benchmarking. Installs Java 24 + OJP Server on each proxy node (as a `systemd` service). Builds the `bench` tool on the control node. Initialises the benchmark database. |
+| 1 | `setup.yml` | Installs PostgreSQL 16 on the DB node and tunes it for benchmarking. Installs Java 24 + OJP Server on each proxy node (SUT-B). Installs pgBouncer on each proxy node and HAProxy on the LB node (SUT-C, via `--tags pgbouncer,haproxy`). Builds the `bench` tool on the control node. Initialises the benchmark database. |
 | 2a | `run_benchmarks.yml` | **OJP (SUT-B):** Renders a parameterised bench config, runs a warmup pass, then launches `N` bench JVM replicas in parallel. Collects OJP JVM metrics and PostgreSQL metrics. Generates a Markdown report. |
 | 2b | `run_benchmarks_pgbouncer.yml` | **pgBouncer (SUT-C):** Same as above but connects through HAProxy → pgBouncer instead of OJP. Collects PostgreSQL metrics only (pgBouncer has no JVM). |
-| 3 | `teardown.yml` | Stops OJP Server on all proxy nodes and resets PostgreSQL statistics for the next run. |
+| 3 | `teardown.yml` | Stops OJP Server, pgBouncer, and HAProxy on their respective nodes and resets PostgreSQL statistics for the next run. |
 | — | `scripts/generate_report.sh` | Pure shell + `jq` script called automatically by both run playbooks; can also be run standalone. |
-
-> **pgBouncer infrastructure note:** `setup.yml` installs OJP Server on proxy nodes. pgBouncer and
-> HAProxy must be installed and configured manually before running `run_benchmarks_pgbouncer.yml`.
-> **pgBouncer runs on the same PROXY-1/2/3 machines as OJP** — stop the OJP service first, then
-> install and start pgBouncer on those same nodes. See
-> [docs/BENCHMARKING_GUIDE.md §§ 3.3–5](../docs/BENCHMARKING_GUIDE.md#33-install-haproxy-on-lb-t3-only)
-> for step-by-step installation and configuration instructions.
 
 ---
 
@@ -109,22 +102,17 @@ cp ansible/inventory.yml.example ansible/inventory.yml
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml --tags db,bench,init-db
 ```
 
-### 3. Install pgBouncer and HAProxy manually
+### 3. Install pgBouncer and HAProxy
 
 > **pgBouncer runs on the same PROXY-1/2/3 nodes as OJP — not on a separate set of machines.**
 > The `proxy` inventory group is dual-use: OJP for SUT-B and pgBouncer for SUT-C.
-> Before installing pgBouncer, stop the OJP service on those nodes:
->
-> ```bash
-> ansible -i ansible/inventory.yml proxy -m systemd -a "name=ojp-server state=stopped" --become
-> ```
+> The `pgbouncer` tag automatically stops the OJP service on those nodes before starting pgBouncer.
 
-Automated Ansible roles for pgBouncer and HAProxy are not included.
-Follow the manual installation steps in the deployment guide:
-
-- **HAProxy** on the LB node → [docs/BENCHMARKING_GUIDE.md § 3.3](../docs/BENCHMARKING_GUIDE.md#33-install-haproxy-on-lb-t3-only)
-- **pgBouncer** on each proxy node (PROXY-1/2/3) → [docs/BENCHMARKING_GUIDE.md § 5](../docs/BENCHMARKING_GUIDE.md#5-pgbouncer-configuration)
-- Full installation reference → [docs/install/PGBOUNCER.md](../docs/install/PGBOUNCER.md)
+```bash
+# Install and start pgBouncer on all proxy nodes + HAProxy on the LB node
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
+  --tags pgbouncer,haproxy
+```
 
 ### 4. Run the benchmark
 
@@ -140,8 +128,9 @@ A Markdown report is written to `results/<run-name>/report.md`.
 pgBouncer has no Ansible-managed service, so only reset the PostgreSQL statistics:
 
 ```bash
-# Reset PostgreSQL statistics only (pgBouncer service management is manual)
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml --skip-tags ojp
+# Reset PostgreSQL statistics (pgBouncer and HAProxy are left running)
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml \
+  --skip-tags ojp,pgbouncer,haproxy
 ```
 
 ---
@@ -152,77 +141,35 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml --skip-
 nodes, stop the current service and start the other. You do not need to re-provision the machines.
 
 SUT-C also requires **HAProxy on the LB node**. OJP (SUT-B) does not use HAProxy (it does
-client-side load balancing). Follow the steps below to install, start, and stop it when switching.
+client-side load balancing). Use the plays below to switch between scenarios.
 
 ### OJP → pgBouncer
 
 ```bash
-# 1. Stop OJP on all proxy nodes
-ansible -i ansible/inventory.yml proxy \
-  -m systemd -a "name=ojp-server state=stopped enabled=false" --become
+# 1. Install (or re-configure) pgBouncer on proxy nodes and HAProxy on the LB node.
+#    The pgbouncer role automatically stops OJP Server first.
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
+  --tags pgbouncer,haproxy
 
-# 2. Install pgBouncer on all proxy nodes (if not already installed)
-ansible -i ansible/inventory.yml proxy \
-  -m apt -a "name=pgbouncer state=present update_cache=yes" --become
-
-# 3. Deploy pgBouncer config (see docs/BENCHMARKING_GUIDE.md § 5 for the file contents)
-#    Copy your pgbouncer.ini and userlist.txt to each proxy node, then:
-ansible -i ansible/inventory.yml proxy \
-  -m systemd -a "name=pgbouncer state=started enabled=true" --become
-
-# 4. Install HAProxy on the LB node (if not already installed)
-ansible -i ansible/inventory.yml lb \
-  -m apt -a "name=haproxy state=present update_cache=yes" --become
-
-# 5. Deploy HAProxy config to the LB node
-#    Config template (replace PROXY1/2/3_IP with actual IPs):
-#
-#      global
-#          maxconn 10000
-#      defaults
-#          mode    tcp
-#          timeout connect 5s
-#          timeout client  300s
-#          timeout server  300s
-#      frontend pgbouncer_front
-#          bind *:6432
-#          default_backend pgbouncer_back
-#      backend pgbouncer_back
-#          balance leastconn
-#          server proxy1 <PROXY1_IP>:6432 check inter 2s
-#          server proxy2 <PROXY2_IP>:6432 check inter 2s
-#          server proxy3 <PROXY3_IP>:6432 check inter 2s
-#
-#    Full reference: docs/install/HAPROXY.md
-#    After copying /etc/haproxy/haproxy.cfg to the LB node:
-ansible -i ansible/inventory.yml lb \
-  -m systemd -a "name=haproxy state=started enabled=true" --become
-
-# 6. Verify HAProxy is forwarding connections through pgBouncer to PostgreSQL
-#    (run from the control node)
+# 2. Verify HAProxy is forwarding connections through pgBouncer to PostgreSQL
 ansible -i ansible/inventory.yml lb \
   -m command -a "psql -h 127.0.0.1 -p 6432 -U benchuser -d benchdb -c 'SELECT 1;'" --become
 
-# 7. Run the pgBouncer benchmark
+# 3. Run the pgBouncer benchmark
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_pgbouncer.yml
 ```
 
 ### pgBouncer → OJP
 
 ```bash
-# 1. Stop HAProxy on the LB node (not needed for OJP)
-ansible -i ansible/inventory.yml lb \
-  -m systemd -a "name=haproxy state=stopped" --become
+# 1. Stop HAProxy and pgBouncer, then restart OJP
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml \
+  --tags pgbouncer,haproxy
 
-# 2. Stop pgBouncer on all proxy nodes
-ansible -i ansible/inventory.yml proxy \
-  -m systemd -a "name=pgbouncer state=stopped" --become
-
-# 3. Start OJP on all proxy nodes
 ansible -i ansible/inventory.yml proxy \
   -m systemd -a "name=ojp-server state=started enabled=true" --become
 
-# 4. Run the OJP benchmark
+# 2. Run the OJP benchmark
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml
 ```
 
@@ -230,7 +177,8 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml
 > the previous run:
 >
 > ```bash
-> ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml --skip-tags ojp
+> ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml \
+>   --skip-tags ojp,pgbouncer,haproxy
 > ```
 
 ---
@@ -256,15 +204,14 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \
 ### pgBouncer dry-run (6 × 1 vCPU / 1 GB RAM)
 
 `ansible/vars/dryrun-pgbouncer.yml` contains pre-tuned values for a minimal pgBouncer setup
-(1 control + 1 DB + 1 LB + 3 pgBouncer proxies). pgBouncer and HAProxy must be installed manually
-first (see [Quick start — pgBouncer](#quick-start--pgbouncer-sut-c) step 3 above).
+(1 control + 1 DB + 1 LB + 3 pgBouncer proxies).
 
 ```bash
-# Setup PostgreSQL + bench tool
+# Setup PostgreSQL + pgBouncer + HAProxy + bench tool
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
-  --tags db,bench,init-db  -e @ansible/vars/dryrun-pgbouncer.yml
+  --tags db,pgbouncer,haproxy,bench,init-db  -e @ansible/vars/dryrun-pgbouncer.yml
 
-# Run (assumes pgBouncer and HAProxy are already running)
+# Run
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_pgbouncer.yml \
   -e @ansible/vars/dryrun-pgbouncer.yml  -e run_name=dryrun-pgbouncer-1
 ```
@@ -316,13 +263,29 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_pgbou
 |-----|-----------|
 | `db` | PostgreSQL install + configure |
 | `proxy` | Java 24 + OJP Server install (SUT-B only) |
+| `pgbouncer` | pgBouncer install + configure on proxy nodes (SUT-C only) |
+| `haproxy` | HAProxy install + configure on the LB node (SUT-C only) |
 | `bench` | Build bench tool |
 | `init-db` | Seed benchmark database |
+
+`teardown.yml` exposes the following tags:
+
+| Tag | What stops |
+|-----|-----------|
+| `ojp` | OJP Server on proxy nodes |
+| `pgbouncer` | pgBouncer on proxy nodes |
+| `haproxy` | HAProxy on the LB node |
 
 Example — set up PostgreSQL and the bench tool only (useful before a pgBouncer run):
 
 ```bash
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml --tags db,bench,init-db
+```
+
+Example — install pgBouncer + HAProxy only (proxy nodes and LB must already exist):
+
+```bash
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml --tags pgbouncer,haproxy
 ```
 
 Example — re-run only the OJP proxy setup after a server replacement:
@@ -373,14 +336,27 @@ ansible/
 │   │   ├── tasks/main.yml
 │   │   └── templates/
 │   │       └── ojp-server.service.j2
+│   ├── pgbouncer/                     # Install + configure pgBouncer on proxy nodes — SUT-C only
+│   │   ├── defaults/main.yml
+│   │   ├── handlers/main.yml
+│   │   ├── tasks/main.yml
+│   │   └── templates/
+│   │       ├── pgbouncer.ini.j2
+│   │       └── userlist.txt.j2
+│   ├── haproxy/                       # Install + configure HAProxy on the LB node — SUT-C only
+│   │   ├── defaults/main.yml
+│   │   ├── handlers/main.yml
+│   │   ├── tasks/main.yml
+│   │   └── templates/
+│   │       └── haproxy.cfg.j2
 │   └── bench_control/                 # Build bench tool on the control node
 │       ├── defaults/main.yml
 │       └── tasks/main.yml
 ├── playbooks/
-│   ├── setup.yml                      # Full infrastructure setup (PostgreSQL + OJP proxy + bench)
+│   ├── setup.yml                      # Full infrastructure setup (PostgreSQL + OJP/pgBouncer/HAProxy + bench)
 │   ├── run_benchmarks.yml             # Execute OJP benchmarks (SUT-B) + generate report
 │   ├── run_benchmarks_pgbouncer.yml   # Execute pgBouncer benchmarks (SUT-C) + generate report
-│   └── teardown.yml                   # Stop OJP services, reset DB stats
+│   └── teardown.yml                   # Stop OJP/pgBouncer/HAProxy services, reset DB stats
 ├── vars/
 │   ├── dryrun.yml                     # Minimal-hardware overrides for OJP dry run
 │   └── dryrun-pgbouncer.yml           # Minimal-hardware overrides for pgBouncer dry run

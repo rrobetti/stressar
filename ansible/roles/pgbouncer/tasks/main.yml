@@ -1,0 +1,109 @@
+---
+# ansible/roles/pgbouncer/tasks/main.yml
+# Installs and configures pgBouncer on each proxy node (SUT-C).
+#
+# Prerequisites:
+#   - The postgresql role must have run on the db group so that db_host resolves.
+#   - The OJP service must be stopped before this role runs on nodes that also run OJP.
+#     setup.yml handles this with the `pgbouncer` tag play.
+
+# ── Stop OJP before taking over the proxy port ───────────────────────────────
+
+- name: Stop ojp-server service (if running)
+  ansible.builtin.systemd:
+    name: ojp-server
+    state: stopped
+  become: true
+  ignore_errors: true   # safe to ignore if service does not exist yet
+
+# ── Install pgBouncer via APT ─────────────────────────────────────────────────
+
+- name: Install prerequisite packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - ca-certificates
+      - gnupg
+    state: present
+    update_cache: true
+  become: true
+
+- name: Create PGDG keyring directory
+  ansible.builtin.file:
+    path: /usr/share/postgresql-common/pgdg
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Download PGDG signing key
+  ansible.builtin.command:
+    argv:
+      - curl
+      - -fsSL
+      - -o
+      - /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+      - https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    creates: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+  become: true
+
+- name: Add PGDG apt repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc]
+      https://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main
+    filename: pgdg
+    state: present
+  become: true
+
+- name: Install pgbouncer
+  ansible.builtin.apt:
+    name: pgbouncer
+    state: present
+    update_cache: true
+  become: true
+
+# ── Configuration files ───────────────────────────────────────────────────────
+
+- name: Ensure pgBouncer config directory exists
+  ansible.builtin.file:
+    path: "{{ pgbouncer_config_dir }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0750"
+  become: true
+
+- name: Deploy pgbouncer.ini
+  ansible.builtin.template:
+    src: pgbouncer.ini.j2
+    dest: "{{ pgbouncer_config_file }}"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  become: true
+  notify: restart pgbouncer
+
+- name: Deploy userlist.txt
+  ansible.builtin.template:
+    src: userlist.txt.j2
+    dest: "{{ pgbouncer_userlist_file }}"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  become: true
+  notify: restart pgbouncer
+
+# ── Systemd service ───────────────────────────────────────────────────────────
+
+- name: Enable and start pgBouncer service
+  ansible.builtin.systemd:
+    name: pgbouncer
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+
+- name: Wait for pgBouncer to open port {{ pgbouncer_port }}
+  ansible.builtin.wait_for:
+    port: "{{ pgbouncer_port }}"
+    timeout: 30

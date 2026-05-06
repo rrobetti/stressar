@@ -1,0 +1,66 @@
+---
+# ansible/roles/haproxy/tasks/main.yml
+# Installs and configures HAProxy on the lb node (SUT-C only).
+
+# ── Install HAProxy ───────────────────────────────────────────────────────────
+
+- name: Install prerequisite packages for HAProxy PPA
+  ansible.builtin.apt:
+    name:
+      - software-properties-common
+      - curl
+      - ca-certificates
+    state: present
+    update_cache: true
+  become: true
+
+- name: Add HAProxy 2.8 PPA (Ubuntu/Debian)
+  ansible.builtin.apt_repository:
+    repo: "ppa:vbernat/haproxy-2.8"
+    state: present
+  become: true
+  when: ansible_distribution == "Ubuntu"
+
+- name: Install haproxy
+  ansible.builtin.apt:
+    name: "haproxy=2.8.*"
+    state: present
+    update_cache: true
+  become: true
+
+# ── Configuration ─────────────────────────────────────────────────────────────
+
+- name: Ensure HAProxy config directory exists
+  ansible.builtin.file:
+    path: /etc/haproxy
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Deploy haproxy.cfg
+  ansible.builtin.template:
+    src: haproxy.cfg.j2
+    dest: "{{ haproxy_config_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "haproxy -c -f %s"
+  become: true
+  notify: reload haproxy
+
+# ── Systemd service ───────────────────────────────────────────────────────────
+
+- name: Enable and start HAProxy service
+  ansible.builtin.systemd:
+    name: haproxy
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+
+- name: Wait for HAProxy to open port {{ haproxy_frontend_port }}
+  ansible.builtin.wait_for:
+    port: "{{ haproxy_frontend_port }}"
+    timeout: 30

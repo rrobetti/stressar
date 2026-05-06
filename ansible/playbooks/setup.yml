@@ -3,9 +3,11 @@
 #
 # Full infrastructure setup:
 #   1. Installs and configures PostgreSQL 16 on the db group.
-#   2. Installs Java 24 + OJP Server on every proxy node.
-#   3. Initialises the benchmark database from the control node.
-#   4. Builds the bench tool on the control node.
+#   2. Installs Java 24 + OJP Server on every proxy node.          (SUT-B only)
+#   3. Installs pgBouncer on every proxy node.                      (SUT-C only, --tags pgbouncer)
+#   4. Installs HAProxy on the lb node.                             (SUT-C only, --tags haproxy)
+#   5. Initialises the benchmark database from the control node.
+#   6. Builds the bench tool on the control node.
 #
 # Usage:
 #   ansible-playbook -i inventory.yml playbooks/setup.yml
@@ -13,7 +15,12 @@
 # To limit to a single step, use --tags:
 #   ansible-playbook -i inventory.yml playbooks/setup.yml --tags db
 #   ansible-playbook -i inventory.yml playbooks/setup.yml --tags proxy
+#   ansible-playbook -i inventory.yml playbooks/setup.yml --tags pgbouncer
+#   ansible-playbook -i inventory.yml playbooks/setup.yml --tags haproxy
 #   ansible-playbook -i inventory.yml playbooks/setup.yml --tags bench
+#
+# SUT-C quick setup (pgBouncer + HAProxy only, skipping OJP):
+#   ansible-playbook -i inventory.yml playbooks/setup.yml --tags db,pgbouncer,haproxy,bench,init-db
 
 - name: Set up database server
   hosts: db
@@ -28,6 +35,20 @@
   tags: proxy
   roles:
     - role: ojp_proxy
+
+- name: Set up pgBouncer on proxy nodes (SUT-C)
+  hosts: proxy
+  gather_facts: true
+  tags: pgbouncer
+  roles:
+    - role: pgbouncer
+
+- name: Set up HAProxy on load balancer node (SUT-C)
+  hosts: lb
+  gather_facts: true
+  tags: haproxy
+  roles:
+    - role: haproxy
 
 - name: Build bench tool on control node
   hosts: control
