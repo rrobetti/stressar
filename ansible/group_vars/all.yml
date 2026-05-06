@@ -37,6 +37,12 @@ bench_workload_type:        "W2_MIXED"
 bench_connection_mode:      "OJP"
 bench_db_connection_budget: 18
 
+# ── HikariCP Direct (SUT-A) defaults ─────────────────────────────────────────
+# Production: bench_db_connection_budget=300, bench_replica_count=16 (override at run time).
+# Each replica holds floor(dbConnectionBudget / replicas) connections, capped at
+# bench_hikari_max_pool_size_per_replica (300 / 16 ≈ 19 per replica = 300 total).
+bench_hikari_max_pool_size_per_replica: 19
+
 # ── Benchmark dataset size (must match init-db call) ─────────────────────────
 bench_num_accounts: 1000000
 bench_num_items:    100000

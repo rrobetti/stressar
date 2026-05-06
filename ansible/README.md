@@ -3,10 +3,11 @@
 End-to-end automation for installing software, executing the benchmark suite,
 collecting results, and generating a report — all from a single control node.
 
-Two benchmark scenarios are supported:
+Three benchmark scenarios are supported:
 
 | Scenario | Proxy Technology | Playbook |
 |----------|-----------------|----------|
+| **SUT-A — HikariCP Direct** | No proxy — bench replicas connect directly to PostgreSQL (disciplined baseline) | `run_benchmarks_hikari.yml` |
 | **SUT-B — OJP** | OJP Server (client-side JDBC load balancing, no dedicated LB) | `run_benchmarks.yml` |
 | **SUT-C — pgBouncer** | pgBouncer + HAProxy load balancer | `run_benchmarks_pgbouncer.yml` |
 
@@ -17,10 +18,11 @@ Two benchmark scenarios are supported:
 | Step | Playbook / Script | What happens |
 |------|------------------|--------------|
 | 1 | `setup.yml` | Installs PostgreSQL 16 on the DB node and tunes it for benchmarking. Installs Java 24 + OJP Server on each proxy node (SUT-B). Installs pgBouncer on each proxy node and HAProxy on the LB node (SUT-C, via `--tags pgbouncer,haproxy`). Builds the `bench` tool on the control node. Initialises the benchmark database. |
-| 2a | `run_benchmarks.yml` | **OJP (SUT-B):** Pre-flight verifies `ojp-server` is active on every proxy node (fails fast if not). Renders a parameterised bench config, runs a warmup pass, then launches `N` bench JVM replicas in parallel. Collects OJP JVM metrics and PostgreSQL metrics. Generates a Markdown report. |
-| 2b | `run_benchmarks_pgbouncer.yml` | **pgBouncer (SUT-C):** Pre-flight verifies `pgbouncer` is active on every proxy node and `haproxy` is active on the lb node (fails fast if not). Same benchmark flow as SUT-B but connects through HAProxy → pgBouncer. Collects PostgreSQL metrics only (pgBouncer has no JVM). |
+| 2a | `run_benchmarks_hikari.yml` | **HikariCP Direct (SUT-A):** No proxy tier — bench replicas connect directly to PostgreSQL using HIKARI_DISCIPLINED pooling. Resets PostgreSQL stats, renders a bench config, runs warmup, then launches `N` bench JVM replicas in parallel. Collects PostgreSQL metrics. Generates a Markdown report. |
+| 2b | `run_benchmarks.yml` | **OJP (SUT-B):** Pre-flight verifies `ojp-server` is active on every proxy node (fails fast if not). Renders a parameterised bench config, runs a warmup pass, then launches `N` bench JVM replicas in parallel. Collects OJP JVM metrics and PostgreSQL metrics. Generates a Markdown report. |
+| 2c | `run_benchmarks_pgbouncer.yml` | **pgBouncer (SUT-C):** Pre-flight verifies `pgbouncer` is active on every proxy node and `haproxy` is active on the lb node (fails fast if not). Same benchmark flow as SUT-B but connects through HAProxy → pgBouncer. Collects PostgreSQL metrics only (pgBouncer has no JVM). |
 | 3 | `teardown.yml` | Stops OJP Server, pgBouncer, and HAProxy on their respective nodes and resets PostgreSQL statistics for the next run. |
-| — | `scripts/generate_report.sh` | Pure shell + `jq` script called automatically by both run playbooks; can also be run standalone. |
+| — | `scripts/generate_report.sh` | Pure shell + `jq` script called automatically by all run playbooks; can also be run standalone. |
 
 ---
 
@@ -44,10 +46,53 @@ Remote machines require only **SSH access** and **outbound internet** (for packa
 
 | Scenario | Machines | Hardware |
 |----------|----------|----------|
+| SUT-A dry-run (HikariCP Direct) | **2** — 1 control (local) + 1 DB | 1 vCPU / 1 GB RAM each |
 | SUT-B dry-run (OJP) | **5** — 1 control (local) + 1 DB + 3 proxy | 1 vCPU / 1 GB RAM each |
 | SUT-C dry-run (pgBouncer) | **6** — 1 control (local) + 1 DB + 1 LB + 3 proxy | 1 vCPU / 1 GB RAM each |
+| SUT-A production (HikariCP Direct) | **4** — 1 control (local) + 1 DB + 2 load generators | See [Hardware Specifications](../docs/BENCHMARKING_GUIDE.md#2-hardware-specifications) |
 | SUT-B production (OJP) | **7** — 1 control (local) + 2 load generators + 1 DB + 3 proxy | See [Hardware Specifications](../docs/BENCHMARKING_GUIDE.md#2-hardware-specifications) |
 | SUT-C production (pgBouncer) | **8** — 1 control (local) + 2 load generators + 1 DB + 1 LB + 3 proxy | See [Hardware Specifications](../docs/BENCHMARKING_GUIDE.md#2-hardware-specifications) |
+
+---
+
+## Quick start — HikariCP Direct (SUT-A)
+
+SUT-A is the **disciplined baseline**: bench replicas connect directly to PostgreSQL with no proxy
+tier. The connection budget is divided equally across replicas (`HIKARI_DISCIPLINED` mode).
+
+### 1. Create your inventory
+
+```bash
+cp ansible/inventory.yml.example ansible/inventory.yml
+# Fill in DB_IP only — no proxy or LB nodes are needed for SUT-A
+```
+
+### 2. Set up the database and build the bench tool
+
+```bash
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
+  --tags db,bench,init-db
+```
+
+This installs PostgreSQL on the DB node, builds the `bench` tool on the control node, and seeds the
+database. No proxy-tier components are installed.
+
+### 3. Run the benchmark
+
+```bash
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_hikari.yml
+```
+
+Results land under `results/<run-name>/` on the control node.
+A Markdown report is written to `results/<run-name>/report.md`.
+
+### 4. Tear down (before the next run)
+
+```bash
+# SUT-A has no proxy services to stop; reset PostgreSQL statistics only:
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml \
+  --skip-tags ojp,pgbouncer,haproxy
+```
 
 ---
 
@@ -189,6 +234,23 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml
 
 ## Dry-run on minimal hardware
 
+### HikariCP Direct dry-run (2 × 1 vCPU / 1 GB RAM)
+
+`ansible/vars/dryrun-hikari.yml` contains pre-tuned values for **2 × 1 vCPU / 1 GB RAM** machines
+(1 control + 1 DB — no proxy nodes needed). Use it to verify the HikariCP Direct scripts
+end-to-end before provisioning full-size hardware.
+Expected run time: ≈ 5 minutes (seed + warmup + 60 s bench + report).
+
+```bash
+# Setup (DB + bench tool — no proxy components needed for SUT-A)
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
+  --tags db,bench,init-db  -e @ansible/vars/dryrun-hikari.yml
+
+# Run (each invocation creates a new timestamped folder under results/)
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_hikari.yml \
+  -e @ansible/vars/dryrun-hikari.yml
+```
+
 ### OJP dry-run (5 × 1 vCPU / 1 GB RAM)
 
 `ansible/vars/dryrun-ojp.yml` contains pre-tuned values for **5 × 1 vCPU / 1 GB RAM** machines
@@ -220,20 +282,22 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_pgbou
   -e @ansible/vars/dryrun-pgbouncer.yml
 ```
 
-Key differences between the two dry-run profiles:
+Key differences between the three dry-run profiles:
 
-| Parameter | OJP dry-run | pgBouncer dry-run | Default |
-|-----------|-------------|-------------------|---------|
-| `bench_num_accounts` | 10 000 | 10 000 | 1 000 000 |
-| `bench_num_orders` | 100 000 | 100 000 | 10 000 000 |
-| `bench_replica_count` | 1 | 1 | 4 |
-| `bench_target_rps` | 25 | 25 | 500 |
-| `bench_duration_seconds` | 60 | 60 | 300 |
-| `bench_slo_p95_ms` | 300 ms | 300 ms | 50 ms |
-| `pgbouncer_pool_size` | — | 18 | 6 |
-| `pgbouncer_min_pool_size` | — | 18 | 6 |
-| `pg_shared_buffers` | 128 MB | 128 MB | 4 GB |
-| `pg_max_connections` | 50 | 50 | 400 |
+| Parameter | HikariCP dry-run | OJP dry-run | pgBouncer dry-run | Default |
+|-----------|------------------|-------------|-------------------|---------|
+| `bench_num_accounts` | 10 000 | 10 000 | 10 000 | 1 000 000 |
+| `bench_num_orders` | 100 000 | 100 000 | 100 000 | 10 000 000 |
+| `bench_replica_count` | 1 | 1 | 1 | 4 |
+| `bench_target_rps` | 25 | 25 | 25 | 500 |
+| `bench_duration_seconds` | 60 | 60 | 60 | 300 |
+| `bench_slo_p95_ms` | 300 ms | 300 ms | 300 ms | 50 ms |
+| `bench_db_connection_budget` | 18 | — | — | 18 |
+| `bench_hikari_max_pool_size_per_replica` | 18 | — | — | 19 |
+| `pgbouncer_pool_size` | — | — | 18 | 6 |
+| `pgbouncer_min_pool_size` | — | — | 18 | 6 |
+| `pg_shared_buffers` | 128 MB | 128 MB | 128 MB | 4 GB |
+| `pg_max_connections` | 50 | 50 | 50 | 400 |
 
 > **Why 300 ms for dry runs?**  
 > Dry runs are typically executed by engineers from their local machines against cloud instances
@@ -252,6 +316,15 @@ All numeric parameters have defaults in `group_vars/all.yml` and the role
 `defaults/main.yml` files. Override any of them on the command line:
 
 ```bash
+# HikariCP Direct (SUT-A) — production: 16 replicas × 19 connections ≈ 300 total
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_hikari.yml \
+  -e run_name=hikari-tuning-1               \
+  -e bench_db_connection_budget=300         \
+  -e bench_replica_count=16                 \
+  -e bench_hikari_max_pool_size_per_replica=19 \
+  -e bench_target_rps=500                   \
+  -e bench_duration_seconds=300
+
 # OJP
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \
   -e run_name=ojp-tuning-1      \
@@ -314,6 +387,9 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml --tags ojp
 ## Report generation (standalone)
 
 ```bash
+# HikariCP Direct run
+ansible/scripts/generate_report.sh results/hikari-run-1 results/hikari-run-1/report.md
+
 # OJP run
 ansible/scripts/generate_report.sh results/ojp-run-1 results/ojp-run-1/report.md
 
@@ -369,13 +445,16 @@ ansible/
 │       └── tasks/main.yml
 ├── playbooks/
 │   ├── setup.yml                      # Full infrastructure setup (PostgreSQL + OJP/pgBouncer/HAProxy + bench)
+│   ├── run_benchmarks_hikari.yml      # Execute HikariCP Direct benchmarks (SUT-A) + generate report
 │   ├── run_benchmarks.yml             # Execute benchmarks (SUT-B) + generate report
 │   ├── run_benchmarks_pgbouncer.yml   # Execute pgBouncer benchmarks (SUT-C) + generate report
 │   └── teardown.yml                   # Stop OJP/pgBouncer/HAProxy services, reset DB stats
 ├── vars/
+│   ├── dryrun-hikari.yml              # Minimal-hardware overrides for HikariCP Direct (SUT-A) dry run
 │   ├── dryrun-ojp.yml                 # Minimal-hardware overrides for OJP (SUT-B) dry run
 │   └── dryrun-pgbouncer.yml           # Minimal-hardware overrides for pgBouncer (SUT-C) dry run
 ├── templates/
+│   ├── hikari-benchmark.yaml.j2       # Parameterised bench config template for HikariCP Direct (SUT-A)
 │   ├── ojp-benchmark.yaml.j2          # Parameterised bench config template for OJP (SUT-B)
 │   └── pgbouncer-benchmark.yaml.j2    # Parameterised bench config template for pgBouncer (SUT-C)
 └── scripts/
