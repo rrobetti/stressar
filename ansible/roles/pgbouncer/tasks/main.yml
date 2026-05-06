@@ -68,8 +68,8 @@
   ansible.builtin.file:
     path: "{{ pgbouncer_config_dir }}"
     state: directory
-    owner: pgbouncer
-    group: pgbouncer
+    owner: postgres
+    group: postgres
     mode: "0750"
   become: true
 
@@ -77,8 +77,8 @@
   ansible.builtin.template:
     src: pgbouncer.ini.j2
     dest: "{{ pgbouncer_config_file }}"
-    owner: pgbouncer
-    group: pgbouncer
+    owner: postgres
+    group: postgres
     mode: "0640"
   become: true
   notify: restart pgbouncer
@@ -87,8 +87,8 @@
   ansible.builtin.template:
     src: userlist.txt.j2
     dest: "{{ pgbouncer_userlist_file }}"
-    owner: pgbouncer
-    group: pgbouncer
+    owner: postgres
+    group: postgres
     mode: "0640"
   become: true
   notify: restart pgbouncer
