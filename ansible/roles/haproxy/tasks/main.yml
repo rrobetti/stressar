@@ -4,6 +4,21 @@
 
 # ── Install HAProxy ───────────────────────────────────────────────────────────
 
+# On noble (24.04+) HAProxy 2.8 ships in the official Ubuntu repo.
+# Remove any stale backport sources that may have been written by a previous
+# run before the backport-distro guard was added, so that apt update succeeds.
+- name: Remove stale HAProxy backport apt sources (non-backport distros)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/haproxy.list
+    - /usr/share/keyrings/haproxy.gpg
+  become: true
+  when:
+    - ansible_distribution == "Ubuntu"
+    - ansible_distribution_release not in haproxy_backport_distros
+
 - name: Install prerequisite packages for HAProxy PPA
   ansible.builtin.apt:
     name:
@@ -14,16 +29,39 @@
     update_cache: true
   become: true
 
-- name: Add HAProxy 2.8 PPA (Ubuntu/Debian)
-  ansible.builtin.apt_repository:
-    repo: "ppa:vbernat/haproxy-2.8"
-    state: present
+- name: Download HAProxy {{ haproxy_version }} signing key via curl
+  ansible.builtin.shell:
+    cmd: "curl -fsSL {{ haproxy_gpg_url }} -o /usr/share/keyrings/haproxy.gpg"
+    creates: /usr/share/keyrings/haproxy.gpg
   become: true
-  when: ansible_distribution == "Ubuntu"
+  when:
+    - ansible_distribution == "Ubuntu"
+    - ansible_distribution_release in haproxy_backport_distros
+
+- name: Add HAProxy {{ haproxy_version }} apt repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/haproxy.list
+    content: |
+      deb [signed-by=/usr/share/keyrings/haproxy.gpg] {{ haproxy_repo_url }} {{ ansible_distribution_release }}-backports-{{ haproxy_version }} main
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when:
+    - ansible_distribution == "Ubuntu"
+    - ansible_distribution_release in haproxy_backport_distros
+
+- name: Update apt cache after adding HAProxy repository
+  ansible.builtin.apt:
+    update_cache: true
+  become: true
+  when:
+    - ansible_distribution == "Ubuntu"
+    - ansible_distribution_release in haproxy_backport_distros
 
 - name: Install haproxy
   ansible.builtin.apt:
-    name: "haproxy=2.8.*"
+    name: "haproxy={{ haproxy_version }}.*"
     state: present
     update_cache: true
   become: true
@@ -52,10 +90,13 @@
 
 # ── Systemd service ───────────────────────────────────────────────────────────
 
-- name: Enable and start HAProxy service
+# Always restart (not just start) so HAProxy loads the on-disk config even on
+# idempotent runs where the config file didn't change this play but a previous
+# run left the process running with an old in-memory config.
+- name: Enable and restart HAProxy service
   ansible.builtin.systemd:
     name: haproxy
-    state: started
+    state: restarted
     enabled: true
     daemon_reload: true
   become: true

@@ -200,9 +200,9 @@ full-size hardware. Expected run time: ≈ 5 minutes (seed + warmup + 60 s bench
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
   -e @ansible/vars/dryrun.yml
 
-# Run
+# Run (each invocation creates a new timestamped folder under results/)
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \
-  -e @ansible/vars/dryrun.yml  -e run_name=dryrun-ojp-1
+  -e @ansible/vars/dryrun.yml
 ```
 
 ### pgBouncer dry-run (6 × 1 vCPU / 1 GB RAM)
@@ -215,9 +215,9 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
   --tags db,pgbouncer,haproxy,bench,init-db  -e @ansible/vars/dryrun-pgbouncer.yml
 
-# Run
+# Run (each invocation creates a new timestamped folder under results/)
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_pgbouncer.yml \
-  -e @ansible/vars/dryrun-pgbouncer.yml  -e run_name=dryrun-pgbouncer-1
+  -e @ansible/vars/dryrun-pgbouncer.yml
 ```
 
 Key differences between the two dry-run profiles:
@@ -227,9 +227,10 @@ Key differences between the two dry-run profiles:
 | `bench_num_accounts` | 10 000 | 10 000 | 1 000 000 |
 | `bench_num_orders` | 100 000 | 100 000 | 10 000 000 |
 | `bench_replica_count` | 1 | 1 | 4 |
-| `bench_target_rps` | 50 | 50 | 500 |
+| `bench_target_rps` | 25 | 25 | 500 |
 | `bench_duration_seconds` | 60 | 60 | 300 |
-| `pgbouncer_pool_size` | — | 2 | 2 |
+| `pgbouncer_pool_size` | — | 18 | 6 |
+| `pgbouncer_min_pool_size` | — | 18 | 6 |
 | `pg_shared_buffers` | 128 MB | 128 MB | 4 GB |
 | `pg_max_connections` | 50 | 50 | 400 |
 
