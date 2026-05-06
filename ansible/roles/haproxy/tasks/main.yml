@@ -4,6 +4,21 @@
 
 # ── Install HAProxy ───────────────────────────────────────────────────────────
 
+# On noble (24.04+) HAProxy 2.8 ships in the official Ubuntu repo.
+# Remove any stale backport sources that may have been written by a previous
+# run before the backport-distro guard was added, so that apt update succeeds.
+- name: Remove stale HAProxy backport apt sources (non-backport distros)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/haproxy.list
+    - /usr/share/keyrings/haproxy.gpg
+  become: true
+  when:
+    - ansible_distribution == "Ubuntu"
+    - ansible_distribution_release not in haproxy_backport_distros
+
 - name: Install prerequisite packages for HAProxy PPA
   ansible.builtin.apt:
     name:
