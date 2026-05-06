@@ -211,6 +211,7 @@
         dest: "{{ local_jvm_csv_dir }}/{{ item }}_jvm_metrics.csv"
         flat: true
         fail_on_missing: false
+        validate_checksum: false
       delegate_to: "{{ item }}"
       loop: "{{ groups['proxy'] }}"
 
@@ -237,6 +238,7 @@
         dest: "{{ local_pg_csv }}"
         flat: true
         fail_on_missing: false
+        validate_checksum: false
       delegate_to: "{{ groups['db'][0] }}"
 
     # ── Report ────────────────────────────────────────────────────────────────
