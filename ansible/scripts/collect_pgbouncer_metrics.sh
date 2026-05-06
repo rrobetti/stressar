@@ -58,10 +58,13 @@ printf 'timestamp,database,total_xact_count,total_query_count,avg_xact_time_us,a
   > "${OUTPUT}"
 
 # ── psql helper ───────────────────────────────────────────────────────────────
+# PGPASSWORD="" matches the empty-password entry for "postgres" in userlist.txt.
+# The -w flag suppresses any interactive password prompt so the script can run
+# unattended as a background process.
 
 pgb_query() {
-  psql -h "${ADMIN_HOST}" -p "${ADMIN_PORT}" -U "${ADMIN_USER}" pgbouncer \
-    -t -A -F',' -c "$1" 2>/dev/null || true
+  PGPASSWORD="" psql -h "${ADMIN_HOST}" -p "${ADMIN_PORT}" -U "${ADMIN_USER}" pgbouncer \
+    -w -t -A -F',' -c "$1" 2>/dev/null || true
 }
 
 # ── Polling loop ──────────────────────────────────────────────────────────────

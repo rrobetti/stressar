@@ -62,6 +62,19 @@
           — re-run setup.yml --tags pgbouncer to install/start it.
         success_msg: "pgbouncer is running on {{ inventory_hostname }}"
 
+    - name: Warn if ojp-server.service is also running on this proxy node
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: ojp-server.service is running on {{ inventory_hostname }} alongside pgBouncer.
+          OJP holds {{ hostvars[inventory_hostname].bench_db_connection_budget | default(18) }}
+          backend connections to PostgreSQL, reducing the available connections for pgBouncer
+          and may inflate the active-backend count in the report.
+          To avoid interference stop it first:
+            sudo systemctl stop ojp-server
+          and re-run setup.yml --tags pgbouncer,bench,init-db to switch the proxy role.
+      when: >-
+        ansible_facts.services.get('ojp-server.service', {}).get('state', 'stopped') == 'running'
+
 - name: Pre-flight — verify HAProxy service is running on the lb node
   # If haproxy is not active on the lb node, fail fast so the operator
   # knows to re-run: ansible-playbook setup.yml --tags haproxy

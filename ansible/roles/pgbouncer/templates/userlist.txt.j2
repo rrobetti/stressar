@@ -2,3 +2,7 @@
 ; /etc/pgbouncer/userlist.txt — managed by Ansible
 ; Plain-text password entry (sufficient for benchmarking; use md5 hash in production).
 "{{ db_user }}" "{{ db_password }}"
+; postgres user — admin console access only (used by collect_pgbouncer_metrics.sh).
+; Empty password is intentional: the script connects as the postgres OS user from
+; localhost for metrics collection only.  No application traffic uses this entry.
+"postgres" ""
