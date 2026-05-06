@@ -90,19 +90,16 @@
 
 # ── Systemd service ───────────────────────────────────────────────────────────
 
-- name: Enable and start HAProxy service
+# Always restart (not just start) so HAProxy loads the on-disk config even on
+# idempotent runs where the config file didn't change this play but a previous
+# run left the process running with an old in-memory config.
+- name: Enable and restart HAProxy service
   ansible.builtin.systemd:
     name: haproxy
-    state: started
+    state: restarted
     enabled: true
     daemon_reload: true
   become: true
-
-# Flush handlers here so the "reload haproxy" handler fires before wait_for.
-# Without this, a fresh install has HAProxy running on the default config
-# (not binding 6432) until the play ends, causing the port check to time out.
-- name: Flush handlers to apply haproxy.cfg before port check
-  ansible.builtin.meta: flush_handlers
 
 - name: Wait for HAProxy to open port {{ haproxy_frontend_port }}
   ansible.builtin.wait_for:
