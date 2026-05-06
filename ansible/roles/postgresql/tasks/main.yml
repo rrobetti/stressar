@@ -1,6 +1,6 @@
 ---
 # ansible/roles/postgresql/tasks/main.yml
-# Installs and configures PostgreSQL {{ pg_version }} for OJP benchmarking.
+# Installs and configures PostgreSQL {{ pg_version }} for benchmarking.
 
 - name: Install prerequisite packages
   ansible.builtin.apt:

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ansible/scripts/generate_report.sh
 #
-# Compile OJP benchmark results into a Markdown report.
+# Compile benchmark results into a Markdown report.
 #
 # Reads every summary.json found under RESULTS_DIR, extracts key metrics
 # using jq, and writes a structured Markdown report to OUTPUT_FILE.
@@ -239,7 +239,7 @@ mkdir -p "$(dirname "${OUTPUT_FILE}")"
 
 {
 cat <<HEADER
-# OJP Benchmark Report
+# Benchmark Report
 
 | Field        | Value |
 |-------------|-------|
