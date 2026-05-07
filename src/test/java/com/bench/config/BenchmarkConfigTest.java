@@ -49,7 +49,7 @@ public class BenchmarkConfigTest {
         config.setMaxPoolSizePerReplica(50);
         
         int poolSize = config.calculateDisciplinedPoolSize();
-        assertEquals("100 / 16 = 6 (floor)", 6, poolSize);
+        assertEquals("100 / 16 = 7 (ceiling)", 7, poolSize);
     }
     
     @Test

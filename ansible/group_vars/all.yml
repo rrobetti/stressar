@@ -26,6 +26,11 @@ ojp_server_port:  1059
 pgbouncer_port:          6432
 pgbouncer_pool_size:     6
 pgbouncer_min_pool_size: 6
+# Bench-side local client pool against pgBouncer endpoint.
+# Used in ansible/templates/pgbouncer-benchmark.yaml.j2 as benchmark poolSize,
+# then consumed by src/main/java/com/bench/config/PgbouncerProvider.java.
+# Keep this small by default so pgBouncer remains the primary pooling layer.
+pgbouncer_local_pool_size: 2
 
 # ── Benchmark run defaults ────────────────────────────────────────────────────
 bench_replica_count:        4
