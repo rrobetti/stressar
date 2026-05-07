@@ -2,8 +2,9 @@
 # ansible/vars/dryrun-pgbouncer.yml
 #
 # Minimal-hardware override for a pgBouncer dry run (SUT-C).
-# Uses production-like logical groups (control/loadgen/db/ojp/pgbouncer/haproxy)
-# but can map all groups to localhost for local validation.
+# Dry-run inventories should keep the full logical group structure
+# (control/loadgen/db/ojp/pgbouncer/haproxy), but this pgBouncer profile
+# actively uses control/loadgen/db/pgbouncer/haproxy.
 #
 # NOTE: pgBouncer and HAProxy infrastructure must be set up manually before running the benchmark.
 # See docs/DEPLOYMENT_GUIDE.md sections 3–5 for installation and configuration instructions.

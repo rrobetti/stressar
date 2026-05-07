@@ -810,25 +810,60 @@ pooler's p99 contribution.
 
 ## References
 
-[1] PgBouncer official configuration documentation (authoritative for `default_pool_size`,
+[1] HikariCP. *About Pool Sizing*. Available at:
+<https://github.com/brettwooldridge/HikariCP/wiki/About-Pool-Sizing>
+
+[2] Transaction Processing Performance Council (TPC). *TPC BenchmarkC Standard Specification,
+Revision 5.11*, Section 6.6.3 (Measurement Interval: minimum 30 minutes). Available at:
+<https://www.tpc.org/tpcc/>
+
+[3] Cooper, B.F., Silberstein, A., Tam, E., Ramakrishnan, R., and Sears, R. (2010). Benchmarking
+Cloud Serving Systems with YCSB. *Proceedings of the 1st ACM Symposium on Cloud Computing
+(SoCC 2010)*. Section 5 (Experimental Setup) states: "For each experiment, we ran the client
+threads for 10 minutes and collected the throughput and latency results."
+<https://doi.org/10.1145/1807128.1807152>
+
+[4] NIST/SEMATECH. *e-Handbook of Statistical Methods*, Section 7.2.6: Wilcoxon Signed-Rank Test.
+For n = 5, exact critical values for α = 0.05 are available; the test is feasible at this sample
+size. Available at:
+<https://www.itl.nist.gov/div898/handbook/prc/section2/prc226.htm>
+
+[5] Beyer, B., Jones, C., Petoff, J., and Murphy, N.R. (Eds.) (2016). *Site Reliability
+Engineering: How Google Runs Production Systems*. O'Reilly Media. Chapter 4: Service Level
+Objectives. Available online (free) at:
+<https://sre.google/sre-book/service-level-objectives/>
+
+[6] Knuth, D.E. (1997). *The Art of Computer Programming, Volume 2: Seminumerical Algorithms*,
+3rd ed. Addison-Wesley. (The value 42 is used throughout as a conventional non-trivial seed in
+pseudorandom generator examples.)
+
+[7] Adams, D. (1979). *The Hitchhiker's Guide to the Galaxy*. Pan Books. (The answer to the
+Ultimate Question of Life, the Universe, and Everything is 42.)
+
+[8] Blackman, D. and Vigna, S. (2021). Scrambled Linear Pseudorandom Number Generators. *ACM
+Transactions on Mathematical Software*, 47(4), Article 36.
+<https://doi.org/10.1145/3460772>
+
+[9] Prometheus Authors. *Prometheus Configuration Reference: `<scrape_config>`,
+`scrape_interval`* (default: 15s). Available at:
+<https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config>
+
+[10] PgBouncer official configuration documentation (authoritative for `default_pool_size`,
 `reserve_pool_size`, `max_client_conn`, and client-vs-server connection semantics):
 <https://www.pgbouncer.org/config.html>
 
-[2] PgBouncer official usage documentation (operational commands such as `SHOW POOLS`,
+[11] PgBouncer official usage documentation (operational commands such as `SHOW POOLS`,
 `SHOW CLIENTS`, `SHOW SERVERS`, `SHOW STATS`):
 <https://www.pgbouncer.org/usage.html>
 
-[3] HikariCP official README / configuration documentation (authoritative for `maximumPoolSize`
+[12] HikariCP official README / configuration documentation (authoritative for `maximumPoolSize`
 and HikariCP client-side connection-pool behaviour):
 <https://github.com/brettwooldridge/HikariCP>
 
-[4] HikariCP — About Pool Sizing (rationale that more DB connections are not automatically better):
-<https://github.com/brettwooldridge/HikariCP/wiki/About-Pool-Sizing>
-
-[5] Anecdotal production-pattern article (PgBouncer + HikariCP usage example; non-authoritative for
+[13] Anecdotal production-pattern article (PgBouncer + HikariCP usage example; non-authoritative for
 parameter definitions):
 <https://medium.com/@rrbadam/how-pgbouncer-and-hikaricp-work-together-lessons-from-a-real-world-spike-48d25f50cbe1>
 
-[6] Supporting industry discussion of microservice connection amplification (non-authoritative for
+[14] Supporting industry discussion of microservice connection amplification (non-authoritative for
 parameter definitions):
 <https://www.infoq.com/news/2026/01/alloydb-managed-connection-pool/>

@@ -2,8 +2,9 @@
 # ansible/vars/dryrun-hikari.yml
 #
 # Minimal-hardware overrides for a HikariCP Direct (SUT-A) dry run.
-# Uses production-like logical groups (control/loadgen/db/ojp/pgbouncer/haproxy)
-# but can map all groups to localhost for local validation.
+# Dry-run inventories should keep the full logical group structure
+# (control/loadgen/db/ojp/pgbouncer/haproxy), but this Hikari profile actively
+# uses control/loadgen/db only.
 #
 # Use this to validate the HikariCP Direct setup end-to-end before provisioning
 # full-size hardware. Expected run time: ≈ 5 minutes (seed + warmup + 60 s bench + report).
