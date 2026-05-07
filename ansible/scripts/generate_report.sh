@@ -251,6 +251,10 @@ lb_avg_cpu_sum=0
 lb_peak_cpu_sum=0
 lb_avg_rss_sum=0
 lb_peak_rss_sum=0
+proxy_avg_cpu_count=0
+proxy_avg_rss_count=0
+lb_avg_cpu_count=0
+lb_avg_rss_count=0
 
 for subdir in proxy db lb; do
   mapfile -t PROC_CSV_FILES < <(find "${NODE_METRICS_DIR}/${subdir}" \
@@ -273,22 +277,30 @@ for subdir in proxy db lb; do
     peak_rss=$(awk -F',' 'NR>1 && $4+0>0 {if($4+0>max) max=$4+0} END{printf "%.1f", max+0}' "${csv}")
     avg_rss=$(awk -F',' 'NR>1 && $4+0>0 {sum+=$4+0; n++} END{
         if (n>0) printf "%.1f", sum/n; else printf "N/A"}' "${csv}")
-    avg_cpu_num="${avg_cpu}"
-    avg_rss_num="${avg_rss}"
-    [[ "${avg_cpu_num}" == "N/A" ]] && avg_cpu_num="0"
-    [[ "${avg_rss_num}" == "N/A" ]] && avg_rss_num="0"
 
     proc_rows+="| ${component} | ${host} | ${avg_cpu} | ${peak_cpu} | ${avg_rss} | ${peak_rss} |"$'\n'
 
     if [[ "${subdir}" == "proxy" ]]; then
-      proxy_avg_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_avg_cpu_sum} + ${avg_cpu_num}}")
+      if [[ "${avg_cpu}" != "N/A" ]]; then
+        proxy_avg_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_avg_cpu_sum} + ${avg_cpu}}")
+        (( ++proxy_avg_cpu_count ))
+      fi
       proxy_peak_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_peak_cpu_sum} + ${peak_cpu}}")
-      proxy_avg_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_avg_rss_sum} + ${avg_rss_num}}")
+      if [[ "${avg_rss}" != "N/A" ]]; then
+        proxy_avg_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_avg_rss_sum} + ${avg_rss}}")
+        (( ++proxy_avg_rss_count ))
+      fi
       proxy_peak_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_peak_rss_sum} + ${peak_rss}}")
     elif [[ "${subdir}" == "lb" ]]; then
-      lb_avg_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_avg_cpu_sum} + ${avg_cpu_num}}")
+      if [[ "${avg_cpu}" != "N/A" ]]; then
+        lb_avg_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_avg_cpu_sum} + ${avg_cpu}}")
+        (( ++lb_avg_cpu_count ))
+      fi
       lb_peak_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_peak_cpu_sum} + ${peak_cpu}}")
-      lb_avg_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_avg_rss_sum} + ${avg_rss_num}}")
+      if [[ "${avg_rss}" != "N/A" ]]; then
+        lb_avg_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_avg_rss_sum} + ${avg_rss}}")
+        (( ++lb_avg_rss_count ))
+      fi
       lb_peak_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_peak_rss_sum} + ${peak_rss}}")
     fi
   done
@@ -348,13 +360,45 @@ fi
 p95_pass=$(awk "BEGIN {print (${agg_p95} < ${SLO_P95_LIMIT}) ? \"✅ PASS\" : \"❌ FAIL\"}")
 error_pass=$(awk "BEGIN {print (${agg_error_rate} < ${SLO_ERROR_LIMIT}) ? \"✅ PASS\" : \"❌ FAIL\"}")
 
-ojp_proxy_tier_avg_cpu="${proxy_avg_cpu_sum}"
+if [[ ${proxy_avg_cpu_count} -gt 0 ]]; then
+  ojp_proxy_tier_avg_cpu="${proxy_avg_cpu_sum}"
+else
+  ojp_proxy_tier_avg_cpu="N/A"
+fi
 ojp_proxy_tier_peak_cpu="${proxy_peak_cpu_sum}"
-ojp_proxy_tier_avg_rss="${proxy_avg_rss_sum}"
+if [[ ${proxy_avg_rss_count} -gt 0 ]]; then
+  ojp_proxy_tier_avg_rss="${proxy_avg_rss_sum}"
+else
+  ojp_proxy_tier_avg_rss="N/A"
+fi
 ojp_proxy_tier_peak_rss="${proxy_peak_rss_sum}"
-pgb_proxy_tier_avg_cpu=$(awk "BEGIN {printf \"%.2f\", ${proxy_avg_cpu_sum} + ${lb_avg_cpu_sum}}")
+proxy_avg_cpu_display="${proxy_avg_cpu_sum}"
+proxy_avg_rss_display="${proxy_avg_rss_sum}"
+lb_avg_cpu_display="${lb_avg_cpu_sum}"
+lb_avg_rss_display="${lb_avg_rss_sum}"
+if [[ ${proxy_avg_cpu_count} -eq 0 ]]; then proxy_avg_cpu_display="N/A"; fi
+if [[ ${proxy_avg_rss_count} -eq 0 ]]; then proxy_avg_rss_display="N/A"; fi
+if [[ ${lb_avg_cpu_count} -eq 0 ]]; then lb_avg_cpu_display="N/A"; fi
+if [[ ${lb_avg_rss_count} -eq 0 ]]; then lb_avg_rss_display="N/A"; fi
+if [[ ${proxy_avg_cpu_count} -eq 0 && ${lb_avg_cpu_count} -eq 0 ]]; then
+  pgb_proxy_tier_avg_cpu="N/A"
+else
+  proxy_avg_cpu_for_total="${proxy_avg_cpu_sum}"
+  lb_avg_cpu_for_total="${lb_avg_cpu_sum}"
+  if [[ ${proxy_avg_cpu_count} -eq 0 ]]; then proxy_avg_cpu_for_total=0; fi
+  if [[ ${lb_avg_cpu_count} -eq 0 ]]; then lb_avg_cpu_for_total=0; fi
+  pgb_proxy_tier_avg_cpu=$(awk "BEGIN {printf \"%.2f\", ${proxy_avg_cpu_for_total} + ${lb_avg_cpu_for_total}}")
+fi
 pgb_proxy_tier_peak_cpu=$(awk "BEGIN {printf \"%.2f\", ${proxy_peak_cpu_sum} + ${lb_peak_cpu_sum}}")
-pgb_proxy_tier_avg_rss=$(awk "BEGIN {printf \"%.2f\", ${proxy_avg_rss_sum} + ${lb_avg_rss_sum}}")
+if [[ ${proxy_avg_rss_count} -eq 0 && ${lb_avg_rss_count} -eq 0 ]]; then
+  pgb_proxy_tier_avg_rss="N/A"
+else
+  proxy_avg_rss_for_total="${proxy_avg_rss_sum}"
+  lb_avg_rss_for_total="${lb_avg_rss_sum}"
+  if [[ ${proxy_avg_rss_count} -eq 0 ]]; then proxy_avg_rss_for_total=0; fi
+  if [[ ${lb_avg_rss_count} -eq 0 ]]; then lb_avg_rss_for_total=0; fi
+  pgb_proxy_tier_avg_rss=$(awk "BEGIN {printf \"%.2f\", ${proxy_avg_rss_for_total} + ${lb_avg_rss_for_total}}")
+fi
 pgb_proxy_tier_peak_rss=$(awk "BEGIN {printf \"%.2f\", ${proxy_peak_rss_sum} + ${lb_peak_rss_sum}}")
 
 # ── Read run metadata from first summary ──────────────────────────────────────
@@ -450,10 +494,10 @@ cat <<HEADER
 | pgbouncer_reserve_pool_size | ${metadata_pgbouncer_reserve_pool_size} |
 | PgBouncer local HikariCP pool size per replica | ${metadata_pgbouncer_local_pool_size} |
 | HAProxy nodes | ${metadata_haproxy_nodes} |
-| PgBouncer tier CPU (avg / peak, summed) | ${proxy_avg_cpu_sum}% / ${proxy_peak_cpu_sum}% |
-| PgBouncer tier RSS (avg / peak, summed) | ${proxy_avg_rss_sum} MiB / ${proxy_peak_rss_sum} MiB |
-| HAProxy CPU (avg / peak, summed) | ${lb_avg_cpu_sum}% / ${lb_peak_cpu_sum}% |
-| HAProxy RSS (avg / peak, summed) | ${lb_avg_rss_sum} MiB / ${lb_peak_rss_sum} MiB |
+| PgBouncer tier CPU (avg / peak, summed) | ${proxy_avg_cpu_display}% / ${proxy_peak_cpu_sum}% |
+| PgBouncer tier RSS (avg / peak, summed) | ${proxy_avg_rss_display} MiB / ${proxy_peak_rss_sum} MiB |
+| HAProxy CPU (avg / peak, summed) | ${lb_avg_cpu_display}% / ${lb_peak_cpu_sum}% |
+| HAProxy RSS (avg / peak, summed) | ${lb_avg_rss_display} MiB / ${lb_peak_rss_sum} MiB |
 | Total PgBouncer proxy-tier CPU (avg / peak) | ${pgb_proxy_tier_avg_cpu}% / ${pgb_proxy_tier_peak_cpu}% |
 | Total PgBouncer proxy-tier RSS (avg / peak) | ${pgb_proxy_tier_avg_rss} MiB / ${pgb_proxy_tier_peak_rss} MiB |
 
