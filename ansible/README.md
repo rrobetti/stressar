@@ -296,6 +296,7 @@ Key differences between the three dry-run profiles:
 | `bench_hikari_max_pool_size_per_replica` | 18 | — | — | 19 |
 | `pgbouncer_pool_size` | — | — | 18 | 6 |
 | `pgbouncer_min_pool_size` | — | — | 18 | 6 |
+| `pgbouncer_local_pool_size` | — | — | 2 | 2 |
 | `pg_shared_buffers` | 128 MB | 128 MB | 128 MB | 4 GB |
 | `pg_max_connections` | 50 | 50 | 50 | 400 |
 
@@ -307,6 +308,55 @@ Key differences between the three dry-run profiles:
 > tolerate typical engineer-to-cloud round-trip times while still flagging genuinely degraded
 > behaviour. The 50 ms SLO remains the default for production full-hardware runs where the
 > benchmark client and the SUT are co-located in the same datacenter.
+
+---
+
+## Production profiles
+
+Predefined full-hardware production profiles are available under `ansible/vars/`:
+
+- `prod-hikari.yml` (SUT-A): 16 replicas, budget 300, max per replica 19
+- `prod-ojp.yml` (SUT-B): 16 replicas, OJP budget 48
+- `prod-pgbouncer.yml` (SUT-C): 16 replicas, pgBouncer pool 16 per proxy node, local bench pool 20
+
+Usage examples:
+
+```bash
+# HikariCP Direct (SUT-A)
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_hikari.yml \
+  -e @ansible/vars/prod-hikari.yml
+
+# OJP (SUT-B)
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \
+  -e @ansible/vars/prod-ojp.yml
+
+# pgBouncer (SUT-C)
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_pgbouncer.yml \
+  -e @ansible/vars/prod-pgbouncer.yml
+```
+
+---
+
+## Connection pool configuration by SUT (where it lives + rationale)
+
+| SUT | Client-side pool in bench | Server-side/proxy pool | Where configured |
+|-----|---------------------------|-------------------------|------------------|
+| **SUT-A — Hikari Direct** | **Yes** (`poolSize`) | N/A (direct DB) | `ansible/templates/hikari-benchmark.yaml.j2` (`dbConnectionBudget`, `replicas`) → computed in `src/main/java/com/bench/config/BenchmarkConfig.java#calculateDisciplinedPoolSize` |
+| **SUT-B — OJP** | **No client Hikari pool** | **Yes** (OJP server-side pool) | `ansible/templates/ojp-benchmark.yaml.j2` (`dbConnectionBudget`, `replicas`, `ojp.poolSharing`) → computed in `src/main/java/com/bench/config/BenchmarkConfig.java#calculateOjpAllocation` and applied in `src/main/java/com/bench/config/ConnectionProviderFactory.java` |
+| **SUT-C — pgBouncer** | **Optional** (`poolSize`) | **Yes** (`pgbouncer_pool_size` / `pgbouncer_min_pool_size`) | Client pool: `ansible/templates/pgbouncer-benchmark.yaml.j2` (`poolSize: {{ pgbouncer_local_pool_size }}`) used by `src/main/java/com/bench/config/PgbouncerProvider.java`. Server pool: `ansible/group_vars/all.yml` or `ansible/vars/prod-pgbouncer.yml`. |
+
+Rationale and parameter decisions:
+
+- `docs/PARAMETER_DECISIONS.md` (especially §28 for pgBouncer client pool rationale).
+- `docs/BENCHMARKING_GUIDE.md` SUT-A/B/C sections for topology and intended comparison method.
+
+Important notes:
+
+- For OJP, `bench_replica_count` is number of bench JVM replicas; it is **not** OJP pool size.
+- In OJP `PER_INSTANCE` mode, max connections per replica are derived from `ceil(dbConnectionBudget / replicas)`.
+- For pgBouncer, this repo supports both:
+  - **benchmark/fair-comparison profile**: small `pgbouncer_local_pool_size` (default 2)
+  - **production-like profile**: larger `pgbouncer_local_pool_size` in `prod-pgbouncer.yml`
 
 ---
 
@@ -452,7 +502,10 @@ ansible/
 ├── vars/
 │   ├── dryrun-hikari.yml              # Minimal-hardware overrides for HikariCP Direct (SUT-A) dry run
 │   ├── dryrun-ojp.yml                 # Minimal-hardware overrides for OJP (SUT-B) dry run
-│   └── dryrun-pgbouncer.yml           # Minimal-hardware overrides for pgBouncer (SUT-C) dry run
+│   ├── dryrun-pgbouncer.yml           # Minimal-hardware overrides for pgBouncer (SUT-C) dry run
+│   ├── prod-hikari.yml                # Full-hardware production profile for HikariCP Direct (SUT-A)
+│   ├── prod-ojp.yml                   # Full-hardware production profile for OJP (SUT-B)
+│   └── prod-pgbouncer.yml             # Full-hardware production profile for pgBouncer (SUT-C)
 ├── templates/
 │   ├── hikari-benchmark.yaml.j2       # Parameterised bench config template for HikariCP Direct (SUT-A)
 │   ├── ojp-benchmark.yaml.j2          # Parameterised bench config template for OJP (SUT-B)

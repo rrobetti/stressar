@@ -44,6 +44,8 @@ bench_slo_p95_ms:        300
 # pg_stat_activity consistently reports 18 active backends throughout the run.
 pgbouncer_pool_size:     18
 pgbouncer_min_pool_size: 18
+# Keep local bench-side pool small; pgBouncer does the real backend pooling.
+pgbouncer_local_pool_size: 2
 
 # ── PostgreSQL — tuned for 1 vCPU / 1 GB RAM ─────────────────────────────────
 # shared_buffers  ≈ 128 MB (25 % of ~512 MB usable after OS overhead)

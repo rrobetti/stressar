@@ -206,7 +206,7 @@ public class BenchmarkConfig {
         if (replicas <= 0) {
             return poolSize;
         }
-        int calculated = dbConnectionBudget / replicas;
+        int calculated = (int) Math.ceil((double) dbConnectionBudget / replicas);
         return Math.max(1, Math.min(calculated, maxPoolSizePerReplica));
     }
     
@@ -223,7 +223,7 @@ public class BenchmarkConfig {
             if (replicas <= 0) {
                 return dbConnectionBudget;
             }
-            int allocated = dbConnectionBudget / replicas;
+            int allocated = (int) Math.ceil((double) dbConnectionBudget / replicas);
             return Math.max(1, allocated);
         }
     }

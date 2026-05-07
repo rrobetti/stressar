@@ -11,23 +11,24 @@ import java.sql.SQLException;
 
 /**
  * Connection provider for PgBouncer.
- * Uses minimal local pooling (1-2 connections) as PgBouncer handles connection pooling.
+ * Uses a configurable local client pool as PgBouncer handles backend connection pooling.
  */
 public class PgbouncerProvider implements ConnectionProvider {
     private static final Logger logger = LoggerFactory.getLogger(PgbouncerProvider.class);
-    private final HikariDataSource dataSource;
     private final int poolSize;
 
-    public PgbouncerProvider(DatabaseConfig dbConfig, int poolSize) {
-        this.poolSize = poolSize;
+    private final HikariDataSource dataSource;
+
+    public PgbouncerProvider(DatabaseConfig dbConfig, int configuredPoolSize) {
+        this.poolSize = Math.max(1, configuredPoolSize);
 
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(dbConfig.getJdbcUrl());  // Should point to PgBouncer endpoint
         config.setUsername(dbConfig.getUsername());
         config.setPassword(dbConfig.getPassword());
-        
+
         // Client-side pool: PgBouncer holds the real backend pool; keep local
-        // connections equal to the configured poolSize (default 2).
+        // connections equal to the configured poolSize.
         config.setMaximumPoolSize(poolSize);
         config.setMinimumIdle(Math.max(1, poolSize / 2));
         config.setConnectionTimeout(30000);
@@ -56,7 +57,7 @@ public class PgbouncerProvider implements ConnectionProvider {
         
         this.dataSource = new HikariDataSource(config);
         
-        logger.info("Initialized PgBouncer provider with pool size: {}", poolSize);
+        logger.info("Initialized PgBouncer provider with local pool size: {}", poolSize);
     }
     
     @Override
