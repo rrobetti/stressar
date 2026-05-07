@@ -15,19 +15,21 @@ import java.sql.SQLException;
  */
 public class PgbouncerProvider implements ConnectionProvider {
     private static final Logger logger = LoggerFactory.getLogger(PgbouncerProvider.class);
-    private static final int MINIMAL_POOL_SIZE = 2;
-    
     private final HikariDataSource dataSource;
-    
-    public PgbouncerProvider(DatabaseConfig dbConfig) {
+    private final int poolSize;
+
+    public PgbouncerProvider(DatabaseConfig dbConfig, int poolSize) {
+        this.poolSize = poolSize;
+
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(dbConfig.getJdbcUrl());  // Should point to PgBouncer endpoint
         config.setUsername(dbConfig.getUsername());
         config.setPassword(dbConfig.getPassword());
         
-        // Minimal pool configuration
-        config.setMaximumPoolSize(MINIMAL_POOL_SIZE);
-        config.setMinimumIdle(1);
+        // Client-side pool: PgBouncer holds the real backend pool; keep local
+        // connections equal to the configured poolSize (default 2).
+        config.setMaximumPoolSize(poolSize);
+        config.setMinimumIdle(Math.max(1, poolSize / 2));
         config.setConnectionTimeout(30000);
         config.setIdleTimeout(600000);
         config.setMaxLifetime(1800000);
@@ -38,19 +40,23 @@ public class PgbouncerProvider implements ConnectionProvider {
         // HikariCP to issue a silent ROLLBACK when a connection is returned after a
         // read-only request, inflating pg_stat_database.xact_rollback.
         config.setAutoCommit(true);
-        config.addDataSourceProperty("cachePrepStmts", "true");
-        config.addDataSourceProperty("prepStmtCacheSize", "250");
-        config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
-        config.addDataSourceProperty("useServerPrepStmts", "true");
-        
-        // Add any additional properties
+
+        // prepareThreshold=0: disable PostgreSQL server-side prepared statements.
+        // In pgBouncer transaction pooling mode each transaction can be routed to a
+        // different backend connection.  Server-side prepared statements are
+        // session-scoped, so a statement prepared on backend B1 does not exist on
+        // backend B2 — causing "prepared statement does not exist" errors that abort
+        // the transaction and increment xact_rollback.
+        config.addDataSourceProperty("prepareThreshold", "0");
+
+        // Add any additional properties from config
         dbConfig.getProperties().forEach((key, value) -> 
             config.addDataSourceProperty(key.toString(), value)
         );
         
         this.dataSource = new HikariDataSource(config);
         
-        logger.info("Initialized PgBouncer provider with minimal pool size: {}", MINIMAL_POOL_SIZE);
+        logger.info("Initialized PgBouncer provider with pool size: {}", poolSize);
     }
     
     @Override
@@ -70,7 +76,7 @@ public class PgbouncerProvider implements ConnectionProvider {
     
     @Override
     public int getPoolSize() {
-        return MINIMAL_POOL_SIZE;
+        return poolSize;
     }
     
     @Override

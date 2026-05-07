@@ -6,8 +6,11 @@
 # before each bench invocation.
 
 database:
-  # Points to the HAProxy load balancer, which distributes across 3 × pgBouncer instances.
-  jdbcUrl: "jdbc:postgresql://{{ lb_host }}:{{ pgbouncer_port }}/{{ db_name }}"
+  # prepareThreshold=0: disables PostgreSQL server-side prepared statements.
+  # Required for pgBouncer transaction pooling mode: each transaction may be
+  # routed to a different backend, so session-scoped prepared statements would
+  # cause "prepared statement does not exist" errors and xact_rollback spikes.
+  jdbcUrl: "jdbc:postgresql://{{ lb_host }}:{{ pgbouncer_port }}/{{ db_name }}?prepareThreshold=0"
   username: "{{ db_user }}"
   password: "{{ db_password }}"
 

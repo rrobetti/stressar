@@ -39,7 +39,7 @@ public class ConnectionProviderFactory {
                 return new OjpProvider(dbConfig, ojpConfig, ojpAllocation);
                 
             case PGBOUNCER:
-                return new PgbouncerProvider(dbConfig);
+                return new PgbouncerProvider(dbConfig, config.getPoolSize());
                 
             default:
                 throw new IllegalArgumentException("Unknown connection mode: " + mode);
