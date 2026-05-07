@@ -41,6 +41,9 @@ Use the same logical groups in both production and dry-run inventories:
 - `pgbouncer`
 - `haproxy`
 
+If the `control` host is the same machine running Ansible, set `ansible_connection: local`
+for that host entry in `inventory.yml`.
+
 ---
 
 ## What it does
@@ -76,7 +79,7 @@ Remote machines require only **SSH access** and **outbound internet** (for packa
 
 | Scenario | Machines | Hardware |
 |----------|----------|----------|
-| Dry-run (all SUTs) | logical groups: control + loadgen + db + ojp + pgbouncer + haproxy (can all map to localhost) | 1 vCPU / 1 GB RAM each |
+| Dry-run (all SUTs) | logical groups: control + loadgen + db + ojp + pgbouncer + haproxy | 1 vCPU / 1 GB RAM each |
 | SUT-A production (HikariCP Direct) | **4** — 1 control (local) + 1 DB + 2 load generators | See [Hardware Specifications](../docs/BENCHMARKING_GUIDE.md#2-hardware-specifications) |
 | SUT-B production (OJP) | **7** — 1 control + 2 loadgen + 1 DB + 3 OJP nodes | See [Hardware Specifications](../docs/BENCHMARKING_GUIDE.md#2-hardware-specifications) |
 | SUT-C production (pgBouncer) | **8** — 1 control + 2 loadgen + 1 DB + 1 HAProxy + 3 PgBouncer nodes | See [Hardware Specifications](../docs/BENCHMARKING_GUIDE.md#2-hardware-specifications) |
