@@ -11,6 +11,7 @@ bench_num_items:    1000
 bench_num_orders:   100000
 
 # ── Benchmark run ─────────────────────────────────────────────────────────────
+benchmark_profile_name: "ojp-dryrun"
 bench_replica_count:     1
 bench_target_rps:        25
 bench_warmup_seconds:    10
