@@ -1,0 +1,67 @@
+---
+# ansible/vars/dryrun-hikari.yml
+#
+# Minimal-hardware overrides for a HikariCP Direct (SUT-A) dry run.
+# Requires 2 machines: 1 control (local) + 1 DB.
+# Bench runs on the control node itself, connecting directly to the DB over the
+# network — no proxy nodes needed.
+#
+# Use this to validate the HikariCP Direct setup end-to-end before provisioning
+# full-size hardware. Expected run time: ≈ 5 minutes (seed + warmup + 60 s bench + report).
+#
+# Setup (DB + bench tool — no proxy components needed for SUT-A):
+#   ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
+#     --tags db,bench,init-db  -e @ansible/vars/dryrun-hikari.yml
+#
+# Run:
+#   ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_hikari.yml \
+#     -e @ansible/vars/dryrun-hikari.yml
+#
+# Production run (full hardware: 1 DB + 16 replicas across 2 load generators):
+#   ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_hikari.yml \
+#     -e bench_db_connection_budget=300 \
+#     -e bench_replica_count=16         \
+#     -e bench_hikari_max_pool_size_per_replica=19
+
+# ── Dataset (fast to seed) ────────────────────────────────────────────────────
+bench_num_accounts: 10000
+bench_num_items:    1000
+bench_num_orders:   100000
+
+# ── Benchmark run ─────────────────────────────────────────────────────────────
+bench_replica_count:     1
+bench_target_rps:        25
+bench_warmup_seconds:    10
+bench_duration_seconds:  60
+bench_cooldown_seconds:  10
+# Dry-run SLO is relaxed to 300 ms (vs. the 50 ms production default) because
+# these runs are typically executed by engineers from their local machines against
+# cloud instances in a different region, so cross-region WAN latency alone can
+# easily exceed the 50 ms production threshold.  The purpose of a dry run is to
+# validate end-to-end automation correctness, not to measure peak latency.
+bench_slo_p95_ms:        300
+
+# ── HikariCP pool — tuned for single-replica dry run ─────────────────────────
+# With 1 replica, effective pool size = floor(bench_db_connection_budget / 1) = 18
+# connections. bench_hikari_max_pool_size_per_replica is set to the same value (18)
+# so the cap does not reduce it further, keeping the total PostgreSQL backend count
+# comfortably below max_connections.
+bench_db_connection_budget:            18
+bench_hikari_max_pool_size_per_replica: 18
+
+# ── PostgreSQL — tuned for 1 vCPU / 1 GB RAM ─────────────────────────────────
+# shared_buffers  ≈ 128 MB (25 % of ~512 MB usable after OS overhead)
+# effective_cache ≈ 384 MB (remaining page-cache budget)
+pg_shared_buffers:               "128MB"
+pg_effective_cache_size:         "384MB"
+pg_maintenance_work_mem:         "32MB"
+pg_work_mem:                     "4MB"
+pg_wal_buffers:                  "4MB"
+pg_min_wal_size:                 "80MB"
+pg_max_wal_size:                 "256MB"
+pg_max_connections:              50
+pg_max_worker_processes:         1
+pg_max_parallel_workers_per_gather: 1
+pg_max_parallel_workers:         1
+pg_effective_io_concurrency:     1
+pg_random_page_cost:             "4.0"
