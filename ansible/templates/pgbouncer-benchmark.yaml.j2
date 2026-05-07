@@ -13,8 +13,8 @@ database:
 
 connectionMode: PGBOUNCER
 
-# Use minimal client-side connections; PgBouncer holds the real backend pool.
-poolSize: {{ pgbouncer_pool_size }}
+# Use a configurable local client-side pool; PgBouncer holds the real backend pool.
+poolSize: {{ pgbouncer_local_pool_size }}
 replicas: {{ bench_replica_count }}
 
 workload:

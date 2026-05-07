@@ -26,6 +26,9 @@ ojp_server_port:  1059
 pgbouncer_port:          6432
 pgbouncer_pool_size:     6
 pgbouncer_min_pool_size: 6
+# Bench-side local client pool against pgBouncer endpoint.
+# Keep this small so pgBouncer remains the primary pooling layer.
+pgbouncer_local_pool_size: 2
 
 # ── Benchmark run defaults ────────────────────────────────────────────────────
 bench_replica_count:        4

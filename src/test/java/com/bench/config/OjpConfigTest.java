@@ -45,9 +45,9 @@ public class OjpConfigTest {
         OjpConfig ojpConfig = config.getOjpConfig();
         ojpConfig.setPoolSharing(OjpPoolSharing.PER_INSTANCE);
         
-        // PER_INSTANCE mode: 100 / 16 = 6.25 -> floor to 6
+        // PER_INSTANCE mode: 100 / 16 = 6.25 -> ceil to 7
         int allocation = config.calculateOjpAllocation();
-        assertEquals(6, allocation);
+        assertEquals(7, allocation);
     }
     
     @Test

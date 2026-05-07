@@ -296,6 +296,7 @@ Key differences between the three dry-run profiles:
 | `bench_hikari_max_pool_size_per_replica` | 18 | — | — | 19 |
 | `pgbouncer_pool_size` | — | — | 18 | 6 |
 | `pgbouncer_min_pool_size` | — | — | 18 | 6 |
+| `pgbouncer_local_pool_size` | — | — | 2 | 2 |
 | `pg_shared_buffers` | 128 MB | 128 MB | 128 MB | 4 GB |
 | `pg_max_connections` | 50 | 50 | 50 | 400 |
 
@@ -307,6 +308,32 @@ Key differences between the three dry-run profiles:
 > tolerate typical engineer-to-cloud round-trip times while still flagging genuinely degraded
 > behaviour. The 50 ms SLO remains the default for production full-hardware runs where the
 > benchmark client and the SUT are co-located in the same datacenter.
+
+---
+
+## Production profiles
+
+Predefined full-hardware production profiles are available under `ansible/vars/`:
+
+- `prod-hikari.yml` (SUT-A): 16 replicas, budget 300, max per replica 19
+- `prod-ojp.yml` (SUT-B): 16 replicas, OJP budget 48
+- `prod-pgbouncer.yml` (SUT-C): 16 replicas, pgBouncer pool 16 per proxy node, local bench pool 2
+
+Usage examples:
+
+```bash
+# HikariCP Direct (SUT-A)
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_hikari.yml \
+  -e @ansible/vars/prod-hikari.yml
+
+# OJP (SUT-B)
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \
+  -e @ansible/vars/prod-ojp.yml
+
+# pgBouncer (SUT-C)
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_pgbouncer.yml \
+  -e @ansible/vars/prod-pgbouncer.yml
+```
 
 ---
 
@@ -452,7 +479,10 @@ ansible/
 ├── vars/
 │   ├── dryrun-hikari.yml              # Minimal-hardware overrides for HikariCP Direct (SUT-A) dry run
 │   ├── dryrun-ojp.yml                 # Minimal-hardware overrides for OJP (SUT-B) dry run
-│   └── dryrun-pgbouncer.yml           # Minimal-hardware overrides for pgBouncer (SUT-C) dry run
+│   ├── dryrun-pgbouncer.yml           # Minimal-hardware overrides for pgBouncer (SUT-C) dry run
+│   ├── prod-hikari.yml                # Full-hardware production profile for HikariCP Direct (SUT-A)
+│   ├── prod-ojp.yml                   # Full-hardware production profile for OJP (SUT-B)
+│   └── prod-pgbouncer.yml             # Full-hardware production profile for pgBouncer (SUT-C)
 ├── templates/
 │   ├── hikari-benchmark.yaml.j2       # Parameterised bench config template for HikariCP Direct (SUT-A)
 │   ├── ojp-benchmark.yaml.j2          # Parameterised bench config template for OJP (SUT-B)
