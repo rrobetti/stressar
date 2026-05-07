@@ -13,6 +13,7 @@ ExecStart=/usr/bin/java \
     -Duser.timezone=UTC \
     -Dojp.libs.path={{ ojp_install_dir }}/ojp-libs \
     -Dojp.server.port={{ ojp_server_port }} \
+    -Dojp.server.logLevel=ERROR \
     -jar {{ ojp_install_dir }}/bin/ojp-server-{{ ojp_version }}-shaded.jar
 StandardOutput=append:{{ ojp_log_file }}
 StandardError=append:{{ ojp_log_file }}
