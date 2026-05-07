@@ -273,18 +273,22 @@ for subdir in proxy db lb; do
     peak_rss=$(awk -F',' 'NR>1 && $4+0>0 {if($4+0>max) max=$4+0} END{printf "%.1f", max+0}' "${csv}")
     avg_rss=$(awk -F',' 'NR>1 && $4+0>0 {sum+=$4+0; n++} END{
         if (n>0) printf "%.1f", sum/n; else printf "N/A"}' "${csv}")
+    avg_cpu_num="${avg_cpu}"
+    avg_rss_num="${avg_rss}"
+    [[ "${avg_cpu_num}" == "N/A" ]] && avg_cpu_num="0"
+    [[ "${avg_rss_num}" == "N/A" ]] && avg_rss_num="0"
 
     proc_rows+="| ${component} | ${host} | ${avg_cpu} | ${peak_cpu} | ${avg_rss} | ${peak_rss} |"$'\n'
 
     if [[ "${subdir}" == "proxy" ]]; then
-      proxy_avg_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_avg_cpu_sum} + ${avg_cpu}}")
+      proxy_avg_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_avg_cpu_sum} + ${avg_cpu_num}}")
       proxy_peak_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_peak_cpu_sum} + ${peak_cpu}}")
-      proxy_avg_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_avg_rss_sum} + ${avg_rss}}")
+      proxy_avg_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_avg_rss_sum} + ${avg_rss_num}}")
       proxy_peak_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_peak_rss_sum} + ${peak_rss}}")
     elif [[ "${subdir}" == "lb" ]]; then
-      lb_avg_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_avg_cpu_sum} + ${avg_cpu}}")
+      lb_avg_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_avg_cpu_sum} + ${avg_cpu_num}}")
       lb_peak_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_peak_cpu_sum} + ${peak_cpu}}")
-      lb_avg_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_avg_rss_sum} + ${avg_rss}}")
+      lb_avg_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_avg_rss_sum} + ${avg_rss_num}}")
       lb_peak_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_peak_rss_sum} + ${peak_rss}}")
     fi
   done
