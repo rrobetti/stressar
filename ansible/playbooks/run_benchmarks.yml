@@ -24,7 +24,7 @@
 #
 # Usage:
 #   ansible-playbook -i inventory.yml playbooks/run_benchmarks.yml \
-#     -e @ansible/vars/dryrun-ojp.yml
+#     -e @vars/dryrun-ojp.yml
 #
 # Optional overrides:
 #   -e run_name=ojp-run-1          # subdirectory under results/
@@ -393,4 +393,3 @@
     - name: Show report
       ansible.builtin.debug:
         msg: "{{ report_content.stdout_lines }}"
-

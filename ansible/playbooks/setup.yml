@@ -21,11 +21,11 @@
 #
 # SUT-B quick setup (OJP only, skips pgBouncer and HAProxy):
 #   ansible-playbook -i inventory.yml playbooks/setup.yml \
-#     --tags db,ojp,bench,init-db  -e @ansible/vars/dryrun-ojp.yml
+#     --tags db,ojp,bench,init-db  -e @vars/dryrun-ojp.yml
 #
 # SUT-C quick setup (pgBouncer + HAProxy only, skipping OJP):
 #   ansible-playbook -i inventory.yml playbooks/setup.yml \
-#     --tags db,pgbouncer,haproxy,bench,init-db  -e @ansible/vars/dryrun-pgbouncer.yml
+#     --tags db,pgbouncer,haproxy,bench,init-db  -e @vars/dryrun-pgbouncer.yml
 
 - name: Set up database server
   hosts: db

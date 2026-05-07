@@ -308,6 +308,15 @@ Key differences between the three dry-run profiles:
 > behaviour. The 50 ms SLO remains the default for production full-hardware runs where the
 > benchmark client and the SUT are co-located in the same datacenter.
 
+### Troubleshooting: `Unable to retrieve file contents`
+
+If you see an error for a dry-run vars file (for example, `dryrun-hikari.yml`), make sure command paths match your current working directory:
+
+- From the **repository root**: use `-i ansible/inventory.yml` and `-e @ansible/vars/<file>.yml`
+- From the **ansible/** directory: use `-i inventory.yml` and `-e @vars/<file>.yml`
+
+Also ensure `ansible/inventory.yml` exists (`cp ansible/inventory.yml.example ansible/inventory.yml`) and that the dry-run file exists under `ansible/vars/`.
+
 ---
 
 ## Customising a run
