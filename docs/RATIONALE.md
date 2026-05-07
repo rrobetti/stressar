@@ -131,13 +131,14 @@ Results intended for a peer-reviewed paper must satisfy three reproducibility cr
 TPC-C, YCSB, and Sysbench are transactional benchmarks that measure the throughput of the
 **database engine**, not the **connection-management layer**. They treat connection establishment as
 a setup detail and do not vary pool size, pool mode, or the number of application replicas as
-experimental variables. As a result, they cannot produce data that answers the question: *what is
-the throughput penalty, in requests per second, of using PgBouncer in transaction mode compared
-with direct JDBC pooling, when the total number of backend connections is held constant?*
+ experimental variables. As a result, they cannot produce data that answers the question: *how do
+ realistic production connection-management topologies (direct HikariCP, OJP centralized pooling,
+ PgBouncer+HAProxy) compare under the same workload and hardware constraints?*
 
-This tool is specifically designed to answer that question by holding constant all factors other
-than the connection mode (SUT) and measuring throughput, p95 latency, and error rate at each
-load level.
+This tool is specifically designed to answer that question by comparing production deployment
+patterns rather than artificially identical client-side knobs, and by measuring throughput, p95
+latency, error rate, observed backend connections, and proxy-tier resource usage at each load
+level.
 
 ---
 

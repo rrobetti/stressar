@@ -33,6 +33,8 @@ trap cleanup EXIT
 # Columns:
 #   timestamp           — ISO 8601 UTC sample time
 #   numbackends         — active backend connections right now
+#   active_backends     — client backends in state='active'
+#   idle_backends       — client backends in state='idle'
 #   xact_commit         — cumulative committed transactions
 #   xact_rollback       — cumulative rolled-back transactions
 #   blks_hit            — cumulative shared-buffer hits
@@ -44,7 +46,7 @@ trap cleanup EXIT
 #   buffers_checkpoint  — cumulative buffers written by checkpointer
 #   checkpoint_write_ms — cumulative ms spent writing during checkpoints
 
-printf 'timestamp,numbackends,xact_commit,xact_rollback,blks_hit,blks_read,cache_hit_pct,temp_bytes,deadlocks,lock_waits,buffers_checkpoint,checkpoint_write_ms\n' \
+printf 'timestamp,numbackends,active_backends,idle_backends,xact_commit,xact_rollback,blks_hit,blks_read,cache_hit_pct,temp_bytes,deadlocks,lock_waits,buffers_checkpoint,checkpoint_write_ms\n' \
   > "${OUTPUT}"
 
 # ── Polling loop ──────────────────────────────────────────────────────────────
@@ -55,7 +57,7 @@ while true; do
   # pg_stat_database row for the target database.
   # 8 fields: numbackends,xact_commit,xact_rollback,blks_hit,blks_read,
   #           cache_hit_pct,temp_bytes,deadlocks
-  # (Full CSV row = timestamp(1) + DB_ROW(8) + LOCK_WAITS(1) + BG_ROW(2) = 12 cols)
+  # (Full CSV row = timestamp(1) + DB_ROW(8) + ACTIVITY_ROW(2) + LOCK_WAITS(1) + BG_ROW(2) = 14 cols)
   DB_ROW=$(psql -U "${PG_USER}" -d "${DB}" -t -A -F',' \
     -c "SELECT numbackends, xact_commit, xact_rollback, blks_hit, blks_read,
                CASE WHEN (blks_hit + blks_read) > 0
@@ -65,6 +67,16 @@ while true; do
         FROM pg_stat_database
         WHERE datname = current_database();" 2>/dev/null \
     || echo "0,0,0,0,0,100,0,0")  # 8-field fallback matches DB_ROW columns above
+
+  # Active and idle client backend counts for this database.
+  ACTIVITY_ROW=$(psql -U "${PG_USER}" -d "${DB}" -t -A -F',' \
+    -c "SELECT
+          count(*) FILTER (WHERE state = 'active'),
+          count(*) FILTER (WHERE state = 'idle')
+        FROM pg_stat_activity
+        WHERE datname = current_database()
+          AND backend_type = 'client backend';" 2>/dev/null \
+    || echo "0,0")
 
   # Instantaneous ungranted lock count (1 field)
   LOCK_WAITS=$(psql -U "${PG_USER}" -d "${DB}" -t -A \
@@ -79,11 +91,12 @@ while true; do
 
   # Trim whitespace
   DB_ROW="${DB_ROW//[[:space:]]/}"
+  ACTIVITY_ROW="${ACTIVITY_ROW//[[:space:]]/}"
   LOCK_WAITS="${LOCK_WAITS//[[:space:]]/}"
   BG_ROW="${BG_ROW//[[:space:]]/}"
 
-  printf '%s,%s,%s,%s\n' \
-    "${TS}" "${DB_ROW}" "${LOCK_WAITS}" "${BG_ROW}" \
+  printf '%s,%s,%s,%s,%s\n' \
+    "${TS}" "${DB_ROW}" "${ACTIVITY_ROW}" "${LOCK_WAITS}" "${BG_ROW}" \
     >> "${OUTPUT}"
 
   sleep "${INTERVAL}"

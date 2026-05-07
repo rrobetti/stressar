@@ -3,9 +3,9 @@
 #
 # Full infrastructure setup:
 #   1. Installs and configures PostgreSQL 16 on the db group.
-#   2. Installs Java 24 + OJP Server on every proxy node.          (SUT-B only, --tags ojp)
-#   3. Installs pgBouncer on every proxy node.                      (SUT-C only, --tags pgbouncer)
-#   4. Installs HAProxy on the lb node.                             (SUT-C only, --tags haproxy)
+#   2. Installs Java 24 + OJP Server on every ojp node.            (SUT-B only, --tags ojp)
+#   3. Installs pgBouncer on every pgbouncer node.                  (SUT-C only, --tags pgbouncer)
+#   4. Installs HAProxy on the haproxy node.                        (SUT-C only, --tags haproxy)
 #   5. Initialises the benchmark database from the control node.
 #   6. Builds the bench tool on the control node.
 #
@@ -34,22 +34,22 @@
   roles:
     - role: postgresql
 
-- name: Set up OJP proxy nodes
-  hosts: proxy
+- name: Set up OJP server nodes
+  hosts: ojp
   gather_facts: true
   tags: ojp
   roles:
     - role: ojp_proxy
 
-- name: Set up pgBouncer on proxy nodes (SUT-C)
-  hosts: proxy
+- name: Set up pgBouncer on pgBouncer nodes (SUT-C)
+  hosts: pgbouncer
   gather_facts: true
   tags: pgbouncer
   roles:
     - role: pgbouncer
 
-- name: Set up HAProxy on load balancer node (SUT-C)
-  hosts: lb
+- name: Set up HAProxy on HAProxy nodes (SUT-C)
+  hosts: haproxy
   gather_facts: true
   tags: haproxy
   roles:
@@ -61,6 +61,18 @@
   tags: bench
   roles:
     - role: bench_control
+
+- name: Ensure Java runtime is present on loadgen nodes
+  hosts: loadgen
+  gather_facts: true
+  tags: bench
+  tasks:
+    - name: Install Java runtime for benchmark JVM replicas
+      ansible.builtin.apt:
+        name: default-jre-headless
+        state: present
+        update_cache: true
+      become: true
 
 - name: Initialise benchmark database
   hosts: control

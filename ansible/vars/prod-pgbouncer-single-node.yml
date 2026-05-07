@@ -1,0 +1,18 @@
+# ansible/vars/prod-pgbouncer-single-node.yml
+#
+# Secondary control profile to measure pgBouncer without HAProxy overhead.
+# Requires inventory with one pgbouncer node and optional empty haproxy group.
+
+bench_replica_count:     16
+bench_target_rps:        500
+bench_warmup_seconds:    300
+bench_duration_seconds:  1800
+bench_cooldown_seconds:  120
+bench_repetitions:       5
+bench_slo_p95_ms:        50
+
+pgbouncer_pool_size:      48
+pgbouncer_min_pool_size:  48
+pgbouncer_reserve_pool_size: 0
+pgbouncer_local_pool_size: 20
+benchmark_profile_name: "pgbouncer-single-node"

@@ -32,11 +32,11 @@
 #   -e bench_duration_seconds=300
 #   -e bench_replica_count=4
 
-- name: Pre-flight — verify OJP proxy service is running on every proxy node
+- name: Pre-flight — verify OJP service is running on every OJP node
   # run_benchmarks.yml never starts services — that is setup.yml's job.
   # If ojp-server is not active on any proxy node, fail fast so the operator
   # knows to re-run: ansible-playbook setup.yml --tags ojp
-  hosts: proxy
+  hosts: ojp
   gather_facts: false
 
   tasks:
@@ -59,16 +59,23 @@
   gather_facts: false
 
   vars:
-    run_name:   "ojp-run-{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
+    run_name:   "{{ benchmark_profile_name | default('ojp-prod') }}-{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
     db_host:    "{{ hostvars[groups['db'][0]]['ansible_host'] }}"
-    # Build the list of  PROXY_IP:PORT  strings from the proxy inventory group.
+    # Build the list of OJP_IP:PORT strings from the ojp inventory group.
     proxy_urls: >-
       {{
-        groups['proxy']
+        groups['ojp']
           | map('extract', hostvars, 'ansible_host')
           | map('regex_replace', '$', ':' + (ojp_server_port | string))
           | list
       }}
+    loadgen_hosts: "{{ groups['loadgen'] | default([]) }}"
+    loadgen_count: "{{ loadgen_hosts | length }}"
+    remote_bench_root: "/tmp/stressar-bench"
+    remote_bench_home: "{{ remote_bench_root }}/ojp-performance-tester"
+    remote_bench_binary: "{{ remote_bench_home }}/bin/bench"
+    remote_run_root: "/tmp/stressar-runs/{{ run_name }}"
+    remote_bench_config_file: "{{ remote_run_root }}/ojp-benchmark.yaml"
     bench_config_file: "/tmp/ojp-benchmark-{{ run_name }}.yaml"
     # Remote paths for side-car output files (written on each remote node)
     remote_jvm_csv:  "/tmp/jvm_metrics_{{ run_name }}.csv"
@@ -109,6 +116,26 @@
         - "{{ local_jvm_csv_dir }}"
         - "{{ local_db_metrics_dir }}"
 
+    - name: Write run metadata
+      ansible.builtin.copy:
+        dest: "{{ bench_results_dir }}/{{ run_name }}/run_metadata.json"
+        mode: "0644"
+        content: |
+          {
+            "scenario": "{{ benchmark_profile_name | default('ojp-prod') }}",
+            "configured_db_connection_budget": {{ bench_db_connection_budget | int }},
+            "bench_replica_count": {{ bench_replica_count | int }},
+            "ojp_servers": {{ groups['ojp'] | length }},
+            "real_db_connections_per_ojp_server": {{ (bench_db_connection_budget | int // (groups['ojp'] | length if (groups['ojp'] | length) > 0 else 1)) | int }},
+            "external_lb": false
+          }
+
+    - name: Assert loadgen inventory is defined
+      ansible.builtin.assert:
+        that:
+          - loadgen_count | int > 0
+        fail_msg: "At least one host must be present in the loadgen group."
+
     - name: Render benchmark configuration
       ansible.builtin.template:
         src: "{{ bench_repo_dir }}/ansible/templates/ojp-benchmark.yaml.j2"
@@ -118,6 +145,38 @@
     - name: Show rendered config path
       ansible.builtin.debug:
         msg: "Benchmark config written to {{ bench_config_file }}"
+
+    - name: Ensure remote bench root exists on loadgen hosts
+      ansible.builtin.file:
+        path: "{{ remote_bench_root }}"
+        state: directory
+        mode: "0755"
+      delegate_to: "{{ item }}"
+      loop: "{{ loadgen_hosts }}"
+
+    - name: Ensure remote run root exists on loadgen hosts
+      ansible.builtin.file:
+        path: "{{ remote_run_root }}"
+        state: directory
+        mode: "0755"
+      delegate_to: "{{ item }}"
+      loop: "{{ loadgen_hosts }}"
+
+    - name: Copy bench distribution to loadgen hosts
+      ansible.builtin.copy:
+        src: "{{ bench_repo_dir }}/build/install/ojp-performance-tester/"
+        dest: "{{ remote_bench_home }}/"
+        mode: preserve
+      delegate_to: "{{ item }}"
+      loop: "{{ loadgen_hosts }}"
+
+    - name: Copy rendered benchmark configuration to loadgen hosts
+      ansible.builtin.copy:
+        src: "{{ bench_config_file }}"
+        dest: "{{ remote_bench_config_file }}"
+        mode: "0644"
+      delegate_to: "{{ item }}"
+      loop: "{{ loadgen_hosts }}"
 
     # ── Reset PostgreSQL statistics (clean baseline) ──────────────────────────
 
@@ -139,15 +198,15 @@
 
     # ── Deploy and start OJP JVM metrics side-car on each proxy node ──────────
 
-    - name: Copy JVM metrics collection script to proxy nodes
+    - name: Copy JVM metrics collection script to OJP nodes
       ansible.builtin.copy:
         src: "{{ jvm_script_src }}"
         dest: "{{ remote_jvm_script }}"
         mode: "0755"
       delegate_to: "{{ item }}"
-      loop: "{{ groups['proxy'] }}"
+      loop: "{{ groups['ojp'] }}"
 
-    - name: Start JVM metrics collection on proxy nodes
+    - name: Start JVM metrics collection on OJP nodes
       ansible.builtin.shell: |
         nohup "{{ remote_jvm_script }}" "{{ remote_jvm_csv }}" \
           </dev/null >"{{ remote_jvm_csv }}.log" 2>&1 &
@@ -155,7 +214,7 @@
       args:
         executable: /bin/bash
       delegate_to: "{{ item }}"
-      loop: "{{ groups['proxy'] }}"
+      loop: "{{ groups['ojp'] }}"
       changed_when: true
 
     # ── Deploy and start PostgreSQL metrics side-car on the DB node ───────────
@@ -188,7 +247,7 @@
         dest: "{{ remote_proc_script }}"
         mode: "0755"
       delegate_to: "{{ item }}"
-      loop: "{{ groups['proxy'] }}"
+      loop: "{{ groups['ojp'] }}"
 
     - name: Start process metrics collection on proxy nodes (ojp-server)
       ansible.builtin.shell: |
@@ -198,7 +257,7 @@
       args:
         executable: /bin/bash
       delegate_to: "{{ item }}"
-      loop: "{{ groups['proxy'] }}"
+      loop: "{{ groups['ojp'] }}"
       changed_when: true
 
     - name: Copy process metrics collection script to DB node
@@ -220,11 +279,12 @@
 
     # ── Warmup ───────────────────────────────────────────────────────────────
 
-    - name: Run warmup pass
+    - name: Run warmup pass on first loadgen host
       ansible.builtin.command: >
-        {{ bench_binary }} warmup --config {{ bench_config_file }}
+        {{ remote_bench_binary }} warmup --config {{ remote_bench_config_file }}
       register: warmup_out
       changed_when: true
+      delegate_to: "{{ loadgen_hosts[0] }}"
 
     - name: Print warmup output
       ansible.builtin.debug:
@@ -232,47 +292,61 @@
 
     # ── Parallel benchmark replicas ──────────────────────────────────────────
 
-    - name: Launch {{ bench_replica_count }} bench replicas in parallel
-      ansible.builtin.shell: |
-        set -euo pipefail
-        mkdir -p "{{ bench_results_dir }}/{{ run_name }}"
-        pids=()
-        for ID in $(seq 0 {{ bench_replica_count | int - 1 }}); do
-          "{{ bench_binary }}" run \
-            --config     "{{ bench_config_file }}" \
-            --output     "{{ bench_results_dir }}/{{ run_name }}/replica-${ID}/" \
-            --instance-id "${ID}" \
-            > "{{ bench_results_dir }}/{{ run_name }}/replica-${ID}.log" 2>&1 &
-          pids+=($!)
-          echo "Started replica ${ID} (PID ${pids[-1]})"
-        done
-        echo "Waiting for all {{ bench_replica_count }} replicas..."
-        failed=0
-        for pid in "${pids[@]}"; do
-          if ! wait "$pid"; then
-            echo "ERROR: replica PID ${pid} exited non-zero"
-            failed=$(( failed + 1 ))
-          fi
-        done
-        if [ "$failed" -gt 0 ]; then
-          echo "FAILED: ${failed} replica(s) did not complete successfully"
-          exit 1
-        fi
-        echo "All replicas finished successfully"
-      args:
-        executable: /bin/bash
-      register: bench_run_out
+    - name: Launch benchmark replicas on loadgen hosts
+      ansible.builtin.command: >
+        {{ remote_bench_binary }} run
+        --config {{ remote_bench_config_file }}
+        --output {{ remote_run_root }}/replica-{{ item }}/
+        --instance-id {{ item }}
+      async: 10800
+      poll: 0
+      register: bench_jobs
       changed_when: true
-      # Allow up to 45 minutes for a full run (warmup + duration + cooldown).
-      timeout: 2700
+      delegate_to: "{{ loadgen_hosts[item | int % loadgen_count | int] }}"
+      loop: "{{ range(0, bench_replica_count | int) | list }}"
+
+    - name: Wait for all benchmark replicas
+      ansible.builtin.async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: bench_job_status
+      until: bench_job_status.finished
+      retries: 2160
+      delay: 5
+      loop: "{{ bench_jobs.results }}"
+      loop_control:
+        label: "replica-{{ item.item }}"
+      delegate_to: "{{ loadgen_hosts[item.item | int % loadgen_count | int] }}"
+      changed_when: false
 
     - name: Print bench run output
       ansible.builtin.debug:
-        msg: "{{ bench_run_out.stdout_lines }}"
+        msg: "All {{ bench_replica_count }} replicas finished on loadgen hosts."
+
+    - name: Read replica summary.json from loadgen hosts
+      ansible.builtin.command: >
+        cat {{ remote_run_root }}/replica-{{ item }}/summary.json
+      register: remote_summaries
+      changed_when: false
+      delegate_to: "{{ loadgen_hosts[item | int % loadgen_count | int] }}"
+      loop: "{{ range(0, bench_replica_count | int) | list }}"
+
+    - name: Ensure local replica summary directories exist
+      ansible.builtin.file:
+        path: "{{ bench_results_dir }}/{{ run_name }}/replica-{{ item }}"
+        state: directory
+        mode: "0755"
+      loop: "{{ range(0, bench_replica_count | int) | list }}"
+
+    - name: Write replica summary.json to control-node results directory
+      ansible.builtin.copy:
+        content: "{{ item.stdout }}"
+        dest: "{{ bench_results_dir }}/{{ run_name }}/replica-{{ item.item }}/summary.json"
+        mode: "0644"
+      loop: "{{ remote_summaries.results }}"
 
     # ── Stop OJP JVM metrics side-car on proxy nodes; fetch CSVs ─────────────
 
-    - name: Stop JVM metrics collection on proxy nodes
+    - name: Stop JVM metrics collection on OJP nodes
       ansible.builtin.shell: |
         PID_FILE="{{ remote_jvm_csv }}.pid"
         if [ -f "${PID_FILE}" ]; then
@@ -282,11 +356,11 @@
       args:
         executable: /bin/bash
       delegate_to: "{{ item }}"
-      loop: "{{ groups['proxy'] }}"
+      loop: "{{ groups['ojp'] }}"
       changed_when: true
       ignore_errors: true
 
-    - name: Fetch JVM metrics CSV from each proxy node
+    - name: Fetch JVM metrics CSV from each OJP node
       ansible.builtin.fetch:
         src: "{{ remote_jvm_csv }}"
         dest: "{{ local_jvm_csv_dir }}/{{ item }}_jvm_metrics.csv"
@@ -294,7 +368,7 @@
         fail_on_missing: false
         validate_checksum: false
       delegate_to: "{{ item }}"
-      loop: "{{ groups['proxy'] }}"
+      loop: "{{ groups['ojp'] }}"
 
     # ── Stop PostgreSQL metrics side-car; fetch CSV ───────────────────────────
 
@@ -324,7 +398,7 @@
 
     # ── Stop process metrics side-cars; fetch CSVs ────────────────────────────
 
-    - name: Stop process metrics collection on proxy nodes
+    - name: Stop process metrics collection on OJP nodes
       ansible.builtin.shell: |
         PID_FILE="{{ remote_ojp_proc_csv }}.pid"
         if [ -f "${PID_FILE}" ]; then
@@ -334,11 +408,11 @@
       args:
         executable: /bin/bash
       delegate_to: "{{ item }}"
-      loop: "{{ groups['proxy'] }}"
+      loop: "{{ groups['ojp'] }}"
       changed_when: true
       ignore_errors: true
 
-    - name: Fetch OJP process metrics CSV from each proxy node
+    - name: Fetch OJP process metrics CSV from each OJP node
       ansible.builtin.fetch:
         src: "{{ remote_ojp_proc_csv }}"
         dest: "{{ local_jvm_csv_dir }}/{{ item }}_proc_metrics.csv"
@@ -346,7 +420,7 @@
         fail_on_missing: false
         validate_checksum: false
       delegate_to: "{{ item }}"
-      loop: "{{ groups['proxy'] }}"
+      loop: "{{ groups['ojp'] }}"
 
     - name: Stop process metrics collection on DB node
       ansible.builtin.shell: |

@@ -30,7 +30,33 @@ in the experimental report along with a justification.
    the connection-fragmentation pattern of a real microservice deployment. Every scenario runs
    **16 independent `bench` JVM processes** (8 on each of two identical load-generator machines,
    LG-1 and LG-2), each
-   representing one microservice replica.
+    representing one microservice replica.
+
+---
+
+## Benchmark Philosophy: Production Topology, Not Equal Knobs
+
+This benchmark compares realistic production topologies rather than artificially identical network
+paths or identical client-side settings.
+
+- **HikariCP direct baseline (`hikari-prod`)** models a common elastic microservice architecture:
+  each replica owns a local JDBC pool, so total possible PostgreSQL connections grow as replicas
+  scale.
+- **OJP (`ojp-prod`)** models centralized JDBC connection management: clients expose logical JDBC
+  connections, while real PostgreSQL connections are pooled in the OJP server tier. No local
+  client-side HikariCP pool is used.
+- **PgBouncer (`pgbouncer-prod`)** models a common Java deployment: applications keep local HikariCP
+  pools, PgBouncer consolidates backend PostgreSQL connections, and HAProxy handles multi-node
+  PgBouncer load balancing/HA.
+
+OJP is intentionally not placed behind HAProxy for topology symmetry. Client-side balancing and
+failover are part of the OJP JDBC driver model.
+
+All results must report both configured and observed backend PostgreSQL connections. Proxy-tier
+resource usage must be summed across all required components for each topology:
+
+- OJP proxy tier = OJP-1 + OJP-2 + OJP-3
+- PgBouncer proxy tier = HAProxy + PgBouncer-1 + PgBouncer-2 + PgBouncer-3
 
 ---
 
@@ -835,7 +861,7 @@ All test scenarios share the following global parameters unless explicitly overr
 | `dbConnectionBudget` | 300 (SUT-A: 19 × 16 ≈ 304 direct) / 48 (proxy SUTs: 3 × 16) | SUT-A uses full direct pool; proxy SUTs multiplex onto optimal backend pool |
 | `targetRpsPerClient` | 63 | 16 × 63 ≈ 1,000 RPS aggregate baseline |
 | `warmupSeconds` | 300 | Primes PostgreSQL buffer pool and JIT compiler |
-| `durationSeconds` | 600 | Steady-state measurement window |
+| `durationSeconds` | 1800 | Steady-state measurement window |
 | `cooldownSeconds` | 120 | Allows queues and connection states to drain |
 | `repeatCount` | 5 | Enables median p95 computation across runs |
 | `seed` | 42 | Reproducible parameter distribution |
@@ -937,7 +963,7 @@ database:
   password: "${DB_PASSWORD}"
 
 connectionMode: OJP
-dbConnectionBudget: 18   # Per-replica virtual connection budget
+dbConnectionBudget: 48   # Total real backend DB budget across 3 OJP servers
 replicas: 16
 
 ojp:
@@ -1010,7 +1036,7 @@ database:
   password: "${DB_PASSWORD}"
 
 connectionMode: PGBOUNCER
-poolSize: 2    # Minimal client-side pool; PgBouncer holds the real backend pool
+poolSize: 20   # Main production profile; use pgbouncer-thin-client (poolSize: 2) only as control
 
 workload:
   type: W2_MIXED
@@ -1276,6 +1302,22 @@ The following metrics must be reported for each SUT and each scenario:
 The following predictions are stated prior to running the experiments. Their confirmation or
 refutation is the scientific contribution of the study.
 
+### Production Topology Summary Table
+
+| Scenario | Client-side pooling | External LB | Proxy nodes | Configured DB backend budget | Observed max DB backends | Proxy-tier CPU | Proxy-tier RSS | p95 latency | p99 latency | Throughput | Error rate |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| HikariCP direct | Yes, per replica | No | 0 | ~300 | measured | N/A | N/A | measured | measured | measured | measured |
+| OJP | No local pool; logical JDBC connections | No | 3 | 48 | measured | measured | measured | measured | measured | measured | measured |
+| PgBouncer + HAProxy | Yes, HikariCP local pool | Yes | 3 + HAProxy | 48 | measured | measured | measured | measured | measured | measured | measured |
+
+### Optional Control Scenarios (Secondary Experiments)
+
+| Control scenario | Purpose |
+|---|---|
+| hikari-equal-budget-48 | Shows direct JDBC under the same backend DB budget as OJP/PgBouncer |
+| pgbouncer-thin-client | Shows PgBouncer with minimal local client-side pooling |
+| pgbouncer-single-node-no-haproxy | Measures PgBouncer without HAProxy overhead |
+
 ### 12.1 Steady-State Throughput at 1,000 RPS
 
 **Hypothesis H1:** At 1,000 RPS aggregate with 16 clients (SUT-A: 300 direct connections;
@@ -1470,4 +1512,19 @@ in any publication that uses these results.
 
 ---
 
-*Document version: 2.0 — March 2026*
+*Document version: 2.1 — May 2026*
+
+---
+
+## References
+
+1. PgBouncer configuration (authoritative for `default_pool_size`, `reserve_pool_size`,
+   `max_client_conn`, and client/server connection model): <https://www.pgbouncer.org/config.html>
+2. PgBouncer usage (`SHOW POOLS`, `SHOW CLIENTS`, `SHOW SERVERS`, `SHOW STATS`):
+   <https://www.pgbouncer.org/usage.html>
+3. HikariCP official documentation (`maximumPoolSize`, pool behaviour):
+   <https://github.com/brettwooldridge/HikariCP>
+4. HikariCP About Pool Sizing: <https://github.com/brettwooldridge/HikariCP/wiki/About-Pool-Sizing>
+5. Anecdotal production-pattern write-up (supporting evidence only): <https://medium.com/@rrbadam/how-pgbouncer-and-hikaricp-work-together-lessons-from-a-real-world-spike-48d25f50cbe1>
+6. Supporting industry article on large fleet connection amplification (supporting evidence only):
+   <https://www.infoq.com/news/2026/01/alloydb-managed-connection-pool/>

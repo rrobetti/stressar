@@ -19,6 +19,6 @@ frontend pgbouncer_front
 
 backend pgbouncer_back
     balance leastconn
-{% for host in groups['proxy'] %}
+{% for host in groups['pgbouncer'] %}
     server {{ host }} {{ hostvars[host]['ansible_host'] }}:{{ pgbouncer_port }} check inter {{ haproxy_check_inter }}
 {% endfor %}
