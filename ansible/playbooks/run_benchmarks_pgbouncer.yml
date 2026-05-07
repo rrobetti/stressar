@@ -99,20 +99,12 @@
     # Resolved from inventory 'db' group, or override via -e db_host=<IP>.
     db_host:    "{{ hostvars[groups['db'][0]]['ansible_host'] if 'db' in groups and groups['db'] | length > 0 else '' }}"
     # Traffic is sent through the HAProxy load balancer, which distributes across pgBouncer nodes.
-    # Resolution order:
-    #   1. 'haproxy' inventory group  (dedicated HAProxy node — recommended for production)
-    #   2. 'pgbouncer' inventory group  (combined LB+pgBouncer fallback)
-    #   3. '' — triggers the preflight assertion with an actionable error message
-    # Can also be overridden directly: -e lb_host=<IP>
+    # The inventory must define a non-empty 'haproxy' group for SUT-C routing.
     lb_host: >-
       {{
         hostvars[groups['haproxy'][0]]['ansible_host']
         if 'haproxy' in groups and groups['haproxy'] | length > 0
-        else (
-          hostvars[groups['pgbouncer'][0]]['ansible_host']
-          if 'pgbouncer' in groups and groups['pgbouncer'] | length > 0
-          else ''
-        )
+        else ''
       }}
     bench_config_file: "/tmp/pgbouncer-benchmark-{{ run_name }}.yaml"
     # Remote path for pg side-car output file (written on the DB node)
@@ -150,13 +142,15 @@
     - name: Assert required hosts are configured
       ansible.builtin.assert:
         that:
+          - "'haproxy' in groups"
+          - groups['haproxy'] | length > 0
           - lb_host | length > 0
           - db_host | length > 0
           - loadgen_count | int > 0
         fail_msg: >-
           Required host addresses are not configured.
-          For lb_host, add a 'haproxy' group (dedicated HAProxy node) to your inventory,
-          OR a 'pgbouncer' group (combined LB+pgBouncer fallback), OR pass -e lb_host=<IP> directly.
+          Missing required inventory group: 'haproxy' (must contain at least one host).
+          The pgBouncer benchmark requires HAProxy -> pgBouncer -> DB routing.
           For db_host, add a 'db' group to your inventory, OR pass -e db_host=<IP> directly.
           For benchmark execution, define at least one host in the loadgen group.
           Check ansible/inventory.yml.example for the expected inventory structure.
