@@ -41,8 +41,9 @@ Use the same logical groups in both production and dry-run inventories:
 - `pgbouncer`
 - `haproxy`
 
-If the `control` host is the same machine running Ansible, set `ansible_connection: local`
-for that host entry in `inventory.yml`.
+`control` uses local Ansible connection by default (`group_vars/control.yml`).
+If your control machine is local, set `ansible_host` to `127.0.0.1` or `localhost`
+in `inventory.yml` (do not use `local`).
 
 ---
 
