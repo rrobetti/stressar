@@ -32,12 +32,7 @@ bench_target_rps:        25
 bench_warmup_seconds:    10
 bench_duration_seconds:  60
 bench_cooldown_seconds:  10
-# Dry-run SLO is relaxed to 300 ms (vs. the 50 ms production default) because
-# these runs are typically executed by engineers from their local machines against
-# cloud instances in a different region, so cross-region WAN latency alone can
-# easily exceed the 50 ms production threshold.  The purpose of a dry run is to
-# validate end-to-end automation correctness, not to measure peak latency.
-bench_slo_p95_ms:        300
+bench_slo_p95_ms:        50
 
 # ── pgBouncer — dry-run topology scaling ──────────────────────────────────────
 # Logical topology target: 3 pgBouncer nodes × 2 PostgreSQL server connections = 6.

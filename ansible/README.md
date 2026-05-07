@@ -323,7 +323,7 @@ Key differences between the three dry-run profiles:
 | `bench_replica_count` | 1 | 1 | 1 | 4 |
 | `bench_target_rps` | 25 | 25 | 25 | 500 |
 | `bench_duration_seconds` | 60 | 60 | 60 | 300 |
-| `bench_slo_p95_ms` | 300 ms | 300 ms | 300 ms | 50 ms |
+| `bench_slo_p95_ms` | 50 ms | 50 ms | 50 ms | 50 ms |
 | `bench_db_connection_budget` | 18 | — | — | 18 |
 | `bench_hikari_max_pool_size_per_replica` | 18 | — | — | 19 |
 | `pgbouncer_pool_size` | — | — | 18 | 6 |
@@ -331,15 +331,6 @@ Key differences between the three dry-run profiles:
 | `pgbouncer_local_pool_size` | — | — | 2 | 2 |
 | `pg_shared_buffers` | 128 MB | 128 MB | 128 MB | 4 GB |
 | `pg_max_connections` | 50 | 50 | 50 | 400 |
-
-> **Why 300 ms for dry runs?**  
-> Dry runs are typically executed by engineers from their local machines against cloud instances
-> that may be in a different region. Cross-region WAN latency alone can exceed the 50 ms
-> production SLO, which would cause every dry-run sweep step to fail immediately — making the
-> threshold useless for its intended purpose of catching *overload*. 300 ms is loose enough to
-> tolerate typical engineer-to-cloud round-trip times while still flagging genuinely degraded
-> behaviour. The 50 ms SLO remains the default for production full-hardware runs where the
-> benchmark client and the SUT are co-located in the same datacenter.
 
 ---
 
