@@ -348,6 +348,10 @@ Predefined full-hardware production profiles are available under `ansible/vars/`
 - `prod-hikari.yml` (SUT-A): 16 replicas, budget 300, max per replica 19
 - `prod-ojp.yml` (SUT-B): 16 replicas, OJP budget 48
 - `prod-pgbouncer.yml` (SUT-C): 16 replicas, pgBouncer pool 16 per proxy node, local bench pool 20
+- all production profiles set `bench_repetitions: 5` for report methodology alignment
+
+> **TODO:** playbook-level automatic repetition loops are not yet implemented; run each profile
+> multiple times and report median/min/max/variance across runs.
 
 Usage examples:
 
