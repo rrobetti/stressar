@@ -317,7 +317,7 @@ Predefined full-hardware production profiles are available under `ansible/vars/`
 
 - `prod-hikari.yml` (SUT-A): 16 replicas, budget 300, max per replica 19
 - `prod-ojp.yml` (SUT-B): 16 replicas, OJP budget 48
-- `prod-pgbouncer.yml` (SUT-C): 16 replicas, pgBouncer pool 16 per proxy node, local bench pool 2
+- `prod-pgbouncer.yml` (SUT-C): 16 replicas, pgBouncer pool 16 per proxy node, local bench pool 20
 
 Usage examples:
 
@@ -334,6 +334,29 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_pgbouncer.yml \
   -e @ansible/vars/prod-pgbouncer.yml
 ```
+
+---
+
+## Connection pool configuration by SUT (where it lives + rationale)
+
+| SUT | Client-side pool in bench | Server-side/proxy pool | Where configured |
+|-----|---------------------------|-------------------------|------------------|
+| **SUT-A — Hikari Direct** | **Yes** (`poolSize`) | N/A (direct DB) | `ansible/templates/hikari-benchmark.yaml.j2` (`dbConnectionBudget`, `replicas`) → computed in `src/main/java/com/bench/config/BenchmarkConfig.java#calculateDisciplinedPoolSize` |
+| **SUT-B — OJP** | **No client Hikari pool** | **Yes** (OJP server-side pool) | `ansible/templates/ojp-benchmark.yaml.j2` (`dbConnectionBudget`, `replicas`, `ojp.poolSharing`) → computed in `src/main/java/com/bench/config/BenchmarkConfig.java#calculateOjpAllocation` and applied in `src/main/java/com/bench/config/ConnectionProviderFactory.java` |
+| **SUT-C — pgBouncer** | **Optional** (`poolSize`) | **Yes** (`pgbouncer_pool_size` / `pgbouncer_min_pool_size`) | Client pool: `ansible/templates/pgbouncer-benchmark.yaml.j2` (`poolSize: {{ pgbouncer_local_pool_size }}`) used by `src/main/java/com/bench/config/PgbouncerProvider.java`. Server pool: `ansible/group_vars/all.yml` or `ansible/vars/prod-pgbouncer.yml`. |
+
+Rationale and parameter decisions:
+
+- `docs/PARAMETER_DECISIONS.md` (especially §28 for pgBouncer client pool rationale).
+- `docs/BENCHMARKING_GUIDE.md` SUT-A/B/C sections for topology and intended comparison method.
+
+Important notes:
+
+- For OJP, `bench_replica_count` is number of bench JVM replicas; it is **not** OJP pool size.
+- In OJP `PER_INSTANCE` mode, max connections per replica are derived from `ceil(dbConnectionBudget / replicas)`.
+- For pgBouncer, this repo supports both:
+  - **benchmark/fair-comparison profile**: small `pgbouncer_local_pool_size` (default 2)
+  - **production-like profile**: larger `pgbouncer_local_pool_size` in `prod-pgbouncer.yml`
 
 ---
 

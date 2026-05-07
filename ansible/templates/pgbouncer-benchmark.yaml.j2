@@ -13,7 +13,9 @@ database:
 
 connectionMode: PGBOUNCER
 
-# Use a configurable local client-side pool; PgBouncer holds the real backend pool.
+# Configurable local client-side pool.
+# - benchmark/fair-comparison profile can use a small value (see docs/PARAMETER_DECISIONS.md §28)
+# - production profile can override with a larger value in ansible/vars/prod-pgbouncer.yml
 poolSize: {{ pgbouncer_local_pool_size }}
 replicas: {{ bench_replica_count }}
 

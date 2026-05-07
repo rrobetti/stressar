@@ -15,5 +15,6 @@ bench_slo_p95_ms:        50
 pgbouncer_pool_size:     16
 pgbouncer_min_pool_size: 16
 
-# Bench local client-side pool against pgBouncer endpoint
-pgbouncer_local_pool_size: 2
+# Production-like bench local client-side pool against pgBouncer endpoint.
+# This is intentionally higher than the benchmark/fair-comparison default (2).
+pgbouncer_local_pool_size: 20
