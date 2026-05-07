@@ -14,8 +14,7 @@ database:
 connectionMode: PGBOUNCER
 
 # Configurable local Java client-side pool.
-# - Main production profile: 20 (realistic Java microservice topology)
-# - Secondary control profile: 2 (pgbouncer-thin-client)
+# Main production profile: 20 (realistic Java microservice topology)
 poolSize: {{ pgbouncer_local_pool_size }}
 replicas: {{ bench_replica_count }}
 

@@ -41,8 +41,6 @@ Use the same logical groups in both production and dry-run inventories:
 - `pgbouncer`
 - `haproxy`
 
-Dry-runs may map all groups to localhost while preserving this structure.
-
 ---
 
 ## What it does
@@ -390,7 +388,6 @@ Important notes:
 - In OJP `PER_INSTANCE` mode, max connections per replica are derived from `ceil(dbConnectionBudget / replicas)`.
 - For pgBouncer, this repo supports both:
   - **main production profile**: `pgbouncer_local_pool_size: 20`, `pgbouncer_reserve_pool_size: 0`
-  - **secondary control profile**: `prod-pgbouncer-thin-client.yml` with `pgbouncer_local_pool_size: 2`
 
 ---
 
@@ -496,7 +493,7 @@ ansible/
 ├── group_vars/
 │   ├── all.yml                        # Shared variables (OJP version, DB creds, pgBouncer port, …)
 │   ├── db.yml                         # PostgreSQL tuning parameters
-│   └── proxy.yml                      # Java / OJP proxy settings
+│   └── ojp.yml                        # Java / OJP server settings
 ├── roles/
 │   ├── postgresql/                    # Install + configure PostgreSQL 16
 │   │   ├── defaults/main.yml

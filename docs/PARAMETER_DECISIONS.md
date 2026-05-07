@@ -649,10 +649,9 @@ benchmark harder to interpret.
 
 ---
 
-## 28. PgBouncer Client Pool Size — poolSize = 20 (main), 2 (thin control)
+## 28. PgBouncer Client Pool Size — poolSize = 20 (main production profile)
 
 **Value:** Main production profile uses `poolSize: 20` for each benchmark replica.
-Secondary control profile `pgbouncer-thin-client` uses `poolSize: 2`.
 
 **Reason:** The main PgBouncer profile uses a local HikariCP pool size of 20 per benchmark replica.
 This is intentional. Many Java production applications continue to use HikariCP locally even when
@@ -660,7 +659,6 @@ PgBouncer is introduced. The benchmark therefore evaluates PgBouncer as it is co
 Java systems: local client-side pooling in the application, HAProxy for multi-node balancing, and
 PgBouncer for PostgreSQL backend connection consolidation.
 
-A thin-client PgBouncer profile with local pool size 2 is included only as a secondary control.
 
 ---
 

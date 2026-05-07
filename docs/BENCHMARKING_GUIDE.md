@@ -1036,7 +1036,7 @@ database:
   password: "${DB_PASSWORD}"
 
 connectionMode: PGBOUNCER
-poolSize: 20   # Main production profile; use pgbouncer-thin-client (poolSize: 2) only as control
+poolSize: 20   # Main production profile
 
 workload:
   type: W2_MIXED
@@ -1309,14 +1309,6 @@ refutation is the scientific contribution of the study.
 | HikariCP direct | Yes, per replica | No | 0 | ~300 | measured | N/A | N/A | measured | measured | measured | measured |
 | OJP | No local pool; logical JDBC connections | No | 3 | 48 | measured | measured | measured | measured | measured | measured | measured |
 | PgBouncer + HAProxy | Yes, HikariCP local pool | Yes | 3 + HAProxy | 48 | measured | measured | measured | measured | measured | measured | measured |
-
-### Optional Control Scenarios (Secondary Experiments)
-
-| Control scenario | Purpose |
-|---|---|
-| hikari-equal-budget-48 | Shows direct JDBC under the same backend DB budget as OJP/PgBouncer |
-| pgbouncer-thin-client | Shows PgBouncer with minimal local client-side pooling |
-| pgbouncer-single-node-no-haproxy | Measures PgBouncer without HAProxy overhead |
 
 ### 12.1 Steady-State Throughput at 1,000 RPS
 

@@ -78,30 +78,3 @@ all:
     lb:
       children:
         haproxy:
-
-    # Minimal dry-run example: all logical groups mapped to localhost.
-    #
-    # control:
-    #   hosts:
-    #     localhost:
-    #       ansible_connection: local
-    # loadgen:
-    #   hosts:
-    #     localhost:
-    #       ansible_connection: local
-    # db:
-    #   hosts:
-    #     localhost:
-    #       ansible_connection: local
-    # ojp:
-    #   hosts:
-    #     localhost:
-    #       ansible_connection: local
-    # pgbouncer:
-    #   hosts:
-    #     localhost:
-    #       ansible_connection: local
-    # haproxy:
-    #   hosts:
-    #     localhost:
-    #       ansible_connection: local
