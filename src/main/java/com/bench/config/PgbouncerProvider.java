@@ -32,8 +32,12 @@ public class PgbouncerProvider implements ConnectionProvider {
         config.setIdleTimeout(600000);
         config.setMaxLifetime(1800000);
         
-        // Performance settings
-        config.setAutoCommit(false);
+        // autoCommit=true (JDBC default): read workloads need no transaction wrapper
+        // and write workloads (ReadWriteWorkload) explicitly call setAutoCommit(false)
+        // on each connection before use.  Leaving the pool in autoCommit=false causes
+        // HikariCP to issue a silent ROLLBACK when a connection is returned after a
+        // read-only request, inflating pg_stat_database.xact_rollback.
+        config.setAutoCommit(true);
         config.addDataSourceProperty("cachePrepStmts", "true");
         config.addDataSourceProperty("prepStmtCacheSize", "250");
         config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
