@@ -110,6 +110,8 @@ public class SummaryWriter {
         public int poolSize;
         public int instanceId;
         public int totalInstances;
+        public int configuredDbConnectionBudget;
+        public int configuredReplicas;
         public long seed;
         public int durationSeconds;
         public String timestamp;

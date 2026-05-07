@@ -1,7 +1,7 @@
 ---
 # ansible/playbooks/teardown.yml
 #
-# Gracefully stops services on proxy/lb nodes and resets PostgreSQL
+# Gracefully stops services on ojp/pgbouncer/haproxy nodes and resets PostgreSQL
 # statistics so the next run starts from a clean baseline.
 #
 # Usage:
@@ -11,8 +11,8 @@
 #   # Reset DB stats only (service management handled manually):
 #   ansible-playbook -i inventory.yml playbooks/teardown.yml --skip-tags ojp,pgbouncer,haproxy
 
-- name: Stop OJP Server on proxy nodes
-  hosts: proxy
+- name: Stop OJP Server on OJP nodes
+  hosts: ojp
   gather_facts: false
   tags: ojp
   tasks:
@@ -30,8 +30,8 @@
         timeout: 15
       ignore_errors: true
 
-- name: Stop pgBouncer on proxy nodes
-  hosts: proxy
+- name: Stop pgBouncer on pgBouncer nodes
+  hosts: pgbouncer
   gather_facts: false
   tags: pgbouncer
   tasks:
@@ -49,8 +49,8 @@
         timeout: 15
       ignore_errors: true
 
-- name: Stop HAProxy on load balancer node
-  hosts: lb
+- name: Stop HAProxy on HAProxy nodes
+  hosts: haproxy
   gather_facts: false
   tags: haproxy
   tasks:

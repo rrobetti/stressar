@@ -1,7 +1,7 @@
 ---
 # ansible/templates/ojp-benchmark.yaml.j2
 #
-# Jinja2 template for a single benchmark run.
+# Jinja2 template for an OJP production-topology benchmark run (SUT-B).
 # Rendered by run_benchmarks.yml into /tmp/ojp-benchmark-{{ run_name }}.yaml
 # before each bench invocation.
 
@@ -11,6 +11,8 @@ database:
   password: "{{ db_password }}"
 
 connectionMode: {{ bench_connection_mode }}
+# OJP clients do not use a local HikariCP pool. JDBC connections are logical on
+# the client side; real PostgreSQL backend connections are pooled in OJP servers.
 dbConnectionBudget: {{ bench_db_connection_budget }}
 replicas: {{ bench_replica_count }}
 

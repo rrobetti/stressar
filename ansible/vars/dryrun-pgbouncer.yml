@@ -2,8 +2,9 @@
 # ansible/vars/dryrun-pgbouncer.yml
 #
 # Minimal-hardware override for a pgBouncer dry run (SUT-C).
-# Requires 6 machines: 1 control (local) + 1 DB + 1 LB + 3 proxy nodes,
-# or more simply 5 remote machines: 1 DB, 1 LB, and 3 pgBouncer proxy nodes.
+# Dry-run inventories should keep the full logical group structure
+# (control/loadgen/db/ojp/pgbouncer/haproxy), but this pgBouncer profile
+# actively uses control/loadgen/db/pgbouncer/haproxy.
 #
 # NOTE: pgBouncer and HAProxy infrastructure must be set up manually before running the benchmark.
 # See docs/DEPLOYMENT_GUIDE.md sections 3–5 for installation and configuration instructions.
@@ -25,27 +26,21 @@ bench_num_items:    1000
 bench_num_orders:   100000
 
 # ── Benchmark run ─────────────────────────────────────────────────────────────
-bench_replica_count:     1
+benchmark_profile_name: "pgbouncer-dryrun"
+bench_replica_count:     2
 bench_target_rps:        25
 bench_warmup_seconds:    10
 bench_duration_seconds:  60
 bench_cooldown_seconds:  10
-# Dry-run SLO is relaxed to 300 ms (vs. the 50 ms production default) because
-# these runs are typically executed by engineers from their local machines against
-# cloud instances in a different region, so cross-region WAN latency alone can
-# easily exceed the 50 ms production threshold.  The purpose of a dry run is to
-# validate end-to-end automation correctness, not to measure peak latency.
-bench_slo_p95_ms:        300
+bench_slo_p95_ms:        50
 
-# ── pgBouncer — tuned for single-node dry run ─────────────────────────────────
-# Single pgBouncer instance: pool_size equals bench_db_connection_budget (18)
-# so the total backend connections to PostgreSQL matches the OJP allocation.
-# min_pool_size = pool_size keeps all 18 server connections pre-warmed so
-# pg_stat_activity consistently reports 18 active backends throughout the run.
-pgbouncer_pool_size:     18
-pgbouncer_min_pool_size: 18
-# Keep local bench-side pool small; pgBouncer does the real backend pooling.
-pgbouncer_local_pool_size: 2
+# ── pgBouncer — dry-run topology scaling ──────────────────────────────────────
+# Logical topology target: 3 pgBouncer nodes × 2 PostgreSQL server connections = 6.
+pgbouncer_pool_size:      2
+pgbouncer_min_pool_size:  2
+pgbouncer_reserve_pool_size: 0
+# Keep realistic local Java pooling (smaller than production, but not thin-client).
+pgbouncer_local_pool_size: 4
 
 # ── PostgreSQL — tuned for 1 vCPU / 1 GB RAM ─────────────────────────────────
 # shared_buffers  ≈ 128 MB (25 % of ~512 MB usable after OS overhead)

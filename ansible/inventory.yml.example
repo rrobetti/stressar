@@ -27,41 +27,56 @@ all:
           # ansible_user: ec2-user   # uncomment to override per host
 
     # ─────────────────────────────────────────────────────────────
-    # Proxy nodes — three hosts (shared by BOTH scenarios)
-    #
-    # SUT-B (OJP):       OJP Server is installed and runs here.
-    # SUT-C (pgBouncer): pgBouncer is installed and runs here INSTEAD.
-    #
-    # The same PROXY-1/2/3 machines are reused across both scenarios.
-    # To switch from OJP to pgBouncer (or vice-versa), stop the
-    # current service on these nodes and start the other.
-    # See ansible/README.md § "Switching between OJP and pgBouncer".
-    # ─────────────────────────────────────────────────────────────
-    proxy:
-      hosts:
-        proxy-1:
-          ansible_host: <PROXY1_IP>
-        proxy-2:
-          ansible_host: <PROXY2_IP>
-        proxy-3:
-          ansible_host: <PROXY3_IP>
-
-    # ─────────────────────────────────────────────────────────────
-    # Load balancer — required for SUT-C (PgBouncer) only
-    # HAProxy distributes connections across the three pgBouncer nodes.
-    # Not needed for SUT-B (OJP): the OJP JDBC driver does client-side load balancing.
-    # ─────────────────────────────────────────────────────────────
-    lb:
-      hosts:
-        lb-node:
-          ansible_host: <LB_IP>
-          # ansible_user: ec2-user   # uncomment to override per host
-
-    # ─────────────────────────────────────────────────────────────
-    # Control node (your laptop) — always localhost
-    # bench is built and run here; no SSH needed
-    # ─────────────────────────────────────────────────────────────
+    # Control host — orchestration only (no benchmark JVM execution)
     control:
       hosts:
-        localhost:
-          ansible_connection: local
+        control-1:
+          ansible_host: <CONTROL_IP>
+          # For local control on the same machine running Ansible, use:
+          # ansible_host: 127.0.0.1   # (or localhost; do not use "local")
+
+    # Dedicated load-generator hosts — benchmark JVM replicas run here.
+    loadgen:
+      hosts:
+        loadgen-1:
+          ansible_host: <LOADGEN1_IP>
+        loadgen-2:
+          ansible_host: <LOADGEN2_IP>
+
+    # OJP server tier (SUT-B)
+    ojp:
+      hosts:
+        ojp-1:
+          ansible_host: <OJP1_IP>
+        ojp-2:
+          ansible_host: <OJP2_IP>
+        ojp-3:
+          ansible_host: <OJP3_IP>
+
+    # pgBouncer tier (SUT-C)
+    pgbouncer:
+      hosts:
+        pgbouncer-1:
+          ansible_host: <PGBOUNCER1_IP>
+        pgbouncer-2:
+          ansible_host: <PGBOUNCER2_IP>
+        pgbouncer-3:
+          ansible_host: <PGBOUNCER3_IP>
+
+    # HAProxy tier (SUT-C)
+    haproxy:
+      hosts:
+        haproxy-1:
+          ansible_host: <HAPROXY_IP>
+
+    # Optional compatibility groups when OJP and pgBouncer share the same nodes.
+    # These child groups let existing commands still target "proxy"/"lb" names.
+    # Safe to remove if not needed.
+    proxy:
+      children:
+        ojp:
+        pgbouncer:
+
+    lb:
+      children:
+        haproxy:

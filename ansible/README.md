@@ -7,9 +7,43 @@ Three benchmark scenarios are supported:
 
 | Scenario | Proxy Technology | Playbook |
 |----------|-----------------|----------|
-| **SUT-A — HikariCP Direct** | No proxy — bench replicas connect directly to PostgreSQL (disciplined baseline) | `run_benchmarks_hikari.yml` |
-| **SUT-B — OJP** | OJP Server (client-side JDBC load balancing, no dedicated LB) | `run_benchmarks.yml` |
-| **SUT-C — pgBouncer** | pgBouncer + HAProxy load balancer | `run_benchmarks_pgbouncer.yml` |
+| **hikari-prod (SUT-A)** | Direct JDBC + local HikariCP per replica | `run_benchmarks_hikari.yml` |
+| **ojp-prod (SUT-B)** | OJP server tier (no local client-side HikariCP pool) | `run_benchmarks.yml` |
+| **pgbouncer-prod (SUT-C)** | Local HikariCP + PgBouncer + HAProxy | `run_benchmarks_pgbouncer.yml` |
+
+---
+
+## Benchmark Philosophy: Production Topology, Not Equal Knobs
+
+This benchmark compares realistic production topologies rather than artificially identical
+client-side settings or network paths.
+
+- **hikari-prod:** larger direct DB budget (~300) intentionally models local pool multiplication in
+  elastic microservices.
+- **ojp-prod:** no local client-side HikariCP pool; client JDBC connections are logical and real DB
+  connections are pooled in the OJP server tier (3×16=48 intended backend budget).
+- **pgbouncer-prod:** realistic local HikariCP pool (`pgbouncer_local_pool_size: 20`) plus
+  PgBouncer backend pooling (3×16=48) behind HAProxy.
+
+Main pgBouncer profile sets `pgbouncer_reserve_pool_size: 0` so the advertised 48-backend DB budget
+remains strict and interpretable.
+
+---
+
+## Inventory Group Structure (Production and Dry-Run)
+
+Use the same logical groups in both production and dry-run inventories:
+
+- `control` (orchestration)
+- `loadgen` (benchmark JVM replicas)
+- `db`
+- `ojp`
+- `pgbouncer`
+- `haproxy`
+
+`control` uses local Ansible connection by default (`group_vars/control.yml`).
+If your control machine is local, set `ansible_host` to `127.0.0.1` or `localhost`
+in `inventory.yml` (do not use `local`).
 
 ---
 
@@ -18,9 +52,9 @@ Three benchmark scenarios are supported:
 | Step | Playbook / Script | What happens |
 |------|------------------|--------------|
 | 1 | `setup.yml` | Installs PostgreSQL 16 on the DB node and tunes it for benchmarking. Installs Java 24 + OJP Server on each proxy node (SUT-B). Installs pgBouncer on each proxy node and HAProxy on the LB node (SUT-C, via `--tags pgbouncer,haproxy`). Builds the `bench` tool on the control node. Initialises the benchmark database. |
-| 2a | `run_benchmarks_hikari.yml` | **HikariCP Direct (SUT-A):** No proxy tier — bench replicas connect directly to PostgreSQL using HIKARI_DISCIPLINED pooling. Resets PostgreSQL stats, renders a bench config, runs warmup, then launches `N` bench JVM replicas in parallel. Collects PostgreSQL metrics. Generates a Markdown report. |
-| 2b | `run_benchmarks.yml` | **OJP (SUT-B):** Pre-flight verifies `ojp-server` is active on every proxy node (fails fast if not). Renders a parameterised bench config, runs a warmup pass, then launches `N` bench JVM replicas in parallel. Collects OJP JVM metrics and PostgreSQL metrics. Generates a Markdown report. |
-| 2c | `run_benchmarks_pgbouncer.yml` | **pgBouncer (SUT-C):** Pre-flight verifies `pgbouncer` is active on every proxy node and `haproxy` is active on the lb node (fails fast if not). Same benchmark flow as SUT-B but connects through HAProxy → pgBouncer. Collects PostgreSQL metrics only (pgBouncer has no JVM). |
+| 2a | `run_benchmarks_hikari.yml` | **hikari-prod (SUT-A):** orchestrated from `control`, benchmark JVM replicas run on `loadgen` hosts, direct JDBC to PostgreSQL with local HikariCP multiplication. |
+| 2b | `run_benchmarks.yml` | **ojp-prod (SUT-B):** orchestrated from `control`, benchmark JVM replicas run on `loadgen` hosts, OJP service validated on `ojp` nodes, no local client-side HikariCP pool. |
+| 2c | `run_benchmarks_pgbouncer.yml` | **pgbouncer-prod (SUT-C):** orchestrated from `control`, benchmark JVM replicas run on `loadgen` hosts, traffic via `haproxy` to `pgbouncer` nodes. |
 | 3 | `teardown.yml` | Stops OJP Server, pgBouncer, and HAProxy on their respective nodes and resets PostgreSQL statistics for the next run. |
 | — | `scripts/generate_report.sh` | Pure shell + `jq` script called automatically by all run playbooks; can also be run standalone. |
 
@@ -46,12 +80,10 @@ Remote machines require only **SSH access** and **outbound internet** (for packa
 
 | Scenario | Machines | Hardware |
 |----------|----------|----------|
-| SUT-A dry-run (HikariCP Direct) | **2** — 1 control (local) + 1 DB | 1 vCPU / 1 GB RAM each |
-| SUT-B dry-run (OJP) | **5** — 1 control (local) + 1 DB + 3 proxy | 1 vCPU / 1 GB RAM each |
-| SUT-C dry-run (pgBouncer) | **6** — 1 control (local) + 1 DB + 1 LB + 3 proxy | 1 vCPU / 1 GB RAM each |
+| Dry-run (all SUTs) | logical groups: control + loadgen + db + ojp + pgbouncer + haproxy | 1 vCPU / 1 GB RAM each |
 | SUT-A production (HikariCP Direct) | **4** — 1 control (local) + 1 DB + 2 load generators | See [Hardware Specifications](../docs/BENCHMARKING_GUIDE.md#2-hardware-specifications) |
-| SUT-B production (OJP) | **7** — 1 control (local) + 2 load generators + 1 DB + 3 proxy | See [Hardware Specifications](../docs/BENCHMARKING_GUIDE.md#2-hardware-specifications) |
-| SUT-C production (pgBouncer) | **8** — 1 control (local) + 2 load generators + 1 DB + 1 LB + 3 proxy | See [Hardware Specifications](../docs/BENCHMARKING_GUIDE.md#2-hardware-specifications) |
+| SUT-B production (OJP) | **7** — 1 control + 2 loadgen + 1 DB + 3 OJP nodes | See [Hardware Specifications](../docs/BENCHMARKING_GUIDE.md#2-hardware-specifications) |
+| SUT-C production (pgBouncer) | **8** — 1 control + 2 loadgen + 1 DB + 1 HAProxy + 3 PgBouncer nodes | See [Hardware Specifications](../docs/BENCHMARKING_GUIDE.md#2-hardware-specifications) |
 
 ---
 
@@ -291,7 +323,7 @@ Key differences between the three dry-run profiles:
 | `bench_replica_count` | 1 | 1 | 1 | 4 |
 | `bench_target_rps` | 25 | 25 | 25 | 500 |
 | `bench_duration_seconds` | 60 | 60 | 60 | 300 |
-| `bench_slo_p95_ms` | 300 ms | 300 ms | 300 ms | 50 ms |
+| `bench_slo_p95_ms` | 50 ms | 50 ms | 50 ms | 50 ms |
 | `bench_db_connection_budget` | 18 | — | — | 18 |
 | `bench_hikari_max_pool_size_per_replica` | 18 | — | — | 19 |
 | `pgbouncer_pool_size` | — | — | 18 | 6 |
@@ -299,15 +331,6 @@ Key differences between the three dry-run profiles:
 | `pgbouncer_local_pool_size` | — | — | 2 | 2 |
 | `pg_shared_buffers` | 128 MB | 128 MB | 128 MB | 4 GB |
 | `pg_max_connections` | 50 | 50 | 50 | 400 |
-
-> **Why 300 ms for dry runs?**  
-> Dry runs are typically executed by engineers from their local machines against cloud instances
-> that may be in a different region. Cross-region WAN latency alone can exceed the 50 ms
-> production SLO, which would cause every dry-run sweep step to fail immediately — making the
-> threshold useless for its intended purpose of catching *overload*. 300 ms is loose enough to
-> tolerate typical engineer-to-cloud round-trip times while still flagging genuinely degraded
-> behaviour. The 50 ms SLO remains the default for production full-hardware runs where the
-> benchmark client and the SUT are co-located in the same datacenter.
 
 ---
 
@@ -318,6 +341,10 @@ Predefined full-hardware production profiles are available under `ansible/vars/`
 - `prod-hikari.yml` (SUT-A): 16 replicas, budget 300, max per replica 19
 - `prod-ojp.yml` (SUT-B): 16 replicas, OJP budget 48
 - `prod-pgbouncer.yml` (SUT-C): 16 replicas, pgBouncer pool 16 per proxy node, local bench pool 20
+- all production profiles set `bench_repetitions: 5` for report methodology alignment
+
+> **TODO:** playbook-level automatic repetition loops are not yet implemented; run each profile
+> multiple times and report median/min/max/variance across runs.
 
 Usage examples:
 
@@ -355,8 +382,7 @@ Important notes:
 - For OJP, `bench_replica_count` is number of bench JVM replicas; it is **not** OJP pool size.
 - In OJP `PER_INSTANCE` mode, max connections per replica are derived from `ceil(dbConnectionBudget / replicas)`.
 - For pgBouncer, this repo supports both:
-  - **benchmark/fair-comparison profile**: small `pgbouncer_local_pool_size` (default 2)
-  - **production-like profile**: larger `pgbouncer_local_pool_size` in `prod-pgbouncer.yml`
+  - **main production profile**: `pgbouncer_local_pool_size: 20`, `pgbouncer_reserve_pool_size: 0`
 
 ---
 
@@ -462,7 +488,7 @@ ansible/
 ├── group_vars/
 │   ├── all.yml                        # Shared variables (OJP version, DB creds, pgBouncer port, …)
 │   ├── db.yml                         # PostgreSQL tuning parameters
-│   └── proxy.yml                      # Java / OJP proxy settings
+│   └── ojp.yml                        # Java / OJP server settings
 ├── roles/
 │   ├── postgresql/                    # Install + configure PostgreSQL 16
 │   │   ├── defaults/main.yml

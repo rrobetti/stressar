@@ -172,12 +172,18 @@ fi
 
 # ── Parse PostgreSQL side-car CSV (collected by collect_pg_metrics.sh) ────────
 # Expected location: RESULTS_DIR/node_metrics/pg_metrics.csv
-# Columns: timestamp,numbackends,xact_commit,xact_rollback,blks_hit,blks_read,
+# Columns: timestamp,numbackends,active_backends,idle_backends,
+#          xact_commit,xact_rollback,blks_hit,blks_read,
 #          cache_hit_pct,temp_bytes,deadlocks,lock_waits,
 #          buffers_checkpoint,checkpoint_write_ms
 
 PG_CSV="${NODE_METRICS_DIR}/pg_metrics.csv"
 pg_section=""
+
+observed_max_postgres_backends="N/A"
+observed_avg_postgres_backends="N/A"
+observed_max_active_postgres_backends="N/A"
+observed_max_idle_postgres_backends="N/A"
 
 if [[ -f "${PG_CSV}" ]]; then
   # Use last data row for cumulative counters; median for instantaneous values
@@ -189,7 +195,7 @@ if [[ -f "${PG_CSV}" ]]; then
         else {printf "%d", (a[NR/2]+a[NR/2+1])/2.0}
       }')
 
-  pg_cache_hit_med=$(awk -F',' 'NR>1 && $7+0>0 {print $7+0}' "${PG_CSV}" \
+  pg_cache_hit_med=$(awk -F',' 'NR>1 && $9+0>0 {print $9+0}' "${PG_CSV}" \
     | sort -n \
     | awk '{a[NR]=$0} END{
         if (NR==0) {printf "N/A"}
@@ -198,13 +204,17 @@ if [[ -f "${PG_CSV}" ]]; then
       }')
 
   # Final row for cumulative counters (they grow monotonically)
-  pg_xact_commit=$(awk   -F',' 'NR>1{v=$3}  END{printf "%d", v+0}' "${PG_CSV}")
-  pg_xact_rb=$(awk       -F',' 'NR>1{v=$4}  END{printf "%d", v+0}' "${PG_CSV}")
-  pg_temp_bytes=$(awk    -F',' 'NR>1{v=$8}  END{printf "%d", v+0}' "${PG_CSV}")
-  pg_deadlocks=$(awk     -F',' 'NR>1{v=$9}  END{printf "%d", v+0}' "${PG_CSV}")
-  pg_lock_waits_max=$(awk -F',' 'NR>1{if($10+0>max) max=$10+0} END{printf "%d", max+0}' "${PG_CSV}")
-  pg_ckpt_bufs=$(awk     -F',' 'NR>1{v=$11} END{printf "%d", v+0}' "${PG_CSV}")
-  pg_ckpt_ms=$(awk       -F',' 'NR>1{v=$12} END{printf "%.0f", v+0}' "${PG_CSV}")
+  pg_xact_commit=$(awk   -F',' 'NR>1{v=$5}  END{printf "%d", v+0}' "${PG_CSV}")
+  pg_xact_rb=$(awk       -F',' 'NR>1{v=$6}  END{printf "%d", v+0}' "${PG_CSV}")
+  pg_temp_bytes=$(awk    -F',' 'NR>1{v=$10} END{printf "%d", v+0}' "${PG_CSV}")
+  pg_deadlocks=$(awk     -F',' 'NR>1{v=$11} END{printf "%d", v+0}' "${PG_CSV}")
+  pg_lock_waits_max=$(awk -F',' 'NR>1{if($12+0>max) max=$12+0} END{printf "%d", max+0}' "${PG_CSV}")
+  pg_ckpt_bufs=$(awk     -F',' 'NR>1{v=$13} END{printf "%d", v+0}' "${PG_CSV}")
+  pg_ckpt_ms=$(awk       -F',' 'NR>1{v=$14} END{printf "%.0f", v+0}' "${PG_CSV}")
+  observed_max_postgres_backends=$(awk -F',' 'NR>1{if($2+0>max) max=$2+0} END{printf "%d", max+0}' "${PG_CSV}")
+  observed_avg_postgres_backends=$(awk -F',' 'NR>1{sum+=$2+0; n++} END{if(n>0) printf "%.2f", sum/n; else printf "N/A"}' "${PG_CSV}")
+  observed_max_active_postgres_backends=$(awk -F',' 'NR>1{if($3+0>max) max=$3+0} END{printf "%d", max+0}' "${PG_CSV}")
+  observed_max_idle_postgres_backends=$(awk -F',' 'NR>1{if($4+0>max) max=$4+0} END{printf "%d", max+0}' "${PG_CSV}")
 
   [[ -z "${pg_numbackends_med}" ]] && pg_numbackends_med="N/A"
   [[ -z "${pg_cache_hit_med}"   ]] && pg_cache_hit_med="N/A"
@@ -233,6 +243,18 @@ fi
 
 proc_section=""
 proc_rows=""
+proxy_avg_cpu_sum=0
+proxy_peak_cpu_sum=0
+proxy_avg_rss_sum=0
+proxy_peak_rss_sum=0
+lb_avg_cpu_sum=0
+lb_peak_cpu_sum=0
+lb_avg_rss_sum=0
+lb_peak_rss_sum=0
+proxy_avg_cpu_count=0
+proxy_avg_rss_count=0
+lb_avg_cpu_count=0
+lb_avg_rss_count=0
 
 for subdir in proxy db lb; do
   mapfile -t PROC_CSV_FILES < <(find "${NODE_METRICS_DIR}/${subdir}" \
@@ -257,6 +279,30 @@ for subdir in proxy db lb; do
         if (n>0) printf "%.1f", sum/n; else printf "N/A"}' "${csv}")
 
     proc_rows+="| ${component} | ${host} | ${avg_cpu} | ${peak_cpu} | ${avg_rss} | ${peak_rss} |"$'\n'
+
+    if [[ "${subdir}" == "proxy" ]]; then
+      if [[ "${avg_cpu}" != "N/A" ]]; then
+        proxy_avg_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_avg_cpu_sum} + ${avg_cpu}}")
+        (( ++proxy_avg_cpu_count ))
+      fi
+      proxy_peak_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_peak_cpu_sum} + ${peak_cpu}}")
+      if [[ "${avg_rss}" != "N/A" ]]; then
+        proxy_avg_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_avg_rss_sum} + ${avg_rss}}")
+        (( ++proxy_avg_rss_count ))
+      fi
+      proxy_peak_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_peak_rss_sum} + ${peak_rss}}")
+    elif [[ "${subdir}" == "lb" ]]; then
+      if [[ "${avg_cpu}" != "N/A" ]]; then
+        lb_avg_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_avg_cpu_sum} + ${avg_cpu}}")
+        (( ++lb_avg_cpu_count ))
+      fi
+      lb_peak_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_peak_cpu_sum} + ${peak_cpu}}")
+      if [[ "${avg_rss}" != "N/A" ]]; then
+        lb_avg_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_avg_rss_sum} + ${avg_rss}}")
+        (( ++lb_avg_rss_count ))
+      fi
+      lb_peak_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_peak_rss_sum} + ${peak_rss}}")
+    fi
   done
 done
 
@@ -314,6 +360,47 @@ fi
 p95_pass=$(awk "BEGIN {print (${agg_p95} < ${SLO_P95_LIMIT}) ? \"✅ PASS\" : \"❌ FAIL\"}")
 error_pass=$(awk "BEGIN {print (${agg_error_rate} < ${SLO_ERROR_LIMIT}) ? \"✅ PASS\" : \"❌ FAIL\"}")
 
+if [[ ${proxy_avg_cpu_count} -gt 0 ]]; then
+  ojp_proxy_tier_avg_cpu="${proxy_avg_cpu_sum}"
+else
+  ojp_proxy_tier_avg_cpu="N/A"
+fi
+ojp_proxy_tier_peak_cpu="${proxy_peak_cpu_sum}"
+if [[ ${proxy_avg_rss_count} -gt 0 ]]; then
+  ojp_proxy_tier_avg_rss="${proxy_avg_rss_sum}"
+else
+  ojp_proxy_tier_avg_rss="N/A"
+fi
+ojp_proxy_tier_peak_rss="${proxy_peak_rss_sum}"
+proxy_avg_cpu_display="${proxy_avg_cpu_sum}"
+proxy_avg_rss_display="${proxy_avg_rss_sum}"
+lb_avg_cpu_display="${lb_avg_cpu_sum}"
+lb_avg_rss_display="${lb_avg_rss_sum}"
+if [[ ${proxy_avg_cpu_count} -eq 0 ]]; then proxy_avg_cpu_display="N/A"; fi
+if [[ ${proxy_avg_rss_count} -eq 0 ]]; then proxy_avg_rss_display="N/A"; fi
+if [[ ${lb_avg_cpu_count} -eq 0 ]]; then lb_avg_cpu_display="N/A"; fi
+if [[ ${lb_avg_rss_count} -eq 0 ]]; then lb_avg_rss_display="N/A"; fi
+if [[ ${proxy_avg_cpu_count} -eq 0 && ${lb_avg_cpu_count} -eq 0 ]]; then
+  pgb_proxy_tier_avg_cpu="N/A"
+else
+  proxy_avg_cpu_for_total="${proxy_avg_cpu_sum}"
+  lb_avg_cpu_for_total="${lb_avg_cpu_sum}"
+  if [[ ${proxy_avg_cpu_count} -eq 0 ]]; then proxy_avg_cpu_for_total=0; fi
+  if [[ ${lb_avg_cpu_count} -eq 0 ]]; then lb_avg_cpu_for_total=0; fi
+  pgb_proxy_tier_avg_cpu=$(awk "BEGIN {printf \"%.2f\", ${proxy_avg_cpu_for_total} + ${lb_avg_cpu_for_total}}")
+fi
+pgb_proxy_tier_peak_cpu=$(awk "BEGIN {printf \"%.2f\", ${proxy_peak_cpu_sum} + ${lb_peak_cpu_sum}}")
+if [[ ${proxy_avg_rss_count} -eq 0 && ${lb_avg_rss_count} -eq 0 ]]; then
+  pgb_proxy_tier_avg_rss="N/A"
+else
+  proxy_avg_rss_for_total="${proxy_avg_rss_sum}"
+  lb_avg_rss_for_total="${lb_avg_rss_sum}"
+  if [[ ${proxy_avg_rss_count} -eq 0 ]]; then proxy_avg_rss_for_total=0; fi
+  if [[ ${lb_avg_rss_count} -eq 0 ]]; then lb_avg_rss_for_total=0; fi
+  pgb_proxy_tier_avg_rss=$(awk "BEGIN {printf \"%.2f\", ${proxy_avg_rss_for_total} + ${lb_avg_rss_for_total}}")
+fi
+pgb_proxy_tier_peak_rss=$(awk "BEGIN {printf \"%.2f\", ${proxy_peak_rss_sum} + ${lb_peak_rss_sum}}")
+
 # ── Read run metadata from first summary ──────────────────────────────────────
 
 first="${SUMMARY_FILES[0]}"
@@ -322,6 +409,30 @@ run_workload=$(jq_field "${first}" ".runInfo.workload")
 run_ts=$(jq_field "${first}" ".runInfo.timestamp")
 run_duration=$(jq_field "${first}" ".runInfo.durationSeconds")
 run_target_rps=$(jq_field "${first}" ".runInfo.targetRps")
+configured_db_connection_budget=$(jq_field "${first}" ".runInfo.configuredDbConnectionBudget")
+configured_replicas=$(jq_field "${first}" ".runInfo.configuredReplicas")
+configured_pool_size=$(jq_field "${first}" ".runInfo.poolSize")
+
+RUN_METADATA_FILE="${RESULTS_DIR}/run_metadata.json"
+metadata_scenario="N/A"
+metadata_pgbouncer_nodes="N/A"
+metadata_pgbouncer_pool_size="N/A"
+metadata_pgbouncer_reserve_pool_size="N/A"
+metadata_pgbouncer_local_pool_size="N/A"
+metadata_haproxy_nodes="N/A"
+metadata_ojp_servers="N/A"
+metadata_ojp_real_db_per_server="N/A"
+if [[ -f "${RUN_METADATA_FILE}" ]]; then
+  metadata_scenario=$(jq_field "${RUN_METADATA_FILE}" ".scenario")
+  metadata_pgbouncer_nodes=$(jq_field "${RUN_METADATA_FILE}" ".pgbouncer_nodes")
+  metadata_pgbouncer_pool_size=$(jq_field "${RUN_METADATA_FILE}" ".pgbouncer_pool_size_per_node")
+  metadata_pgbouncer_reserve_pool_size=$(jq_field "${RUN_METADATA_FILE}" ".pgbouncer_reserve_pool_size")
+  metadata_pgbouncer_local_pool_size=$(jq_field "${RUN_METADATA_FILE}" ".pgbouncer_local_pool_size")
+  metadata_haproxy_nodes=$(jq_field "${RUN_METADATA_FILE}" ".haproxy_nodes")
+  metadata_ojp_servers=$(jq_field "${RUN_METADATA_FILE}" ".ojp_servers")
+  metadata_ojp_real_db_per_server=$(jq_field "${RUN_METADATA_FILE}" ".real_db_connections_per_ojp_server")
+  configured_db_connection_budget=$(jq_field "${RUN_METADATA_FILE}" ".configured_db_connection_budget")
+fi
 
 # ── Write report ──────────────────────────────────────────────────────────────
 
@@ -356,6 +467,39 @@ cat <<HEADER
 | **Error rate** | ${agg_error_rate} |
 | **Total requests** | ${total_total_requests} |
 | **Failed requests** | ${total_failed_requests} |
+
+## Connection Budget — Configured and Observed
+
+| Field | Value |
+|-------|-------|
+| configured_db_connection_budget | ${configured_db_connection_budget} |
+| observed_max_postgres_backends | ${observed_max_postgres_backends} |
+| observed_avg_postgres_backends | ${observed_avg_postgres_backends} |
+| observed_max_active_postgres_backends | ${observed_max_active_postgres_backends} |
+| observed_max_idle_postgres_backends | ${observed_max_idle_postgres_backends} |
+
+## Topology-Specific Summary
+
+| Field | Value |
+|-------|-------|
+| Scenario profile | ${metadata_scenario} |
+| Configured replicas | ${configured_replicas} |
+| Configured client pool size (per replica) | ${configured_pool_size} |
+| OJP servers | ${metadata_ojp_servers} |
+| Real DB connections per OJP server | ${metadata_ojp_real_db_per_server} |
+| OJP proxy-tier CPU (avg / peak, summed) | ${ojp_proxy_tier_avg_cpu}% / ${ojp_proxy_tier_peak_cpu}% |
+| OJP proxy-tier RSS (avg / peak, summed) | ${ojp_proxy_tier_avg_rss} MiB / ${ojp_proxy_tier_peak_rss} MiB |
+| PgBouncer nodes | ${metadata_pgbouncer_nodes} |
+| PgBouncer server pool size per node | ${metadata_pgbouncer_pool_size} |
+| pgbouncer_reserve_pool_size | ${metadata_pgbouncer_reserve_pool_size} |
+| PgBouncer local HikariCP pool size per replica | ${metadata_pgbouncer_local_pool_size} |
+| HAProxy nodes | ${metadata_haproxy_nodes} |
+| PgBouncer tier CPU (avg / peak, summed) | ${proxy_avg_cpu_display}% / ${proxy_peak_cpu_sum}% |
+| PgBouncer tier RSS (avg / peak, summed) | ${proxy_avg_rss_display} MiB / ${proxy_peak_rss_sum} MiB |
+| HAProxy CPU (avg / peak, summed) | ${lb_avg_cpu_display}% / ${lb_peak_cpu_sum}% |
+| HAProxy RSS (avg / peak, summed) | ${lb_avg_rss_display} MiB / ${lb_peak_rss_sum} MiB |
+| Total PgBouncer proxy-tier CPU (avg / peak) | ${pgb_proxy_tier_avg_cpu}% / ${pgb_proxy_tier_peak_cpu}% |
+| Total PgBouncer proxy-tier RSS (avg / peak) | ${pgb_proxy_tier_avg_rss} MiB / ${pgb_proxy_tier_peak_rss} MiB |
 
 ## Bench JVM System Metrics (in-process, median across instances)
 

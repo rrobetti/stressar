@@ -198,6 +198,8 @@ public class BenchmarkRunner {
             runInfo.poolSize = connectionProvider.getPoolSize();
             runInfo.instanceId = config.getInstanceId();
             runInfo.totalInstances = config.getReplicas();
+            runInfo.configuredDbConnectionBudget = config.getDbConnectionBudget();
+            runInfo.configuredReplicas = config.getReplicas();
             runInfo.seed = config.getWorkload().getSeed();
             runInfo.durationSeconds = durationSec;
             runInfo.timestamp = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'")
