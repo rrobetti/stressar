@@ -30,7 +30,7 @@ bench_num_orders:   100000
 
 # ── Benchmark run ─────────────────────────────────────────────────────────────
 bench_replica_count:     1
-bench_target_rps:        25
+bench_target_rps:        100
 bench_warmup_seconds:    10
 bench_duration_seconds:  60
 bench_cooldown_seconds:  10

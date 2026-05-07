@@ -289,7 +289,7 @@ Key differences between the three dry-run profiles:
 | `bench_num_accounts` | 10 000 | 10 000 | 10 000 | 1 000 000 |
 | `bench_num_orders` | 100 000 | 100 000 | 100 000 | 10 000 000 |
 | `bench_replica_count` | 1 | 1 | 1 | 4 |
-| `bench_target_rps` | 25 | 25 | 25 | 500 |
+| `bench_target_rps` | 100 | 25 | 25 | 500 |
 | `bench_duration_seconds` | 60 | 60 | 60 | 300 |
 | `bench_slo_p95_ms` | 300 ms | 300 ms | 300 ms | 50 ms |
 | `bench_db_connection_budget` | 18 | — | — | 18 |
