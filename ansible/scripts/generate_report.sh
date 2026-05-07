@@ -9,13 +9,17 @@
 # collect_pg_metrics.sh when they are present under node_metrics/.
 #
 # Usage:
-#   generate_report.sh <RESULTS_DIR> [OUTPUT_FILE]
+#   generate_report.sh <RESULTS_DIR> [OUTPUT_FILE] [SLO_P95_LIMIT_MS] [SLO_ERROR_LIMIT]
 #
 # Arguments:
 #   RESULTS_DIR   Directory produced by a bench run (e.g. results/ojp-run-1).
 #                 May contain multiple replica-N/ subdirectories and a
 #                 node_metrics/ subdirectory with side-car CSVs.
 #   OUTPUT_FILE   Path to the generated report (default: RESULTS_DIR/report.md).
+#   SLO_P95_LIMIT_MS
+#                 p95 latency SLO threshold in milliseconds (default: 50).
+#   SLO_ERROR_LIMIT
+#                 Error-rate SLO threshold as a fraction (default: 0.001 = 0.1%).
 #
 # Requirements: jq >= 1.6, awk, bash >= 4.
 
@@ -30,6 +34,8 @@ fi
 
 RESULTS_DIR="${1%/}"   # strip trailing slash
 OUTPUT_FILE="${2:-${RESULTS_DIR}/report.md}"
+SLO_P95_LIMIT="${3:-50}"
+SLO_ERROR_LIMIT="${4:-0.001}"
 
 if [[ ! -d "${RESULTS_DIR}" ]]; then
   echo "ERROR: results directory '${RESULTS_DIR}' does not exist." >&2
@@ -305,10 +311,8 @@ if [[ ${#PGB_ADMIN_CSV_FILES[@]} -gt 0 ]]; then
   done
 fi
 
-slo_p95_limit=50
-slo_error_limit=0.001
-p95_pass=$(awk "BEGIN {print (${agg_p95} < ${slo_p95_limit}) ? \"✅ PASS\" : \"❌ FAIL\"}")
-error_pass=$(awk "BEGIN {print (${agg_error_rate} < ${slo_error_limit}) ? \"✅ PASS\" : \"❌ FAIL\"}")
+p95_pass=$(awk "BEGIN {print (${agg_p95} < ${SLO_P95_LIMIT}) ? \"✅ PASS\" : \"❌ FAIL\"}")
+error_pass=$(awk "BEGIN {print (${agg_error_rate} < ${SLO_ERROR_LIMIT}) ? \"✅ PASS\" : \"❌ FAIL\"}")
 
 # ── Read run metadata from first summary ──────────────────────────────────────
 
@@ -366,8 +370,8 @@ cat <<HEADER
 
 | SLO | Threshold | Result |
 |-----|-----------|--------|
-| p95 latency | < ${slo_p95_limit} ms | ${p95_pass} (${agg_p95} ms) |
-| Error rate | < $(awk "BEGIN {printf \"%.1f%%\", ${slo_error_limit} * 100}") | ${error_pass} ($(awk "BEGIN {printf \"%.4f\", ${agg_error_rate}}")) |
+| p95 latency | < ${SLO_P95_LIMIT} ms | ${p95_pass} (${agg_p95} ms) |
+| Error rate | < $(awk "BEGIN {printf \"%.1f%%\", ${SLO_ERROR_LIMIT} * 100}") | ${error_pass} ($(awk "BEGIN {printf \"%.4f\", ${agg_error_rate}}")) |
 
 ---
 
@@ -429,4 +433,3 @@ FOOTER
 } > "${OUTPUT_FILE}"
 
 echo "Report written to: ${OUTPUT_FILE}"
-

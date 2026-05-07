@@ -16,6 +16,7 @@ bench_target_rps:        25
 bench_warmup_seconds:    10
 bench_duration_seconds:  60
 bench_cooldown_seconds:  10
+bench_slo_p95_ms:        300
 
 # ── PostgreSQL — tuned for 1 vCPU / 1 GB RAM ─────────────────────────────────
 # shared_buffers  ≈ 128 MB (25 % of ~512 MB usable after OS overhead)

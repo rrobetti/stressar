@@ -398,8 +398,8 @@ ansible/scripts/generate_report.sh results/pgbouncer-run-1 results/pgbouncer-run
 ```
 
 Reads every `summary.json` under the given results directory, produces aggregate
-latency percentiles, throughput, error rate, and evaluates the p95 < 50 ms /
-error rate < 0.1 % SLOs.
+latency percentiles, throughput, error rate, and evaluates the p95/error-rate
+SLOs configured for the run.
 
 ---
 
