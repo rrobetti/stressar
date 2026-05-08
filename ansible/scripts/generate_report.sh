@@ -182,47 +182,109 @@ pg_section=""
 
 observed_max_postgres_backends="N/A"
 observed_avg_postgres_backends="N/A"
+observed_median_postgres_backends="N/A"
 observed_max_active_postgres_backends="N/A"
+observed_median_active_postgres_backends="N/A"
 observed_max_idle_postgres_backends="N/A"
+observed_median_idle_postgres_backends="N/A"
 
 if [[ -f "${PG_CSV}" ]]; then
+  pg_col_idx() {
+    local col_name="$1"
+    awk -F',' -v want="${col_name}" 'NR==1{for(i=1;i<=NF;i++) if($i==want){print i; exit}}' "${PG_CSV}"
+  }
+
+  pg_col_numbackends="$(pg_col_idx "numbackends")"
+  pg_col_active_backends="$(pg_col_idx "active_backends")"
+  pg_col_idle_backends="$(pg_col_idx "idle_backends")"
+  pg_col_cache_hit_pct="$(pg_col_idx "cache_hit_pct")"
+  pg_col_xact_commit="$(pg_col_idx "xact_commit")"
+  pg_col_xact_rollback="$(pg_col_idx "xact_rollback")"
+  pg_col_temp_bytes="$(pg_col_idx "temp_bytes")"
+  pg_col_deadlocks="$(pg_col_idx "deadlocks")"
+  pg_col_lock_waits="$(pg_col_idx "lock_waits")"
+  pg_col_buffers_checkpoint="$(pg_col_idx "buffers_checkpoint")"
+  pg_col_checkpoint_write_ms="$(pg_col_idx "checkpoint_write_ms")"
+
   # Use last data row for cumulative counters; median for instantaneous values
-  pg_numbackends_med=$(awk -F',' 'NR>1 && $2+0>0 {print $2+0}' "${PG_CSV}" \
-    | sort -n \
-    | awk '{a[NR]=$0} END{
-        if (NR==0) {printf "N/A"}
-        else if (NR%2==1) {printf "%d", a[int((NR+1)/2)]}
-        else {printf "%d", (a[NR/2]+a[NR/2+1])/2.0}
-      }')
+  pg_numbackends_med="N/A"
+  pg_active_backends_med="N/A"
+  pg_idle_backends_med="N/A"
+  pg_cache_hit_med="N/A"
+  pg_xact_commit="N/A"
+  pg_xact_rb="N/A"
+  pg_temp_bytes="N/A"
+  pg_deadlocks="N/A"
+  pg_lock_waits_max="N/A"
+  pg_ckpt_bufs="N/A"
+  pg_ckpt_ms="N/A"
 
-  pg_cache_hit_med=$(awk -F',' 'NR>1 && $9+0>0 {print $9+0}' "${PG_CSV}" \
-    | sort -n \
-    | awk '{a[NR]=$0} END{
-        if (NR==0) {printf "N/A"}
-        else if (NR%2==1) {printf "%.2f", a[int((NR+1)/2)]}
-        else {printf "%.2f", (a[NR/2]+a[NR/2+1])/2.0}
-      }')
+  if [[ -n "${pg_col_numbackends}" ]]; then
+    pg_numbackends_med=$(awk -F',' -v c="${pg_col_numbackends}" 'NR>1 && $c+0>0 {print $c+0}' "${PG_CSV}" \
+      | sort -n \
+      | awk '{a[NR]=$0} END{
+          if (NR==0) {printf "N/A"}
+          else if (NR%2==1) {printf "%d", a[int((NR+1)/2)]}
+          else {printf "%d", (a[NR/2]+a[NR/2+1])/2.0}
+        }')
+    observed_max_postgres_backends=$(awk -F',' -v c="${pg_col_numbackends}" 'NR>1{if($c+0>max) max=$c+0} END{printf "%d", max+0}' "${PG_CSV}")
+    observed_avg_postgres_backends=$(awk -F',' -v c="${pg_col_numbackends}" 'NR>1{sum+=$c+0; n++} END{if(n>0) printf "%.2f", sum/n; else printf "N/A"}' "${PG_CSV}")
+    observed_median_postgres_backends="${pg_numbackends_med}"
+  fi
 
-  # Final row for cumulative counters (they grow monotonically)
-  pg_xact_commit=$(awk   -F',' 'NR>1{v=$5}  END{printf "%d", v+0}' "${PG_CSV}")
-  pg_xact_rb=$(awk       -F',' 'NR>1{v=$6}  END{printf "%d", v+0}' "${PG_CSV}")
-  pg_temp_bytes=$(awk    -F',' 'NR>1{v=$10} END{printf "%d", v+0}' "${PG_CSV}")
-  pg_deadlocks=$(awk     -F',' 'NR>1{v=$11} END{printf "%d", v+0}' "${PG_CSV}")
-  pg_lock_waits_max=$(awk -F',' 'NR>1{if($12+0>max) max=$12+0} END{printf "%d", max+0}' "${PG_CSV}")
-  pg_ckpt_bufs=$(awk     -F',' 'NR>1{v=$13} END{printf "%d", v+0}' "${PG_CSV}")
-  pg_ckpt_ms=$(awk       -F',' 'NR>1{v=$14} END{printf "%.0f", v+0}' "${PG_CSV}")
-  observed_max_postgres_backends=$(awk -F',' 'NR>1{if($2+0>max) max=$2+0} END{printf "%d", max+0}' "${PG_CSV}")
-  observed_avg_postgres_backends=$(awk -F',' 'NR>1{sum+=$2+0; n++} END{if(n>0) printf "%.2f", sum/n; else printf "N/A"}' "${PG_CSV}")
-  observed_max_active_postgres_backends=$(awk -F',' 'NR>1{if($3+0>max) max=$3+0} END{printf "%d", max+0}' "${PG_CSV}")
-  observed_max_idle_postgres_backends=$(awk -F',' 'NR>1{if($4+0>max) max=$4+0} END{printf "%d", max+0}' "${PG_CSV}")
+  if [[ -n "${pg_col_active_backends}" ]]; then
+    pg_active_backends_med=$(awk -F',' -v c="${pg_col_active_backends}" 'NR>1 && $c+0>=0 {print $c+0}' "${PG_CSV}" \
+      | sort -n \
+      | awk '{a[NR]=$0} END{
+          if (NR==0) {printf "N/A"}
+          else if (NR%2==1) {printf "%d", a[int((NR+1)/2)]}
+          else {printf "%d", (a[NR/2]+a[NR/2+1])/2.0}
+        }')
+    observed_max_active_postgres_backends=$(awk -F',' -v c="${pg_col_active_backends}" 'NR>1{if($c+0>max) max=$c+0} END{printf "%d", max+0}' "${PG_CSV}")
+    observed_median_active_postgres_backends="${pg_active_backends_med}"
+  fi
+
+  if [[ -n "${pg_col_idle_backends}" ]]; then
+    pg_idle_backends_med=$(awk -F',' -v c="${pg_col_idle_backends}" 'NR>1 && $c+0>=0 {print $c+0}' "${PG_CSV}" \
+      | sort -n \
+      | awk '{a[NR]=$0} END{
+          if (NR==0) {printf "N/A"}
+          else if (NR%2==1) {printf "%d", a[int((NR+1)/2)]}
+          else {printf "%d", (a[NR/2]+a[NR/2+1])/2.0}
+        }')
+    observed_max_idle_postgres_backends=$(awk -F',' -v c="${pg_col_idle_backends}" 'NR>1{if($c+0>max) max=$c+0} END{printf "%d", max+0}' "${PG_CSV}")
+    observed_median_idle_postgres_backends="${pg_idle_backends_med}"
+  fi
+
+  if [[ -n "${pg_col_cache_hit_pct}" ]]; then
+    pg_cache_hit_med=$(awk -F',' -v c="${pg_col_cache_hit_pct}" 'NR>1 && $c+0>0 {print $c+0}' "${PG_CSV}" \
+      | sort -n \
+      | awk '{a[NR]=$0} END{
+          if (NR==0) {printf "N/A"}
+          else if (NR%2==1) {printf "%.2f", a[int((NR+1)/2)]}
+          else {printf "%.2f", (a[NR/2]+a[NR/2+1])/2.0}
+        }')
+  fi
+
+  [[ -n "${pg_col_xact_commit}" ]] && pg_xact_commit=$(awk -F',' -v c="${pg_col_xact_commit}" 'NR>1{v=$c} END{printf "%d", v+0}' "${PG_CSV}")
+  [[ -n "${pg_col_xact_rollback}" ]] && pg_xact_rb=$(awk -F',' -v c="${pg_col_xact_rollback}" 'NR>1{v=$c} END{printf "%d", v+0}' "${PG_CSV}")
+  [[ -n "${pg_col_temp_bytes}" ]] && pg_temp_bytes=$(awk -F',' -v c="${pg_col_temp_bytes}" 'NR>1{v=$c} END{printf "%d", v+0}' "${PG_CSV}")
+  [[ -n "${pg_col_deadlocks}" ]] && pg_deadlocks=$(awk -F',' -v c="${pg_col_deadlocks}" 'NR>1{v=$c} END{printf "%d", v+0}' "${PG_CSV}")
+  [[ -n "${pg_col_lock_waits}" ]] && pg_lock_waits_max=$(awk -F',' -v c="${pg_col_lock_waits}" 'NR>1{if($c+0>max) max=$c+0} END{printf "%d", max+0}' "${PG_CSV}")
+  [[ -n "${pg_col_buffers_checkpoint}" ]] && pg_ckpt_bufs=$(awk -F',' -v c="${pg_col_buffers_checkpoint}" 'NR>1{v=$c} END{printf "%d", v+0}' "${PG_CSV}")
+  [[ -n "${pg_col_checkpoint_write_ms}" ]] && pg_ckpt_ms=$(awk -F',' -v c="${pg_col_checkpoint_write_ms}" 'NR>1{v=$c} END{printf "%.0f", v+0}' "${PG_CSV}")
 
   [[ -z "${pg_numbackends_med}" ]] && pg_numbackends_med="N/A"
+  [[ -z "${pg_active_backends_med}" ]] && pg_active_backends_med="N/A"
+  [[ -z "${pg_idle_backends_med}" ]] && pg_idle_backends_med="N/A"
   [[ -z "${pg_cache_hit_med}"   ]] && pg_cache_hit_med="N/A"
 
   pg_section=$'\n## PostgreSQL — Database Statistics\n\n'
   pg_section+='| Metric | Value | Notes |'$'\n'
   pg_section+='|--------|-------|-------|'$'\n'
-  pg_section+="| Active backends (median) | ${pg_numbackends_med} | Connections visible in \`pg_stat_activity\` |"$'\n'
+  pg_section+="| PostgreSQL backends (median, \`numbackends\`) | ${pg_numbackends_med} | Total backend connections from \`pg_stat_database\` |"$'\n'
+  pg_section+="| Client backends in \`state='active'\` (median / max) | ${pg_active_backends_med} / ${observed_max_active_postgres_backends} | \`pg_stat_activity\` client backends only |"$'\n'
+  pg_section+="| Client backends in \`state='idle'\` (median / max) | ${pg_idle_backends_med} / ${observed_max_idle_postgres_backends} | \`pg_stat_activity\` client backends only |"$'\n'
   pg_section+="| Buffer cache hit ratio (median) | ${pg_cache_hit_med} % | < 99 % on OLTP suggests insufficient \`shared_buffers\` |"$'\n'
   pg_section+="| Transactions committed | ${pg_xact_commit} | Cumulative since stats reset |"$'\n'
   pg_section+="| Transactions rolled back | ${pg_xact_rb} | Non-zero → contention or application errors |"$'\n'
@@ -432,10 +494,13 @@ cat <<HEADER
 | Field | Value |
 |-------|-------|
 | configured_db_connection_budget | ${configured_db_connection_budget} |
-| observed_max_postgres_backends | ${observed_max_postgres_backends} |
-| observed_avg_postgres_backends | ${observed_avg_postgres_backends} |
-| observed_max_active_postgres_backends | ${observed_max_active_postgres_backends} |
-| observed_max_idle_postgres_backends | ${observed_max_idle_postgres_backends} |
+| observed_postgres_backends_max_numbackends | ${observed_max_postgres_backends} |
+| observed_postgres_backends_avg_numbackends | ${observed_avg_postgres_backends} |
+| observed_postgres_backends_median_numbackends | ${observed_median_postgres_backends} |
+| observed_client_backends_active_median | ${observed_median_active_postgres_backends} |
+| observed_client_backends_active_max | ${observed_max_active_postgres_backends} |
+| observed_client_backends_idle_median | ${observed_median_idle_postgres_backends} |
+| observed_client_backends_idle_max | ${observed_max_idle_postgres_backends} |
 
 ## Topology-Specific Summary
 
