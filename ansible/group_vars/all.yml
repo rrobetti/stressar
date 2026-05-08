@@ -35,6 +35,7 @@ pgbouncer_local_pool_size: 20
 
 # ── Benchmark run defaults ────────────────────────────────────────────────────
 bench_replica_count:        4
+bench_test_mode:            "run"   # supported: run, overload
 bench_target_rps:           500
 bench_warmup_seconds:       300
 bench_duration_seconds:     1800
@@ -44,6 +45,11 @@ bench_slo_p95_ms:           50
 bench_workload_type:        "W2_MIXED"
 bench_connection_mode:      "OJP"
 bench_db_connection_budget: 18
+# Overload mode parameters (bench_test_mode=overload)
+# For Test B, set bench_max_rps to your MST and (typically) bench_cooldown_seconds=600.
+bench_max_rps:              500
+bench_overload_factor:      1.3
+bench_overload_duration_seconds: 300
 
 # ── HikariCP Direct (SUT-A) defaults ─────────────────────────────────────────
 # Production: bench_db_connection_budget=300, bench_replica_count=16 (override at run time).
