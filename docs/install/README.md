@@ -2,6 +2,22 @@
 
 Step-by-step instructions for every software component required to run Stressar.
 
+## Version reference (tools used in this project)
+
+| Tool / component | Version used / required |
+|---|---|
+| OJP Server + OJP JDBC Driver | **0.4.10-beta** |
+| Java (benchmark tool / control / loadgen) | **11+** (recommended LTS: 21) |
+| Java (OJP Server nodes) | **24+** |
+| Gradle (via wrapper) | **8.8** pinned in `gradle/wrapper/gradle-wrapper.properties` |
+| PostgreSQL | **12+** (tested: 14/15/16, recommended: 16) |
+| pgBouncer | **1.21+** |
+| HAProxy | **2.8+** |
+
+For Ansible-specific tooling versions (for automation runs), see [ansible/README.md](../../ansible/README.md#prerequisites).
+
+---
+
 | Component | Required for | Guide |
 |---|---|---|
 | [Java](JAVA.md) | All scenarios — JVM runtime for the benchmark tool | [JAVA.md](JAVA.md) |

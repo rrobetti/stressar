@@ -97,7 +97,7 @@ build/install/ojp-performance-tester/bin/bench run \
 
 Comprehensive documentation is available in the `docs/` directory:
 
-- **[DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** - Single control-node deployment guide (pre-provisioned machines, SSH-based setup, OJP 0.4.8-beta)
+- **[DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** - Single control-node deployment guide (pre-provisioned machines, SSH-based setup, OJP 0.4.10-beta)
 
 - **[ansible/README.md](ansible/README.md)** - Ansible automation (install software, run tests, collect results, generate report)
   - `setup.yml` — one command to install PostgreSQL, OJP Server, and build the bench tool
@@ -175,6 +175,7 @@ The `examples/` directory contains ready-to-use configuration files:
 
 For multi-scenario benchmarks (pgBouncer, HAProxy, OJP), see the
 [installation guides index](docs/install/README.md).
+The same page now includes a consolidated version matrix for the tools/components used in this project.
 
 ## License
 
