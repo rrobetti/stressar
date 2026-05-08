@@ -8,12 +8,12 @@ as an alternative to the pgBouncer + HAProxy stack. It is installed on the **PRO
 
 Both artefacts are published to **Maven Central** — no source checkout or build tools are needed.
 
-**Current release:** `0.4.10-beta` &nbsp;|&nbsp; **Server gRPC port:** `1059`
+**Current release:** `0.4.8-beta` &nbsp;|&nbsp; **Server gRPC port:** `1059`
 
 | Artifact | Maven Central URL |
 |---|---|
-| OJP Server (shaded) | <https://repo1.maven.org/maven2/org/openjproxy/ojp-server/0.4.10-beta/ojp-server-0.4.10-beta-shaded.jar> |
-| OJP JDBC Driver | <https://repo1.maven.org/maven2/org/openjproxy/ojp-jdbc-driver/0.4.10-beta/ojp-jdbc-driver-0.4.10-beta.jar> |
+| OJP Server (shaded) | <https://repo1.maven.org/maven2/org/openjproxy/ojp-server/0.4.8-beta/ojp-server-0.4.8-beta-shaded.jar> |
+| OJP JDBC Driver | <https://repo1.maven.org/maven2/org/openjproxy/ojp-jdbc-driver/0.4.8-beta/ojp-jdbc-driver-0.4.8-beta.jar> |
 
 ---
 
@@ -51,8 +51,8 @@ sudo mkdir -p /opt/ojp/bin /opt/ojp/ojp-libs
 
 # Download the self-contained server JAR
 sudo curl -L \
-  https://repo1.maven.org/maven2/org/openjproxy/ojp-server/0.4.10-beta/ojp-server-0.4.10-beta-shaded.jar \
-  -o /opt/ojp/bin/ojp-server-0.4.10-beta-shaded.jar
+  https://repo1.maven.org/maven2/org/openjproxy/ojp-server/0.4.8-beta/ojp-server-0.4.8-beta-shaded.jar \
+  -o /opt/ojp/bin/ojp-server-0.4.8-beta-shaded.jar
 ```
 
 ---
@@ -104,7 +104,7 @@ Repeat on **PROXY-1**, **PROXY-2**, and **PROXY-3**.
 ```bash
 java -Duser.timezone=UTC \
      -Dojp.libs.path=/opt/ojp/ojp-libs \
-     -jar /opt/ojp/bin/ojp-server-0.4.10-beta-shaded.jar
+     -jar /opt/ojp/bin/ojp-server-0.4.8-beta-shaded.jar
 ```
 
 ### Background (benchmark runs)
@@ -112,7 +112,7 @@ java -Duser.timezone=UTC \
 ```bash
 nohup java -Duser.timezone=UTC \
      -Dojp.libs.path=/opt/ojp/ojp-libs \
-     -jar /opt/ojp/bin/ojp-server-0.4.10-beta-shaded.jar \
+     -jar /opt/ojp/bin/ojp-server-0.4.8-beta-shaded.jar \
      > /var/log/ojp-server.log 2>&1 &
 ```
 
