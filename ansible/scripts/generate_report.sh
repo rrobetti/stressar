@@ -220,7 +220,7 @@ if [[ -f "${PG_CSV}" ]]; then
   pg_ckpt_ms="N/A"
 
   if [[ -n "${pg_col_numbackends}" ]]; then
-    pg_numbackends_med=$(awk -F',' -v c="${pg_col_numbackends}" 'NR>1 && $c+0>0 {print $c+0}' "${PG_CSV}" \
+    pg_numbackends_med=$(awk -F',' -v c="${pg_col_numbackends}" 'NR>1 && $c+0>=0 {print $c+0}' "${PG_CSV}" \
       | sort -n \
       | awk '{a[NR]=$0} END{
           if (NR==0) {printf "N/A"}
