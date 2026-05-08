@@ -315,47 +315,6 @@ if [[ -n "${proc_rows}" ]]; then
   proc_section+="${proc_rows}"
 fi
 
-# ── Parse pgBouncer admin console side-car CSVs ───────────────────────────────
-# Expected location: RESULTS_DIR/node_metrics/proxy/<host>_pgbouncer_admin_metrics.csv
-# Columns: timestamp,database,total_xact_count,total_query_count,
-#          avg_xact_time_us,avg_query_time_us,avg_wait_time_us,
-#          cl_active,cl_waiting,sv_active,sv_idle,maxwait_s
-
-pgb_admin_section=""
-mapfile -t PGB_ADMIN_CSV_FILES < <(find "${NODE_METRICS_DIR}/proxy" \
-  -name "*_pgbouncer_admin_metrics.csv" 2>/dev/null | sort)
-
-if [[ ${#PGB_ADMIN_CSV_FILES[@]} -gt 0 ]]; then
-  pgb_admin_section=$'\n## pgBouncer Pool Statistics\n\n'
-  pgb_admin_section+='| Node | Database | Avg wait time (µs) | Peak clients waiting | Peak max wait (s) |'$'\n'
-  pgb_admin_section+='|------|----------|--------------------|----------------------|-------------------|'$'\n'
-
-  for csv in "${PGB_ADMIN_CSV_FILES[@]}"; do
-    host=$(basename "${csv}" _pgbouncer_admin_metrics.csv)
-
-    # Collect unique logical databases from column 2
-    mapfile -t pgb_databases < <(awk -F',' 'NR>1 && $2!="" {print $2}' "${csv}" | sort -u)
-
-    for db in "${pgb_databases[@]}"; do
-      [[ -z "${db}" ]] && continue
-
-      # Average wait time (µs) across all samples for this database
-      avg_wait=$(awk -F',' -v d="${db}" \
-        'NR>1 && $2==d && $7+0>0 {sum+=$7+0; n++} END{
-          if(n>0) printf "%.0f", sum/n; else printf "0"}' "${csv}")
-
-      # Peak instantaneous clients waiting
-      peak_waiting=$(awk -F',' -v d="${db}" \
-        'NR>1 && $2==d {if($9+0>max) max=$9+0} END{printf "%d", max+0}' "${csv}")
-
-      # Peak maxwait_s
-      peak_maxwait=$(awk -F',' -v d="${db}" \
-        'NR>1 && $2==d {if($12+0>max) max=$12+0} END{printf "%.3f", max+0}' "${csv}")
-
-      pgb_admin_section+="| ${host} | ${db} | ${avg_wait} | ${peak_waiting} | ${peak_maxwait} |"$'\n'
-    done
-  done
-fi
 
 p95_pass=$(awk "BEGIN {print (${agg_p95} < ${SLO_P95_LIMIT}) ? \"✅ PASS\" : \"❌ FAIL\"}")
 error_pass=$(awk "BEGIN {print (${agg_error_rate} < ${SLO_ERROR_LIMIT}) ? \"✅ PASS\" : \"❌ FAIL\"}")
@@ -561,11 +520,6 @@ fi
 # Process resource utilization (present when process metrics CSVs were fetched)
 if [[ -n "${proc_section}" ]]; then
   printf '%s' "---${proc_section}"
-fi
-
-# pgBouncer pool statistics (present only for pgBouncer SUT runs)
-if [[ -n "${pgb_admin_section}" ]]; then
-  printf '%s' "---${pgb_admin_section}"
 fi
 
 cat <<FOOTER

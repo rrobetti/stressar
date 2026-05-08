@@ -20,9 +20,6 @@
 #   ansible/scripts/collect_process_metrics.sh   — runs on each pgbouncer node,
 #       the haproxy node, and the DB node (postgresql);
 #       captures OS-level CPU% and RSS/VSZ once per second.
-#   ansible/scripts/collect_pgbouncer_metrics.sh — runs on each pgbouncer node;
-#       polls SHOW STATS and SHOW POOLS from the pgBouncer admin console
-#       every 5 seconds for connection pool throughput and wait-time metrics.
 #
 # Prerequisites (infrastructure must be set up before running this playbook):
 #   - PostgreSQL installed and running  → setup.yml --tags db
@@ -113,8 +110,6 @@
     remote_pgb_proc_csv:     "/tmp/pgbouncer_proc_metrics_{{ run_name }}.csv"
     remote_haproxy_proc_csv: "/tmp/haproxy_proc_metrics_{{ run_name }}.csv"
     remote_db_proc_csv:      "/tmp/db_proc_metrics_{{ run_name }}.csv"
-    # Remote path for pgBouncer admin console side-car CSV
-    remote_pgb_admin_csv: "/tmp/pgbouncer_admin_metrics_{{ run_name }}.csv"
     # Local (control-node) paths where side-car CSVs are fetched to
     local_pg_csv:         "{{ bench_results_dir }}/{{ run_name }}/node_metrics/pg_metrics.csv"
     local_proxy_csv_dir:  "{{ bench_results_dir }}/{{ run_name }}/node_metrics/proxy"
@@ -123,10 +118,8 @@
     # Paths to side-car scripts on the control node (copied to remote nodes)
     pg_script_src:         "{{ bench_repo_dir }}/ansible/scripts/collect_pg_metrics.sh"
     proc_script_src:       "{{ bench_repo_dir }}/ansible/scripts/collect_process_metrics.sh"
-    pgb_metrics_script_src: "{{ bench_repo_dir }}/ansible/scripts/collect_pgbouncer_metrics.sh"
     remote_pg_script:          "/tmp/collect_pg_metrics.sh"
     remote_proc_script:        "/tmp/collect_process_metrics.sh"
-    remote_pgb_metrics_script: "/tmp/collect_pgbouncer_metrics.sh"
     # PostgreSQL systemd service name — matches pg_service_name role default
     pg_service: "postgresql@{{ hostvars[groups['db'][0]]['pg_version'] | default(16) }}-main"
 
@@ -325,28 +318,6 @@
       delegate_to: "{{ groups['db'][0] }}"
       changed_when: true
 
-    # ── Deploy and start pgBouncer admin console side-car ─────────────────────
-
-    - name: Copy pgBouncer admin metrics collection script to pgBouncer nodes
-      ansible.builtin.copy:
-        src: "{{ pgb_metrics_script_src }}"
-        dest: "{{ remote_pgb_metrics_script }}"
-        mode: "0755"
-      delegate_to: "{{ item }}"
-      loop: "{{ groups['pgbouncer'] }}"
-
-    - name: Start pgBouncer admin metrics collection on pgBouncer nodes
-      ansible.builtin.shell: |
-        nohup "{{ remote_pgb_metrics_script }}" "{{ remote_pgb_admin_csv }}" \
-          </dev/null >"{{ remote_pgb_admin_csv }}.log" 2>&1 &
-        echo $! > "{{ remote_pgb_admin_csv }}.pid"
-      args:
-        executable: /bin/bash
-      become: true
-      become_user: postgres
-      delegate_to: "{{ item }}"
-      loop: "{{ groups['pgbouncer'] }}"
-      changed_when: true
 
     # ── Warmup ───────────────────────────────────────────────────────────────
 
@@ -513,35 +484,6 @@
         validate_checksum: false
       delegate_to: "{{ groups['db'][0] }}"
 
-    # ── Stop pgBouncer admin console side-car; fetch CSVs ─────────────────────
-
-    - name: Stop pgBouncer admin metrics collection on pgBouncer nodes
-      ansible.builtin.shell: |
-        PID_FILE="{{ remote_pgb_admin_csv }}.pid"
-        if [ -f "${PID_FILE}" ]; then
-          kill "$(cat "${PID_FILE}")" 2>/dev/null || true
-          rm -f "${PID_FILE}"
-        fi
-      args:
-        executable: /bin/bash
-      become: true
-      become_user: postgres
-      delegate_to: "{{ item }}"
-      loop: "{{ groups['pgbouncer'] }}"
-      changed_when: true
-      ignore_errors: true
-
-    - name: Fetch pgBouncer admin metrics CSV from each pgBouncer node
-      ansible.builtin.fetch:
-        src: "{{ remote_pgb_admin_csv }}"
-        dest: "{{ local_proxy_csv_dir }}/{{ item }}_pgbouncer_admin_metrics.csv"
-        flat: true
-        fail_on_missing: false
-        validate_checksum: false
-      become: true
-      become_user: postgres
-      delegate_to: "{{ item }}"
-      loop: "{{ groups['pgbouncer'] }}"
 
     # ── Report ────────────────────────────────────────────────────────────────
 
