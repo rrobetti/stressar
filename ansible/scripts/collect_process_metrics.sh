@@ -93,6 +93,7 @@ collect_descendants() {
 collect_service_tree_pids() {
   local root_pid="${1}"
   local pid
+  # Intentionally scoped per invocation so dedup is reset each sample.
   declare -A seen=()
   while IFS= read -r pid; do
     [[ -n "${pid}" ]] || continue
@@ -141,8 +142,7 @@ while true; do
     vsz_kb_total=$(( vsz_kb_total + vsz_kb ))
   done
 
-  unset prev_jiffies_by_pid
-  declare -A prev_jiffies_by_pid=()
+  prev_jiffies_by_pid=()
   for pid in "${!next_prev_jiffies_by_pid[@]}"; do
     prev_jiffies_by_pid["${pid}"]="${next_prev_jiffies_by_pid[${pid}]}"
   done
