@@ -40,8 +40,9 @@ bench_cooldown_seconds:  10
 bench_slo_p95_ms:        50
 
 # ── HikariCP pool — realistic Spring Boot default per replica ─────────────────
-# Spring Boot's default Hikari maximumPoolSize is 10. With 4 replicas this dry-run
-# keeps a conservative 20 direct PostgreSQL connections total (capped by budget).
+# Spring Boot's default Hikari maximumPoolSize is 10. In this dry-run, the
+# 20-connection budget is split across 4 replicas, so each replica is effectively
+# capped at 5 direct PostgreSQL connections.
 bench_db_connection_budget:             20
 bench_hikari_max_pool_size_per_replica: 10
 

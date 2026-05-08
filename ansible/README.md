@@ -335,7 +335,7 @@ Key differences between the three dry-run profiles:
 Dry-run rationale for these values:
 - `bench_target_rps=50` avoids under-stressing small environments where 25 RPS remains too comfortable.
 - pgBouncer dry-run keeps an explicit 18-backend ceiling (`3 nodes × 6 pool_size`) to match the intended comparison budget.
-- Hikari dry-run keeps a 20-connection budget with 4 replicas, resulting in 5 direct PostgreSQL connections per replica.
+- Hikari dry-run keeps `bench_hikari_max_pool_size_per_replica=10`, but the 20-connection budget across 4 replicas effectively caps each replica to 5 direct PostgreSQL connections.
 
 ---
 
