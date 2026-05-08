@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # ansible/scripts/collect_process_metrics.sh
 #
-# Sample OS-level CPU% and memory (RSS, VSZ) for a single systemd-managed
-# process.  Writes a CSV to OUTPUT_FILE every second until killed.
+# Sample OS-level CPU% and memory (RSS, VSZ) for a systemd-managed service
+# process tree (MainPID + all descendant processes). Writes a CSV to
+# OUTPUT_FILE every second until killed.
 #
 # CPU is computed from /proc/<pid>/stat jiffie deltas — no extra packages
 # needed.  A one-second wall-clock interval is measured with date(1) so the
 # reported percentage is correct even when sleep drifts slightly.
 #
-# Memory is read from /proc/<pid>/status (VmRSS = resident, VmSize = virtual).
+# Memory is read from /proc/<pid>/status (VmRSS = resident, VmSize = virtual)
+# and summed across the entire process tree.
 #
 # IMPORTANT — why /proc and not pidstat/ps:
 #   /proc is available on every Linux kernel without installing sysstat.
@@ -22,8 +24,8 @@
 #                     "haproxy", "postgresql@16-main"
 #   <output_csv>    — path of the CSV file to write
 #
-# Requirements: bash >= 4, systemctl, /proc filesystem (Linux only).
-# The service PID is discovered automatically via systemctl; no root needed.
+# Requirements: bash >= 4, systemctl, pgrep, /proc filesystem (Linux only).
+# The service MainPID is discovered automatically via systemctl; no root needed.
 
 set -uo pipefail
 
@@ -40,7 +42,7 @@ if [[ -z "${SVC_PID}" || "${SVC_PID}" == "0" ]]; then
   exit 1
 fi
 
-echo "INFO: ${SERVICE} PID = ${SVC_PID}" >&2
+echo "INFO: ${SERVICE} MainPID = ${SVC_PID}" >&2
 
 # ── Write PID file so Ansible can kill us cleanly ────────────────────────────
 
@@ -54,7 +56,7 @@ trap cleanup EXIT
 # ── CSV header ────────────────────────────────────────────────────────────────
 # Columns:
 #   timestamp   — ISO 8601 UTC sample time
-#   pid         — process PID (stable within a run)
+#   pid         — service MainPID (root of sampled process tree)
 #   cpu_pct     — CPU % since last sample (user+sys, normalised to 1 CPU = 100%)
 #   rss_mb      — Resident Set Size in MiB  (/proc/<pid>/status VmRSS)
 #   vsz_mb      — Virtual memory size in MiB (/proc/<pid>/status VmSize)
@@ -65,35 +67,92 @@ printf 'timestamp,pid,cpu_pct,rss_mb,vsz_mb\n' > "${OUTPUT}"
 
 CLK_TCK=$(getconf CLK_TCK 2>/dev/null || echo 100)
 
-# ── Helper: read total CPU jiffies (utime + stime) for a PID ─────────────────
+# ── Helpers ────────────────────────────────────────────────────────────────────
 
 read_jiffies() {
   # Fields 14 (utime) and 15 (stime) in /proc/<pid>/stat are in clock ticks.
   awk '{print $14+$15}' "/proc/${1}/stat" 2>/dev/null || echo 0
 }
 
+read_kb_status_field() {
+  local pid="${1}"
+  local field="${2}"
+  awk -v f="${field}" '$1 == f ":" {print $2}' "/proc/${pid}/status" 2>/dev/null || echo 0
+}
+
+collect_service_tree_pids() {
+  local root_pid="${1}"
+  local pid
+  local current_pid
+  local child_pid
+  local -a queue=("${root_pid}")
+  # Intentionally scoped per invocation so dedup is reset each sample.
+  declare -A seen=()
+  while [[ ${#queue[@]} -gt 0 ]]; do
+    current_pid="${queue[0]}"
+    queue=("${queue[@]:1}")
+    [[ -n "${current_pid}" ]] || continue
+    [[ -d "/proc/${current_pid}" ]] || continue
+    if [[ -n "${seen[${current_pid}]+x}" ]]; then
+      continue
+    fi
+    seen["${current_pid}"]=1
+    printf '%s\n' "${current_pid}"
+    while IFS= read -r child_pid; do
+      [[ -n "${child_pid}" ]] || continue
+      queue+=("${child_pid}")
+    done < <(pgrep -P "${current_pid}" 2>/dev/null || true)
+  done
+}
+
 # ── Polling loop ──────────────────────────────────────────────────────────────
 
-prev_jiffies=$(read_jiffies "${SVC_PID}")
+declare -A prev_jiffies_by_pid=()
 prev_ts=$(date +%s%N)   # nanoseconds since epoch
 
 while true; do
   sleep 1
 
-  # Verify the process is still alive before reading its /proc entry.
+  # Verify root process is still alive before sampling its process tree.
   if [[ ! -f "/proc/${SVC_PID}/stat" ]]; then
     echo "INFO: PID ${SVC_PID} (${SERVICE}) no longer exists — stopping collection." >&2
     break
   fi
 
-  cur_jiffies=$(read_jiffies "${SVC_PID}")
+  mapfile -t svc_pids < <(collect_service_tree_pids "${SVC_PID}")
+  if [[ ${#svc_pids[@]} -eq 0 ]]; then
+    echo "INFO: no live PIDs found for ${SERVICE} process tree — stopping collection." >&2
+    break
+  fi
+
+  delta_jiffies=0
+  rss_kb_total=0
+  vsz_kb_total=0
+  declare -A current_jiffies_by_pid=()
+
+  for pid in "${svc_pids[@]}"; do
+    cur_jiffies=$(read_jiffies "${pid}")
+    prev_jiffies="${prev_jiffies_by_pid[${pid}]:-${cur_jiffies}}"
+    delta_jiffies=$(( delta_jiffies + cur_jiffies - prev_jiffies ))
+    current_jiffies_by_pid["${pid}"]="${cur_jiffies}"
+
+    rss_kb=$(read_kb_status_field "${pid}" "VmRSS")
+    vsz_kb=$(read_kb_status_field "${pid}" "VmSize")
+    rss_kb_total=$(( rss_kb_total + rss_kb ))
+    vsz_kb_total=$(( vsz_kb_total + vsz_kb ))
+  done
+
+  prev_jiffies_by_pid=()
+  for pid in "${!current_jiffies_by_pid[@]}"; do
+    prev_jiffies_by_pid["${pid}"]="${current_jiffies_by_pid[${pid}]}"
+  done
+
   cur_ts=$(date +%s%N)
 
   # Elapsed wall-clock time in seconds (float via awk)
   elapsed_s=$(awk "BEGIN {printf \"%.6f\", (${cur_ts} - ${prev_ts}) / 1e9}")
 
   # Delta jiffies → CPU % (normalised to one core)
-  delta_jiffies=$(( cur_jiffies - prev_jiffies ))
   cpu_pct=$(awk "BEGIN {
       if (${elapsed_s} > 0 && ${CLK_TCK} > 0)
         printf \"%.2f\", ${delta_jiffies} / ${CLK_TCK} / ${elapsed_s} * 100;
@@ -101,17 +160,14 @@ while true; do
         printf \"0.00\"
     }")
 
-  # RSS and VSZ from /proc/<pid>/status (values reported in kB)
-  rss_kb=$(awk '/^VmRSS:/{print $2}' "/proc/${SVC_PID}/status" 2>/dev/null || echo 0)
-  vsz_kb=$(awk '/^VmSize:/{print $2}' "/proc/${SVC_PID}/status" 2>/dev/null || echo 0)
-  rss_mb=$(awk "BEGIN {printf \"%.2f\", ${rss_kb:-0} / 1024}")
-  vsz_mb=$(awk "BEGIN {printf \"%.2f\", ${vsz_kb:-0} / 1024}")
+  # RSS and VSZ from /proc/<pid>/status summed across all tree PIDs (kB → MiB)
+  rss_mb=$(awk "BEGIN {printf \"%.2f\", ${rss_kb_total:-0} / 1024}")
+  vsz_mb=$(awk "BEGIN {printf \"%.2f\", ${vsz_kb_total:-0} / 1024}")
 
   TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   printf '%s,%s,%s,%s,%s\n' \
     "${TS}" "${SVC_PID}" "${cpu_pct}" "${rss_mb}" "${vsz_mb}" \
     >> "${OUTPUT}"
 
-  prev_jiffies="${cur_jiffies}"
   prev_ts="${cur_ts}"
 done

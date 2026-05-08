@@ -34,7 +34,7 @@ pgbouncer_reserve_pool_size: 0
 pgbouncer_local_pool_size: 20
 
 # ── Benchmark run defaults ────────────────────────────────────────────────────
-bench_replica_count:        4
+bench_replica_count:        16
 bench_target_rps:           500
 bench_warmup_seconds:       300
 bench_duration_seconds:     1800
@@ -46,7 +46,7 @@ bench_connection_mode:      "OJP"
 bench_db_connection_budget: 18
 
 # ── HikariCP Direct (SUT-A) defaults ─────────────────────────────────────────
-# Production: bench_db_connection_budget=300, bench_replica_count=16 (override at run time).
+# Production: bench_db_connection_budget=300, bench_replica_count=16.
 # Each replica holds floor(dbConnectionBudget / replicas) connections, capped at
 # bench_hikari_max_pool_size_per_replica (300 / 16 ≈ 19 per replica = 300 total).
 bench_hikari_max_pool_size_per_replica: 19
