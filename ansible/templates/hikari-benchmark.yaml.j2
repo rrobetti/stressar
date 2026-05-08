@@ -1,0 +1,45 @@
+---
+# ansible/templates/hikari-benchmark.yaml.j2
+#
+# Jinja2 template for a HikariCP Direct (disciplined baseline) benchmark run (SUT-A).
+# Rendered by run_benchmarks_hikari.yml into /tmp/hikari-benchmark-{{ run_name }}.yaml
+# before each bench invocation.
+#
+# Connection path: bench replicas → PostgreSQL (direct, plaintext, no proxy tier).
+# Each replica receives dbConnectionBudget / replicas connections (capped at
+# bench_hikari_max_pool_size_per_replica), for a total backend connection count of
+# bench_db_connection_budget.
+
+database:
+  # Points directly to the PostgreSQL server — no proxy tier in SUT-A.
+  jdbcUrl: "jdbc:postgresql://{{ db_host }}:{{ db_port }}/{{ db_name }}"
+  username: "{{ db_user }}"
+  password: "{{ db_password }}"
+
+connectionMode: HIKARI_DISCIPLINED
+
+# Divide the total backend connection budget equally across all replicas.
+# Each replica gets floor(dbConnectionBudget / replicas) connections, capped at
+# maxPoolSizePerReplica.  Production target: 300 / 16 ≈ 19 connections per replica.
+dbConnectionBudget:      {{ bench_db_connection_budget }}
+replicas:                {{ bench_replica_count }}
+maxPoolSizePerReplica:   {{ bench_hikari_max_pool_size_per_replica }}
+
+workload:
+  type: {{ bench_workload_type }}
+  openLoop: true
+  targetRps: {{ bench_target_rps }}
+  warmupSeconds: {{ bench_warmup_seconds }}
+  durationSeconds: {{ bench_duration_seconds }}
+  cooldownSeconds: {{ bench_cooldown_seconds }}
+
+numAccounts: {{ bench_num_accounts }}
+numItems:    {{ bench_num_items }}
+numOrders:   {{ bench_num_orders }}
+
+metricsIntervalSeconds: 1
+outputDir: "{{ bench_results_dir }}/{{ run_name }}"
+
+sweepIncrementPercent: 15.0
+sloP95Ms: {{ bench_slo_p95_ms | default(50) }}
+errorRateThreshold: 0.001

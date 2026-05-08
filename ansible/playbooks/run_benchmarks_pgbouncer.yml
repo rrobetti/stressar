@@ -8,8 +8,8 @@
 #   2. Renders a bench config from the pgBouncer Jinja2 template.
 #   3. Resets PostgreSQL statistics so the run starts from a clean baseline.
 #   4. Deploys and starts side-car metric collectors on proxy, lb, and DB nodes.
-#   5. Runs a warmup pass (single instance).
-#   6. Launches {{ bench_replica_count }} bench JVMs in parallel.
+#   5. Runs a warmup pass (single instance on loadgen).
+#   6. Launches {{ bench_replica_count }} bench JVMs in parallel on loadgen hosts.
 #   7. Waits for all replicas to finish.
 #   8. Stops all side-car collectors and fetches their CSVs to the control node.
 #   9. Runs generate_report.sh to produce a Markdown report.
@@ -17,16 +17,16 @@
 # Side-car scripts:
 #   ansible/scripts/collect_pg_metrics.sh        — runs on the DB node; polls
 #       pg_stat_database, pg_stat_bgwriter, and pg_locks every 5 seconds.
-#   ansible/scripts/collect_process_metrics.sh   — runs on each proxy node
-#       (pgbouncer), the lb node (haproxy), and the DB node (postgresql);
+#   ansible/scripts/collect_process_metrics.sh   — runs on each pgbouncer node,
+#       the haproxy node, and the DB node (postgresql);
 #       captures OS-level CPU% and RSS/VSZ once per second.
 #
 # Prerequisites (infrastructure must be set up before running this playbook):
 #   - PostgreSQL installed and running  → setup.yml --tags db
-#   - pgBouncer running on proxy nodes  → setup.yml --tags pgbouncer
-#   - HAProxy running on the lb node    → setup.yml --tags haproxy
+#   - pgBouncer running on pgbouncer nodes → setup.yml --tags pgbouncer
+#   - HAProxy running on haproxy node      → setup.yml --tags haproxy
 #   - bench tool built                  → setup.yml --tags bench,init-db
-#   - Inventory must define lb, db, proxy, and control groups
+#   - Inventory must define haproxy, db, pgbouncer, loadgen, and control groups
 #
 # Usage:
 #   ansible-playbook -i inventory.yml playbooks/run_benchmarks_pgbouncer.yml
@@ -37,11 +37,11 @@
 #   -e bench_duration_seconds=300
 #   -e bench_replica_count=4
 
-- name: Pre-flight — verify pgBouncer service is running on every proxy node
+- name: Pre-flight — verify pgBouncer service is running on every pgBouncer node
   # run_benchmarks_pgbouncer.yml never starts services — that is setup.yml's job.
   # If pgbouncer is not active on any proxy node, fail fast so the operator
   # knows to re-run: ansible-playbook setup.yml --tags pgbouncer
-  hosts: proxy
+  hosts: pgbouncer
   gather_facts: false
 
   tasks:
@@ -59,23 +59,10 @@
           — re-run setup.yml --tags pgbouncer to install/start it.
         success_msg: "pgbouncer is running on {{ inventory_hostname }}"
 
-    - name: Warn if ojp-server.service is also running on this proxy node
-      ansible.builtin.debug:
-        msg: >-
-          WARNING: ojp-server.service is running on {{ inventory_hostname }} alongside pgBouncer.
-          OJP holds {{ hostvars[inventory_hostname].bench_db_connection_budget | default(18) }}
-          backend connections to PostgreSQL, reducing the available connections for pgBouncer
-          and may inflate the active-backend count in the report.
-          To avoid interference stop it first:
-            sudo systemctl stop ojp-server
-          and re-run setup.yml --tags pgbouncer,bench,init-db to switch the proxy role.
-      when: >-
-        ansible_facts.services.get('ojp-server.service', {}).get('state', 'stopped') == 'running'
-
-- name: Pre-flight — verify HAProxy service is running on the lb node
-  # If haproxy is not active on the lb node, fail fast so the operator
+- name: Pre-flight — verify HAProxy service is running on the haproxy node
+  # If haproxy is not active on the haproxy node, fail fast so the operator
   # knows to re-run: ansible-playbook setup.yml --tags haproxy
-  hosts: lb
+  hosts: haproxy
   gather_facts: false
 
   tasks:
@@ -98,24 +85,23 @@
   gather_facts: false
 
   vars:
-    run_name:   "pgbouncer-run-{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
+    run_name:   "{{ benchmark_profile_name | default('pgbouncer-prod') }}-{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
+    loadgen_hosts: "{{ groups['loadgen'] | default([]) }}"
+    loadgen_count: "{{ loadgen_hosts | length }}"
+    remote_bench_root: "/tmp/stressar-bench"
+    remote_bench_home: "{{ remote_bench_root }}/ojp-performance-tester"
+    remote_bench_binary: "{{ remote_bench_home }}/bin/bench"
+    remote_run_root: "/tmp/stressar-runs/{{ run_name }}"
+    remote_bench_config_file: "{{ remote_run_root }}/pgbouncer-benchmark.yaml"
     # Resolved from inventory 'db' group, or override via -e db_host=<IP>.
     db_host:    "{{ hostvars[groups['db'][0]]['ansible_host'] if 'db' in groups and groups['db'] | length > 0 else '' }}"
     # Traffic is sent through the HAProxy load balancer, which distributes across pgBouncer nodes.
-    # Resolution order:
-    #   1. 'lb' inventory group  (dedicated HAProxy node — recommended for production)
-    #   2. 'proxy' inventory group  (combined LB+pgBouncer node — acceptable for minimal/dryrun setups)
-    #   3. '' — triggers the preflight assertion with an actionable error message
-    # Can also be overridden directly: -e lb_host=<IP>
+    # The inventory must define a non-empty 'haproxy' group for SUT-C routing.
     lb_host: >-
       {{
-        hostvars[groups['lb'][0]]['ansible_host']
-        if 'lb' in groups and groups['lb'] | length > 0
-        else (
-          hostvars[groups['proxy'][0]]['ansible_host']
-          if 'proxy' in groups and groups['proxy'] | length > 0
-          else ''
-        )
+        hostvars[groups['haproxy'][0]]['ansible_host']
+        if 'haproxy' in groups and groups['haproxy'] | length > 0
+        else ''
       }}
     bench_config_file: "/tmp/pgbouncer-benchmark-{{ run_name }}.yaml"
     # Remote path for pg side-car output file (written on the DB node)
@@ -149,13 +135,17 @@
     - name: Assert required hosts are configured
       ansible.builtin.assert:
         that:
+          - "'haproxy' in groups"
+          - groups['haproxy'] | length > 0
           - lb_host | length > 0
           - db_host | length > 0
+          - loadgen_count | int > 0
         fail_msg: >-
           Required host addresses are not configured.
-          For lb_host, add an 'lb' group (dedicated HAProxy node) to your inventory,
-          OR a 'proxy' group (combined LB+pgBouncer node), OR pass -e lb_host=<IP> directly.
+          Missing required inventory group: 'haproxy' (must contain at least one host).
+          The pgBouncer benchmark requires HAProxy -> pgBouncer -> DB routing.
           For db_host, add a 'db' group to your inventory, OR pass -e db_host=<IP> directly.
+          For benchmark execution, define at least one host in the loadgen group.
           Check ansible/inventory.yml.example for the expected inventory structure.
 
     # ── Pre-run setup ─────────────────────────────────────────────────────────
@@ -172,6 +162,23 @@
         - "{{ local_lb_csv_dir }}"
         - "{{ local_db_csv_dir }}"
 
+    - name: Write run metadata
+      ansible.builtin.copy:
+        dest: "{{ bench_results_dir }}/{{ run_name }}/run_metadata.json"
+        mode: "0644"
+        content: |
+          {
+            "scenario": "{{ benchmark_profile_name | default('pgbouncer-prod') }}",
+            "configured_db_connection_budget": {{ ((groups['pgbouncer'] | length) * (pgbouncer_pool_size | int)) | int }},
+            "bench_replica_count": {{ bench_replica_count | int }},
+            "pgbouncer_nodes": {{ groups['pgbouncer'] | length }},
+            "pgbouncer_pool_size_per_node": {{ pgbouncer_pool_size | int }},
+            "pgbouncer_reserve_pool_size": {{ pgbouncer_reserve_pool_size | int }},
+            "pgbouncer_local_pool_size": {{ pgbouncer_local_pool_size | int }},
+            "haproxy_nodes": {{ groups['haproxy'] | default([]) | length }},
+            "external_lb": {{ ('haproxy' in groups and (groups['haproxy'] | length > 0)) | lower }}
+          }
+
     - name: Render pgBouncer benchmark configuration
       ansible.builtin.template:
         src: "{{ bench_repo_dir }}/ansible/templates/pgbouncer-benchmark.yaml.j2"
@@ -181,6 +188,38 @@
     - name: Show rendered config path
       ansible.builtin.debug:
         msg: "Benchmark config written to {{ bench_config_file }}"
+
+    - name: Ensure remote bench root exists on loadgen hosts
+      ansible.builtin.file:
+        path: "{{ remote_bench_root }}"
+        state: directory
+        mode: "0755"
+      delegate_to: "{{ item }}"
+      loop: "{{ loadgen_hosts }}"
+
+    - name: Ensure remote run root exists on loadgen hosts
+      ansible.builtin.file:
+        path: "{{ remote_run_root }}"
+        state: directory
+        mode: "0755"
+      delegate_to: "{{ item }}"
+      loop: "{{ loadgen_hosts }}"
+
+    - name: Copy bench distribution to loadgen hosts
+      ansible.builtin.copy:
+        src: "{{ bench_repo_dir }}/build/install/ojp-performance-tester/"
+        dest: "{{ remote_bench_home }}/"
+        mode: preserve
+      delegate_to: "{{ item }}"
+      loop: "{{ loadgen_hosts }}"
+
+    - name: Copy rendered benchmark configuration to loadgen hosts
+      ansible.builtin.copy:
+        src: "{{ bench_config_file }}"
+        dest: "{{ remote_bench_config_file }}"
+        mode: "0644"
+      delegate_to: "{{ item }}"
+      loop: "{{ loadgen_hosts }}"
 
     # ── Reset PostgreSQL statistics (clean baseline) ──────────────────────────
 
@@ -224,15 +263,15 @@
 
     # ── Deploy and start process metrics side-cars (CPU + RSS) ───────────────
 
-    - name: Copy process metrics collection script to proxy nodes
+    - name: Copy process metrics collection script to pgBouncer nodes
       ansible.builtin.copy:
         src: "{{ proc_script_src }}"
         dest: "{{ remote_proc_script }}"
         mode: "0755"
       delegate_to: "{{ item }}"
-      loop: "{{ groups['proxy'] }}"
+      loop: "{{ groups['pgbouncer'] }}"
 
-    - name: Start process metrics collection on proxy nodes (pgbouncer)
+    - name: Start process metrics collection on pgBouncer nodes (pgbouncer)
       ansible.builtin.shell: |
         nohup "{{ remote_proc_script }}" pgbouncer "{{ remote_pgb_proc_csv }}" \
           </dev/null >"{{ remote_pgb_proc_csv }}.log" 2>&1 &
@@ -240,26 +279,26 @@
       args:
         executable: /bin/bash
       delegate_to: "{{ item }}"
-      loop: "{{ groups['proxy'] }}"
+      loop: "{{ groups['pgbouncer'] }}"
       changed_when: true
 
-    - name: Copy process metrics collection script to lb node
+    - name: Copy process metrics collection script to haproxy node
       ansible.builtin.copy:
         src: "{{ proc_script_src }}"
         dest: "{{ remote_proc_script }}"
         mode: "0755"
-      delegate_to: "{{ groups['lb'][0] }}"
-      when: "'lb' in groups and groups['lb'] | length > 0"
+      delegate_to: "{{ groups['haproxy'][0] }}"
+      when: "'haproxy' in groups and groups['haproxy'] | length > 0"
 
-    - name: Start process metrics collection on lb node (haproxy)
+    - name: Start process metrics collection on haproxy node (haproxy)
       ansible.builtin.shell: |
         nohup "{{ remote_proc_script }}" haproxy "{{ remote_haproxy_proc_csv }}" \
           </dev/null >"{{ remote_haproxy_proc_csv }}.log" 2>&1 &
         echo $! > "{{ remote_haproxy_proc_csv }}.pid"
       args:
         executable: /bin/bash
-      delegate_to: "{{ groups['lb'][0] }}"
-      when: "'lb' in groups and groups['lb'] | length > 0"
+      delegate_to: "{{ groups['haproxy'][0] }}"
+      when: "'haproxy' in groups and groups['haproxy'] | length > 0"
       changed_when: true
 
     - name: Copy process metrics collection script to DB node
@@ -279,13 +318,15 @@
       delegate_to: "{{ groups['db'][0] }}"
       changed_when: true
 
+
     # ── Warmup ───────────────────────────────────────────────────────────────
 
-    - name: Run warmup pass
+    - name: Run warmup pass on first loadgen host
       ansible.builtin.command: >
-        {{ bench_binary }} warmup --config {{ bench_config_file }}
+        {{ remote_bench_binary }} warmup --config {{ remote_bench_config_file }}
       register: warmup_out
       changed_when: true
+      delegate_to: "{{ loadgen_hosts[0] }}"
 
     - name: Print warmup output
       ansible.builtin.debug:
@@ -293,43 +334,57 @@
 
     # ── Parallel benchmark replicas ──────────────────────────────────────────
 
-    - name: Launch {{ bench_replica_count }} bench replicas in parallel
-      ansible.builtin.shell: |
-        set -euo pipefail
-        mkdir -p "{{ bench_results_dir }}/{{ run_name }}"
-        pids=()
-        for ID in $(seq 0 {{ bench_replica_count | int - 1 }}); do
-          "{{ bench_binary }}" run \
-            --config     "{{ bench_config_file }}" \
-            --output     "{{ bench_results_dir }}/{{ run_name }}/replica-${ID}/" \
-            --instance-id "${ID}" \
-            > "{{ bench_results_dir }}/{{ run_name }}/replica-${ID}.log" 2>&1 &
-          pids+=($!)
-          echo "Started replica ${ID} (PID ${pids[-1]})"
-        done
-        echo "Waiting for all {{ bench_replica_count }} replicas..."
-        failed=0
-        for pid in "${pids[@]}"; do
-          if ! wait "$pid"; then
-            echo "ERROR: replica PID ${pid} exited non-zero"
-            failed=$(( failed + 1 ))
-          fi
-        done
-        if [ "$failed" -gt 0 ]; then
-          echo "FAILED: ${failed} replica(s) did not complete successfully"
-          exit 1
-        fi
-        echo "All replicas finished successfully"
-      args:
-        executable: /bin/bash
-      register: bench_run_out
+    - name: Launch benchmark replicas on loadgen hosts
+      ansible.builtin.command: >
+        {{ remote_bench_binary }} run
+        --config {{ remote_bench_config_file }}
+        --output {{ remote_run_root }}/replica-{{ item }}/
+        --instance-id {{ item }}
+      async: 10800
+      poll: 0
+      register: bench_jobs
       changed_when: true
-      # Allow up to 45 minutes for a full run (warmup + duration + cooldown).
-      timeout: 2700
+      delegate_to: "{{ loadgen_hosts[item | int % loadgen_count | int] }}"
+      loop: "{{ range(0, bench_replica_count | int) | list }}"
+
+    - name: Wait for all benchmark replicas
+      ansible.builtin.async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: bench_job_status
+      until: bench_job_status.finished
+      retries: 2160
+      delay: 5
+      loop: "{{ bench_jobs.results }}"
+      loop_control:
+        label: "replica-{{ item.item }}"
+      delegate_to: "{{ loadgen_hosts[item.item | int % loadgen_count | int] }}"
+      changed_when: false
 
     - name: Print bench run output
       ansible.builtin.debug:
-        msg: "{{ bench_run_out.stdout_lines }}"
+        msg: "All {{ bench_replica_count }} replicas finished on loadgen hosts."
+
+    - name: Read replica summary.json from loadgen hosts
+      ansible.builtin.command: >
+        cat {{ remote_run_root }}/replica-{{ item }}/summary.json
+      register: remote_summaries
+      changed_when: false
+      delegate_to: "{{ loadgen_hosts[item | int % loadgen_count | int] }}"
+      loop: "{{ range(0, bench_replica_count | int) | list }}"
+
+    - name: Ensure local replica summary directories exist
+      ansible.builtin.file:
+        path: "{{ bench_results_dir }}/{{ run_name }}/replica-{{ item }}"
+        state: directory
+        mode: "0755"
+      loop: "{{ range(0, bench_replica_count | int) | list }}"
+
+    - name: Write replica summary.json to control-node results directory
+      ansible.builtin.copy:
+        content: "{{ item.stdout }}"
+        dest: "{{ bench_results_dir }}/{{ run_name }}/replica-{{ item.item }}/summary.json"
+        mode: "0644"
+      loop: "{{ remote_summaries.results }}"
 
     # ── Stop PostgreSQL metrics side-car; fetch CSV ───────────────────────────
 
@@ -359,7 +414,7 @@
 
     # ── Stop process metrics side-cars; fetch CSVs ────────────────────────────
 
-    - name: Stop process metrics collection on proxy nodes
+    - name: Stop process metrics collection on pgBouncer nodes
       ansible.builtin.shell: |
         PID_FILE="{{ remote_pgb_proc_csv }}.pid"
         if [ -f "${PID_FILE}" ]; then
@@ -369,11 +424,11 @@
       args:
         executable: /bin/bash
       delegate_to: "{{ item }}"
-      loop: "{{ groups['proxy'] }}"
+      loop: "{{ groups['pgbouncer'] }}"
       changed_when: true
       ignore_errors: true
 
-    - name: Fetch pgBouncer process metrics CSV from each proxy node
+    - name: Fetch pgBouncer process metrics CSV from each pgBouncer node
       ansible.builtin.fetch:
         src: "{{ remote_pgb_proc_csv }}"
         dest: "{{ local_proxy_csv_dir }}/{{ item }}_proc_metrics.csv"
@@ -381,9 +436,9 @@
         fail_on_missing: false
         validate_checksum: false
       delegate_to: "{{ item }}"
-      loop: "{{ groups['proxy'] }}"
+      loop: "{{ groups['pgbouncer'] }}"
 
-    - name: Stop process metrics collection on lb node
+    - name: Stop process metrics collection on haproxy node
       ansible.builtin.shell: |
         PID_FILE="{{ remote_haproxy_proc_csv }}.pid"
         if [ -f "${PID_FILE}" ]; then
@@ -392,20 +447,20 @@
         fi
       args:
         executable: /bin/bash
-      delegate_to: "{{ groups['lb'][0] }}"
-      when: "'lb' in groups and groups['lb'] | length > 0"
+      delegate_to: "{{ groups['haproxy'][0] }}"
+      when: "'haproxy' in groups and groups['haproxy'] | length > 0"
       changed_when: true
       ignore_errors: true
 
-    - name: Fetch HAProxy process metrics CSV from lb node
+    - name: Fetch HAProxy process metrics CSV from haproxy node
       ansible.builtin.fetch:
         src: "{{ remote_haproxy_proc_csv }}"
         dest: "{{ local_lb_csv_dir }}/lb_proc_metrics.csv"
         flat: true
         fail_on_missing: false
         validate_checksum: false
-      delegate_to: "{{ groups['lb'][0] }}"
-      when: "'lb' in groups and groups['lb'] | length > 0"
+      delegate_to: "{{ groups['haproxy'][0] }}"
+      when: "'haproxy' in groups and groups['haproxy'] | length > 0"
 
     - name: Stop process metrics collection on DB node
       ansible.builtin.shell: |
@@ -428,6 +483,7 @@
         fail_on_missing: false
         validate_checksum: false
       delegate_to: "{{ groups['db'][0] }}"
+
 
     # ── Report ────────────────────────────────────────────────────────────────
 

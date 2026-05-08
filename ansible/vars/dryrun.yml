@@ -11,11 +11,16 @@ bench_num_items:    1000
 bench_num_orders:   100000
 
 # ── Benchmark run ─────────────────────────────────────────────────────────────
-bench_replica_count:     1
-bench_target_rps:        25
+benchmark_profile_name: "dryrun"
+# Keep deprecated profile aligned with dryrun-ojp.yml for backwards-compatible runs.
+bench_replica_count:     2
+# Dry-runs use 50 RPS to create measurable queue/latency pressure.
+# At 25 RPS this profile was too comfortable and did not stress the system.
+bench_target_rps:        50
 bench_warmup_seconds:    10
 bench_duration_seconds:  60
 bench_cooldown_seconds:  10
+bench_slo_p95_ms:        50
 
 # ── PostgreSQL — tuned for 1 vCPU / 1 GB RAM ─────────────────────────────────
 # shared_buffers  ≈ 128 MB (25 % of ~512 MB usable after OS overhead)

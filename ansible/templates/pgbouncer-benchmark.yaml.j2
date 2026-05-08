@@ -6,20 +6,19 @@
 # before each bench invocation.
 
 database:
-  # Points to the HAProxy load balancer, which distributes across 3 × pgBouncer instances.
-  # prepareThreshold=0 disables server-side prepared statements. pgBouncer transaction
-  # pooling routes each transaction to potentially different backend connections, so
-  # server-side prepared statements (which are session-scoped in PostgreSQL) would fail
-  # with "prepared statement does not exist" on every statement after the 5th execution,
-  # producing thousands of transaction rollbacks.
+  # prepareThreshold=0: disables PostgreSQL server-side prepared statements.
+  # Required for pgBouncer transaction pooling mode: each transaction may be
+  # routed to a different backend, so session-scoped prepared statements would
+  # cause "prepared statement does not exist" errors and xact_rollback spikes.
   jdbcUrl: "jdbc:postgresql://{{ lb_host }}:{{ pgbouncer_port }}/{{ db_name }}?prepareThreshold=0"
   username: "{{ db_user }}"
   password: "{{ db_password }}"
 
 connectionMode: PGBOUNCER
 
-# Use minimal client-side connections; PgBouncer holds the real backend pool.
-poolSize: {{ pgbouncer_pool_size }}
+# Configurable local Java client-side pool.
+# Main production profile: 20 (realistic Java microservice topology)
+poolSize: {{ pgbouncer_local_pool_size }}
 replicas: {{ bench_replica_count }}
 
 workload:

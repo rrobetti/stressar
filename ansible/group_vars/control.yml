@@ -1,0 +1,4 @@
+---
+# Control node runs Ansible locally (orchestration only).
+# This avoids SSH attempts to localhost/local for control plays.
+ansible_connection: local

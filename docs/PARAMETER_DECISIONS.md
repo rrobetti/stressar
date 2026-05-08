@@ -12,6 +12,35 @@ accepted.
 
 ---
 
+## Benchmark Philosophy: Production Topology, Not Equal Knobs
+
+This benchmark compares realistic production topologies rather than artificially identical network
+paths or identical client-side settings.
+
+HikariCP direct models a common elastic microservice deployment where each application replica owns
+a local connection pool. As replicas scale elastically, the total possible number of PostgreSQL
+connections grows with the application fleet.
+
+OJP models centralized JDBC connection management, where client-side JDBC connections are logical
+and real database connections are pooled inside the OJP server tier. OJP therefore does not use a
+local client-side HikariCP pool.
+
+PgBouncer models a common PostgreSQL production topology where Java applications still use local
+HikariCP pools while PgBouncer consolidates PostgreSQL backend connections behind HAProxy.
+HAProxy is included for multi-node PgBouncer load balancing and HA. OJP is not placed behind
+HAProxy because OJP JDBC already handles client-side load balancing/failover.
+
+The benchmark must report both configured and observed PostgreSQL backend connection counts, and
+proxy-tier resource usage must be summed across all components required by each topology:
+
+- OJP proxy tier = OJP-1 + OJP-2 + OJP-3
+- PgBouncer proxy tier = HAProxy + PgBouncer-1 + PgBouncer-2 + PgBouncer-3
+
+Therefore, the benchmark compares production deployment patterns, not identical process counts or
+identical client-side pool settings.
+
+---
+
 ## Table of Contents
 
 1. [Client Tier — 16 JVM Processes](#1-client-tier--16-jvm-processes)
@@ -23,10 +52,10 @@ accepted.
 7. [Aggregate Baseline Load — 1,000 RPS](#7-aggregate-baseline-load--1000-rps)
 8. [Per-Client Target — 63 RPS](#8-per-client-target--63-rps)
 9. [Warmup Duration — 300 Seconds](#9-warmup-duration--300-seconds)
-10. [Measurement Duration — 600 Seconds](#10-measurement-duration--600-seconds)
+10. [Measurement Duration — 1800 Seconds](#10-measurement-duration--1800-seconds)
 11. [Cooldown Duration — 120 Seconds](#11-cooldown-duration--120-seconds)
 12. [Repeat Count — 5 Runs](#12-repeat-count--5-runs)
-13. [SLO Threshold — p95 < 50 ms (production) / 300 ms (dry run)](#13-slo-threshold--p95--50-ms-production--300-ms-dry-run)
+13. [SLO Threshold — p95 < 50 ms](#13-slo-threshold--p95--50-ms)
 14. [Error Rate Threshold — 0.1 %](#14-error-rate-threshold--01-)
 15. [Sweep Increment — 15 %](#15-sweep-increment--15-)
 16. [Overload Level — 130 % of MST](#16-overload-level--130--of-mst)
@@ -40,8 +69,8 @@ accepted.
 24. [No TLS on Any Network Leg](#24-no-tls-on-any-network-leg)
 25. [PgBouncer — Transaction Pool Mode](#25-pgbouncer--transaction-pool-mode)
 26. [PgBouncer — Client Connections Cap (max_client_conn = 2,000)](#26-pgbouncer--client-connections-cap-max_client_conn--2000)
-27. [PgBouncer — Reserve Pool (size = 4, timeout = 5 s)](#27-pgbouncer--reserve-pool-size--10-timeout--5-s)
-28. [PgBouncer Client Pool Size — poolSize = 2](#28-pgbouncer-client-pool-size--poolsize--2)
+27. [PgBouncer — Reserve Pool (size = 0 in main profile)](#27-pgbouncer--reserve-pool-size--0-in-main-profile)
+28. [PgBouncer Client Pool Size — poolSize = 20 (main), 2 (thin control)](#28-pgbouncer-client-pool-size--poolsize--20-main-2-thin-control)
 29. [HAProxy — Least-Connections Algorithm](#29-haproxy--least-connections-algorithm)
 30. [OJP — Minimum Connections (minConnections = 3)](#30-ojp--minimum-connections-minconnections--3)
 31. [OJP — Queue Limit (queueLimit = 200)](#31-ojp--queue-limit-queuelimit--200)
@@ -170,13 +199,13 @@ reducing backend connections, and the sweep will reveal whether it manifests in 
 
 ---
 
-## 5. Per-Replica Pool — 19 Connections (SUT-A) / 18 Connections (SUT-B)
+## 5. Per-Replica Pool — 19 Connections (SUT-A) / No Local Pool (SUT-B) / 20 Local Pool (SUT-C)
 
 **Value:** Each of the 16 client replicas holds a HikariCP pool of 19 connections in SUT-A
-(HikariCP Disciplined). In SUT-B (OJP), each replica targets 18 *virtual* connections per replica
-on the client side; these are multiplexed onto the 48-connection backend pool by the OJP proxy
-tier. In SUT-C (PgBouncer), each replica holds only 2 JDBC connections to HAProxy; PgBouncer
-handles the server-side multiplexing against its 48-connection backend pool.
+(HikariCP Disciplined). In SUT-B (OJP), clients do not use a local HikariCP pool: JDBC connections
+are logical, while real PostgreSQL connections are pooled in OJP servers. In SUT-C (PgBouncer),
+the main production profile uses a realistic local HikariCP pool size of 20 per replica, while
+PgBouncer enforces a 48-backend DB budget on the server side.
 
 **Reason:** 300 total connections ÷ 16 replicas = 18.75, rounded up to 19. The rounding gives a
 total of 304, which is within 1.3 % of the 300 target — an acceptable approximation.
@@ -278,24 +307,19 @@ bytecode.
 
 ---
 
-## 10. Measurement Duration — 600 Seconds
+## 10. Measurement Duration — 1800 Seconds
 
-**Value:** `durationSeconds: 600` (10 minutes).
+**Value:** `durationSeconds: 1800` (30 minutes).
 
-**Reason:** A 10-minute steady-state window is the standard minimum for OLTP benchmarks intended
-for publication (TPC-C requires 30 minutes at full load [2]; YCSB guidance recommends at least 10
-minutes [3]). The 600-second window satisfies the following:
+**Reason:** A 30-minute steady-state window improves stability for production-topology comparisons
+and aligns with conventional long-window OLTP benchmarking practice [2]. The 1800-second window
+improves visibility into sustained queueing, pool behaviour, and tail-latency drift.
 
-- **Statistical stability.** At 1,000 RPS, 600 seconds yields 600,000 request samples. At 15,000
-  RPS (near MST), the same window yields 9,000,000 samples. Both sample sizes produce stable p95
-  and p99 estimates with HdrHistogram.
-- **GC cycle coverage.** With G1GC and 4–8 GB heap, a full GC may occur every 3–10 minutes.
-  A 10-minute window ensures that at least one GC cycle is covered, preventing results from
-  representing a GC-pause-free interval.
-- **Connection pool health events.** HikariCP's `maxLifetimeMs` (30 minutes) and
-  `idleTimeoutMs` (10 minutes) do not fire during a 600-second window, which is intentional: we
-  want to measure steady-state operation, not pool recycling events. If recycling effects are of
-  interest, a longer duration run should be designed separately.
+- **Statistical stability.** At 1,000 RPS, 1800 seconds yields 1,800,000 request samples. At 15,000
+  RPS, the same window yields 27,000,000 samples.
+- **GC cycle coverage.** Longer windows capture more GC and runtime variability events.
+- **Steady-state realism.** Production services run continuously; short windows can hide sustained
+  queue dynamics that appear only after prolonged pressure.
 
 ---
 
@@ -333,7 +357,7 @@ correct summary statistic.
 
 ---
 
-## 13. SLO Threshold — p95 < 50 ms (production) / 300 ms (dry run)
+## 13. SLO Threshold — p95 < 50 ms
 
 **Value:** `sloP95Ms: 50` — the capacity sweep declares a load level unsustainable when the median
 p95 latency across five runs exceeds 50 ms.
@@ -351,16 +375,6 @@ transitions from comfortable to stressed.
 **Trade-off:** A tighter SLO (e.g., 20 ms) would find a lower MST and would more closely model
 latency-sensitive applications. A looser SLO (e.g., 200 ms) would find a higher MST but would
 allow excessive queueing. 50 ms is a reasonable middle ground for a comparative study.
-
-**Dry-run override — 300 ms:** The Ansible dry-run profiles (`ansible/vars/dryrun-ojp.yml` and
-`ansible/vars/dryrun-pgbouncer.yml`) override this value to `sloP95Ms: 300`. Dry runs are
-typically executed by engineers from their local machines against cloud instances that may be
-located in a different region from the engineer. The resulting cross-region WAN round-trip time
-can easily exceed 50 ms on its own, which would cause every sweep step to fail immediately — well
-before any connection-pooling stress is applied. A 300 ms threshold is loose enough to tolerate
-typical engineer-to-cloud latencies while still detecting genuine overload. The 50 ms default
-applies only to full-hardware production runs where the benchmark client and the SUT are
-co-located in the same data centre.
 
 ---
 
@@ -613,35 +627,28 @@ runaway client from exhausting OS file-descriptor limits.
 
 ---
 
-## 27. PgBouncer — Reserve Pool (size = 4, timeout = 5 s)
+## 27. PgBouncer — Reserve Pool (size = 0 in main profile)
 
-**Values:** `reserve_pool_size = 4`, `reserve_pool_timeout = 5` in `pgbouncer.ini`.
+**Values:** `reserve_pool_size = 0`, `reserve_pool_timeout = 5` in the main benchmark profile.
 
-**Reason:** The reserve pool is a small set of additional server connections that PgBouncer can
-temporarily allow when the main pool is fully saturated. `reserve_pool_size = 4` adds 4
-temporary connections (25 % of the main pool size of 16) that can absorb brief traffic spikes
-without causing client errors. `reserve_pool_timeout = 5` means a client will wait up to 5 seconds
-for a connection from the main pool before the reserve pool is opened. This represents a
-conservative configuration that avoids penalising PgBouncer for short connection acquisition delays.
+**Reason:** `pgbouncer_reserve_pool_size` is set to 0 in the main benchmark so the advertised
+backend PostgreSQL connection budget remains strict. PgBouncer's reserve pool allows extra server
+connections above the normal pool when configured. That can be useful in production tuning, but it
+would allow PgBouncer to temporarily exceed the intended 48 backend connection budget, making the
+benchmark harder to interpret.
 
 ---
 
-## 28. PgBouncer Client Pool Size — poolSize = 2
+## 28. PgBouncer Client Pool Size — poolSize = 20 (main production profile)
 
-**Value:** `poolSize: 2` in `ta-pgbouncer.yaml` — each client replica holds only 2 JDBC connections
-to PgBouncer.
+**Value:** Main production profile uses `poolSize: 20` for each benchmark replica.
 
-**Reason:** When using PgBouncer in transaction mode, the JDBC driver does not need a large local
-connection pool because PgBouncer handles the server-side multiplexing. Each `bench` replica
-needs only enough JDBC connections to keep its worker threads from blocking on connection
-acquisition. With an open-loop load generator and a target of 63 RPS per replica (one request
-every 16 ms), two client connections provide sufficient parallelism: at any instant, at most one
-or two requests are in flight per replica at the baseline load.
+**Reason:** The main PgBouncer profile uses a local HikariCP pool size of 20 per benchmark replica.
+This is intentional. Many Java production applications continue to use HikariCP locally even when
+PgBouncer is introduced. The benchmark therefore evaluates PgBouncer as it is commonly deployed in
+Java systems: local client-side pooling in the application, HAProxy for multi-node balancing, and
+PgBouncer for PostgreSQL backend connection consolidation.
 
-Using a larger client pool (e.g., 19, matching the HikariCP case) would obscure the multiplexing
-benefit of PgBouncer and would create an unfair comparison: the client would hold 19 persistent
-TCP connections to PgBouncer, and PgBouncer would map those to the same 16 backend connections,
-but the client-side overhead would not reflect typical PgBouncer usage.
 
 ---
 
@@ -828,3 +835,23 @@ Transactions on Mathematical Software*, 47(4), Article 36.
 [9] Prometheus Authors. *Prometheus Configuration Reference: `<scrape_config>`,
 `scrape_interval`* (default: 15s). Available at:
 <https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config>
+
+[10] PgBouncer official configuration documentation (authoritative for `default_pool_size`,
+`reserve_pool_size`, `max_client_conn`, and client-vs-server connection semantics):
+<https://www.pgbouncer.org/config.html>
+
+[11] PgBouncer official usage documentation (operational commands such as `SHOW POOLS`,
+`SHOW CLIENTS`, `SHOW SERVERS`, `SHOW STATS`):
+<https://www.pgbouncer.org/usage.html>
+
+[12] HikariCP official README / configuration documentation (authoritative for `maximumPoolSize`
+and HikariCP client-side connection-pool behaviour):
+<https://github.com/brettwooldridge/HikariCP>
+
+[13] Anecdotal production-pattern article (PgBouncer + HikariCP usage example; non-authoritative for
+parameter definitions):
+<https://medium.com/@rrbadam/how-pgbouncer-and-hikaricp-work-together-lessons-from-a-real-world-spike-48d25f50cbe1>
+
+[14] Supporting industry discussion of microservice connection amplification (non-authoritative for
+parameter definitions):
+<https://www.infoq.com/news/2026/01/alloydb-managed-connection-pool/>

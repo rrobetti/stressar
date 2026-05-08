@@ -11,47 +11,52 @@ import java.sql.SQLException;
 
 /**
  * Connection provider for PgBouncer.
- * Uses minimal local pooling (1-2 connections) as PgBouncer handles connection pooling.
+ * Uses a configurable local client pool as PgBouncer handles backend connection pooling.
  */
 public class PgbouncerProvider implements ConnectionProvider {
     private static final Logger logger = LoggerFactory.getLogger(PgbouncerProvider.class);
-    private static final int MINIMAL_POOL_SIZE = 2;
-    
+    private final int poolSize;
+
     private final HikariDataSource dataSource;
-    
-    public PgbouncerProvider(DatabaseConfig dbConfig) {
+
+    public PgbouncerProvider(DatabaseConfig dbConfig, int configuredPoolSize) {
+        this.poolSize = Math.max(1, configuredPoolSize);
+
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(dbConfig.getJdbcUrl());  // Should point to PgBouncer endpoint
         config.setUsername(dbConfig.getUsername());
         config.setPassword(dbConfig.getPassword());
-        
-        // Minimal pool configuration
-        config.setMaximumPoolSize(MINIMAL_POOL_SIZE);
-        config.setMinimumIdle(1);
+
+        // Client-side pool: PgBouncer holds the real backend pool; keep local
+        // connections equal to the configured poolSize.
+        config.setMaximumPoolSize(poolSize);
+        config.setMinimumIdle(Math.max(1, poolSize / 2));
         config.setConnectionTimeout(30000);
         config.setIdleTimeout(600000);
         config.setMaxLifetime(1800000);
+        // autoCommit=true (JDBC default): read workloads need no transaction wrapper
+        // and write workloads (ReadWriteWorkload) explicitly call setAutoCommit(false)
+        // on each connection before use.  Leaving the pool in autoCommit=false causes
+        // HikariCP to issue a silent ROLLBACK when a connection is returned after a
+        // read-only request, inflating pg_stat_database.xact_rollback.
+        config.setAutoCommit(true);
 
-        // Performance settings
-        config.setAutoCommit(false);
-        // prepareThreshold=0 disables server-side prepared statements.
-        // Server-side prepared statements are session-scoped in PostgreSQL; in
-        // pgBouncer transaction pooling mode each transaction may be routed to a
-        // different backend server connection, so a statement prepared on one
-        // server does not exist on another. Leaving the PostgreSQL JDBC default
-        // (prepareThreshold=5) causes "prepared statement does not exist" errors
-        // after the 5th execution of every unique SQL, producing transaction
-        // rollbacks throughout the benchmark run.
+        // prepareThreshold=0: disable PostgreSQL server-side prepared statements.
+        // In pgBouncer transaction pooling mode each transaction can be routed to a
+        // different backend connection.  Server-side prepared statements are
+        // session-scoped, so a statement prepared on backend B1 does not exist on
+        // backend B2 — causing "prepared statement does not exist" errors that abort
+        // the transaction and increment xact_rollback.
         config.addDataSourceProperty("prepareThreshold", "0");
-        
-        // Add any additional properties
+
+        // Add any additional properties from config
         dbConfig.getProperties().forEach((key, value) -> 
             config.addDataSourceProperty(key.toString(), value)
         );
         
         this.dataSource = new HikariDataSource(config);
         
-        logger.info("Initialized PgBouncer provider with minimal pool size: {}", MINIMAL_POOL_SIZE);
+        logger.info("Initialized PgBouncer provider with local pool size: {}", poolSize);
     }
     
     @Override
@@ -71,7 +76,7 @@ public class PgbouncerProvider implements ConnectionProvider {
     
     @Override
     public int getPoolSize() {
-        return MINIMAL_POOL_SIZE;
+        return poolSize;
     }
     
     @Override

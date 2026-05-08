@@ -1,97 +1,67 @@
 ---
-# ansible/playbooks/run_benchmarks.yml
+# ansible/playbooks/run_benchmarks_hikari.yml
 #
-# Executes the full benchmark suite from the control node:
+# Executes the HikariCP Direct benchmark suite with control-plane orchestration:
 #   1. Renders a bench config from the Jinja2 template.
 #   2. Resets PostgreSQL statistics so the run starts from a clean baseline.
-#   3. Deploys and starts side-car metric collectors on OJP proxy + DB nodes.
-#   4. Pre-flight: verifies the ojp-server systemd service is active on every
-#      proxy node and fails fast if any are down — re-run setup.yml --tags ojp
-#      to bring them up.
-#   5. Runs a warmup pass (single instance).
-#   6. Launches {{ bench_replica_count }} bench JVMs in parallel.
-#   7. Waits for all replicas to finish.
-#   8. Stops side-car collectors and fetches their CSV files to the control node.
-#   9. Runs generate_report.sh to produce a Markdown report.
+#   3. Deploys and starts side-car metric collectors on the DB node.
+#   4. Runs a warmup pass (single instance).
+#   5. Launches {{ bench_replica_count }} bench JVMs in parallel on loadgen hosts.
+#   6. Waits for all replicas to finish.
+#   7. Stops side-car collectors and fetches their CSV files to the control node.
+#   8. Runs generate_report.sh to produce a Markdown report.
+#
+# SUT-A topology: bench replicas connect directly to PostgreSQL — there is no
+# proxy tier, so no proxy pre-flight check is needed and no OJP/pgBouncer
+# side-car metrics are collected.
 #
 # Side-car scripts:
-#   ansible/scripts/collect_jvm_metrics.sh     — runs on each proxy node via jstat;
-#       captures actual JVM heap (not OS RSS) + GC stats once per second.
 #   ansible/scripts/collect_pg_metrics.sh      — runs on the DB node; polls
 #       pg_stat_database, pg_stat_bgwriter, and pg_locks every 5 seconds.
-#   ansible/scripts/collect_process_metrics.sh — runs on each proxy node and on the
-#       DB node; captures OS-level CPU% and RSS/VSZ for ojp-server and PostgreSQL.
+#   ansible/scripts/collect_process_metrics.sh — runs on the DB node; captures
+#       OS-level CPU% and RSS/VSZ for the PostgreSQL process once per second.
 #
 # Usage:
-#   ansible-playbook -i inventory.yml playbooks/run_benchmarks.yml \
-#     -e @ansible/vars/dryrun-ojp.yml
+#   ansible-playbook -i inventory.yml playbooks/run_benchmarks_hikari.yml
+#
+# Dry-run (minimal hardware, fast):
+#   ansible-playbook -i inventory.yml playbooks/run_benchmarks_hikari.yml \
+#     -e @ansible/vars/dryrun-hikari.yml
+#
+# Production overrides:
+#   -e bench_db_connection_budget=300   # total backend connections (16 × 19 ≈ 304 ≈ 300)
+#   -e bench_replica_count=16           # number of bench JVM replicas
+#   -e bench_target_rps=500             # aggregate target RPS
+#   -e bench_duration_seconds=300
 #
 # Optional overrides:
-#   -e run_name=ojp-run-1          # subdirectory under results/
-#   -e bench_target_rps=500
-#   -e bench_duration_seconds=300
-#   -e bench_replica_count=4
+#   -e run_name=hikari-run-1            # subdirectory under results/
+#   -e bench_hikari_max_pool_size_per_replica=19
 
-- name: Pre-flight — verify OJP service is running on every OJP node
-  # run_benchmarks.yml never starts services — that is setup.yml's job.
-  # If ojp-server is not active on any proxy node, fail fast so the operator
-  # knows to re-run: ansible-playbook setup.yml --tags ojp
-  hosts: ojp
-  gather_facts: false
-
-  tasks:
-    - name: Gather service facts
-      ansible.builtin.service_facts:
-
-    - name: Assert ojp-server.service is active
-      ansible.builtin.assert:
-        that:
-          - "'ojp-server.service' in ansible_facts.services"
-          - ansible_facts.services['ojp-server.service']['state'] == 'running'
-        fail_msg: >-
-          ojp-server is not running on {{ inventory_hostname }}
-          (state: {{ ansible_facts.services.get('ojp-server.service', {}).get('state', 'not-installed') }})
-          — re-run setup.yml --tags ojp to install/start it.
-        success_msg: "ojp-server is running on {{ inventory_hostname }}"
-
-- name: Run benchmark from control node
+- name: Run HikariCP Direct benchmark from control node
   hosts: control
   gather_facts: false
 
   vars:
-    run_name:   "{{ benchmark_profile_name | default('ojp-prod') }}-{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
+    run_name:   "{{ benchmark_profile_name | default('hikari-prod') }}-{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
     db_host:    "{{ hostvars[groups['db'][0]]['ansible_host'] }}"
-    # Build the list of OJP_IP:PORT strings from the ojp inventory group.
-    proxy_urls: >-
-      {{
-        groups['ojp']
-          | map('extract', hostvars, 'ansible_host')
-          | map('regex_replace', '$', ':' + (ojp_server_port | string))
-          | list
-      }}
+    bench_config_file: "/tmp/hikari-benchmark-{{ run_name }}.yaml"
     loadgen_hosts: "{{ groups['loadgen'] | default([]) }}"
     loadgen_count: "{{ loadgen_hosts | length }}"
     remote_bench_root: "/tmp/stressar-bench"
     remote_bench_home: "{{ remote_bench_root }}/ojp-performance-tester"
     remote_bench_binary: "{{ remote_bench_home }}/bin/bench"
     remote_run_root: "/tmp/stressar-runs/{{ run_name }}"
-    remote_bench_config_file: "{{ remote_run_root }}/ojp-benchmark.yaml"
-    bench_config_file: "/tmp/ojp-benchmark-{{ run_name }}.yaml"
-    # Remote paths for side-car output files (written on each remote node)
-    remote_jvm_csv:  "/tmp/jvm_metrics_{{ run_name }}.csv"
-    remote_pg_csv:   "/tmp/pg_metrics_{{ run_name }}.csv"
-    # Remote paths for process metrics side-car CSVs
-    remote_ojp_proc_csv: "/tmp/ojp_proc_metrics_{{ run_name }}.csv"
-    remote_db_proc_csv:  "/tmp/db_proc_metrics_{{ run_name }}.csv"
+    remote_bench_config_file: "{{ remote_run_root }}/hikari-benchmark.yaml"
+    # Remote paths for side-car output files (written on the DB node)
+    remote_pg_csv:      "/tmp/pg_metrics_{{ run_name }}.csv"
+    remote_db_proc_csv: "/tmp/db_proc_metrics_{{ run_name }}.csv"
     # Local (control-node) paths where side-car CSVs are fetched to
-    local_jvm_csv_dir:    "{{ bench_results_dir }}/{{ run_name }}/node_metrics/proxy"
-    local_pg_csv:         "{{ bench_results_dir }}/{{ run_name }}/node_metrics/pg_metrics.csv"
     local_db_metrics_dir: "{{ bench_results_dir }}/{{ run_name }}/node_metrics/db"
-    # Paths to side-car scripts on the control node (copied to remote nodes)
-    jvm_script_src:  "{{ bench_repo_dir }}/ansible/scripts/collect_jvm_metrics.sh"
+    local_pg_csv:         "{{ bench_results_dir }}/{{ run_name }}/node_metrics/pg_metrics.csv"
+    # Paths to side-car scripts on the control node (copied to the DB node)
     pg_script_src:   "{{ bench_repo_dir }}/ansible/scripts/collect_pg_metrics.sh"
     proc_script_src: "{{ bench_repo_dir }}/ansible/scripts/collect_process_metrics.sh"
-    remote_jvm_script:  "/tmp/collect_jvm_metrics.sh"
     remote_pg_script:   "/tmp/collect_pg_metrics.sh"
     remote_proc_script: "/tmp/collect_process_metrics.sh"
     # PostgreSQL systemd service name — matches pg_service_name role default
@@ -113,7 +83,6 @@
         mode: "0755"
       loop:
         - "{{ bench_results_dir }}/{{ run_name }}"
-        - "{{ local_jvm_csv_dir }}"
         - "{{ local_db_metrics_dir }}"
 
     - name: Write run metadata
@@ -122,11 +91,11 @@
         mode: "0644"
         content: |
           {
-            "scenario": "{{ benchmark_profile_name | default('ojp-prod') }}",
+            "scenario": "{{ benchmark_profile_name | default('hikari-prod') }}",
             "configured_db_connection_budget": {{ bench_db_connection_budget | int }},
             "bench_replica_count": {{ bench_replica_count | int }},
-            "ojp_servers": {{ groups['ojp'] | length }},
-            "real_db_connections_per_ojp_server": {{ (bench_db_connection_budget | int // (groups['ojp'] | length if (groups['ojp'] | length) > 0 else 1)) | int }},
+            "hikari_max_pool_size_per_replica": {{ bench_hikari_max_pool_size_per_replica | int }},
+            "proxy_nodes": 0,
             "external_lb": false
           }
 
@@ -136,9 +105,9 @@
           - loadgen_count | int > 0
         fail_msg: "At least one host must be present in the loadgen group."
 
-    - name: Render benchmark configuration
+    - name: Render HikariCP benchmark configuration
       ansible.builtin.template:
-        src: "{{ bench_repo_dir }}/ansible/templates/ojp-benchmark.yaml.j2"
+        src: "{{ bench_repo_dir }}/ansible/templates/hikari-benchmark.yaml.j2"
         dest: "{{ bench_config_file }}"
         mode: "0644"
 
@@ -196,27 +165,6 @@
         query: "SELECT pg_stat_reset_shared('bgwriter');"
       delegate_to: "{{ groups['db'][0] }}"
 
-    # ── Deploy and start OJP JVM metrics side-car on each proxy node ──────────
-
-    - name: Copy JVM metrics collection script to OJP nodes
-      ansible.builtin.copy:
-        src: "{{ jvm_script_src }}"
-        dest: "{{ remote_jvm_script }}"
-        mode: "0755"
-      delegate_to: "{{ item }}"
-      loop: "{{ groups['ojp'] }}"
-
-    - name: Start JVM metrics collection on OJP nodes
-      ansible.builtin.shell: |
-        nohup "{{ remote_jvm_script }}" "{{ remote_jvm_csv }}" \
-          </dev/null >"{{ remote_jvm_csv }}.log" 2>&1 &
-        echo $! > "{{ remote_jvm_csv }}.pid"
-      args:
-        executable: /bin/bash
-      delegate_to: "{{ item }}"
-      loop: "{{ groups['ojp'] }}"
-      changed_when: true
-
     # ── Deploy and start PostgreSQL metrics side-car on the DB node ───────────
 
     - name: Copy PostgreSQL metrics collection script to DB node
@@ -239,26 +187,7 @@
       delegate_to: "{{ groups['db'][0] }}"
       changed_when: true
 
-    # ── Deploy and start process metrics side-cars (CPU + RSS) ───────────────
-
-    - name: Copy process metrics collection script to proxy nodes
-      ansible.builtin.copy:
-        src: "{{ proc_script_src }}"
-        dest: "{{ remote_proc_script }}"
-        mode: "0755"
-      delegate_to: "{{ item }}"
-      loop: "{{ groups['ojp'] }}"
-
-    - name: Start process metrics collection on proxy nodes (ojp-server)
-      ansible.builtin.shell: |
-        nohup "{{ remote_proc_script }}" ojp-server "{{ remote_ojp_proc_csv }}" \
-          </dev/null >"{{ remote_ojp_proc_csv }}.log" 2>&1 &
-        echo $! > "{{ remote_ojp_proc_csv }}.pid"
-      args:
-        executable: /bin/bash
-      delegate_to: "{{ item }}"
-      loop: "{{ groups['ojp'] }}"
-      changed_when: true
+    # ── Deploy and start process metrics side-car (CPU + RSS) on the DB node ──
 
     - name: Copy process metrics collection script to DB node
       ansible.builtin.copy:
@@ -344,32 +273,6 @@
         mode: "0644"
       loop: "{{ remote_summaries.results }}"
 
-    # ── Stop OJP JVM metrics side-car on proxy nodes; fetch CSVs ─────────────
-
-    - name: Stop JVM metrics collection on OJP nodes
-      ansible.builtin.shell: |
-        PID_FILE="{{ remote_jvm_csv }}.pid"
-        if [ -f "${PID_FILE}" ]; then
-          kill "$(cat "${PID_FILE}")" 2>/dev/null || true
-          rm -f "${PID_FILE}"
-        fi
-      args:
-        executable: /bin/bash
-      delegate_to: "{{ item }}"
-      loop: "{{ groups['ojp'] }}"
-      changed_when: true
-      ignore_errors: true
-
-    - name: Fetch JVM metrics CSV from each OJP node
-      ansible.builtin.fetch:
-        src: "{{ remote_jvm_csv }}"
-        dest: "{{ local_jvm_csv_dir }}/{{ item }}_jvm_metrics.csv"
-        flat: true
-        fail_on_missing: false
-        validate_checksum: false
-      delegate_to: "{{ item }}"
-      loop: "{{ groups['ojp'] }}"
-
     # ── Stop PostgreSQL metrics side-car; fetch CSV ───────────────────────────
 
     - name: Stop PostgreSQL metrics collection on DB node
@@ -396,31 +299,7 @@
         validate_checksum: false
       delegate_to: "{{ groups['db'][0] }}"
 
-    # ── Stop process metrics side-cars; fetch CSVs ────────────────────────────
-
-    - name: Stop process metrics collection on OJP nodes
-      ansible.builtin.shell: |
-        PID_FILE="{{ remote_ojp_proc_csv }}.pid"
-        if [ -f "${PID_FILE}" ]; then
-          kill "$(cat "${PID_FILE}")" 2>/dev/null || true
-          rm -f "${PID_FILE}"
-        fi
-      args:
-        executable: /bin/bash
-      delegate_to: "{{ item }}"
-      loop: "{{ groups['ojp'] }}"
-      changed_when: true
-      ignore_errors: true
-
-    - name: Fetch OJP process metrics CSV from each OJP node
-      ansible.builtin.fetch:
-        src: "{{ remote_ojp_proc_csv }}"
-        dest: "{{ local_jvm_csv_dir }}/{{ item }}_proc_metrics.csv"
-        flat: true
-        fail_on_missing: false
-        validate_checksum: false
-      delegate_to: "{{ item }}"
-      loop: "{{ groups['ojp'] }}"
+    # ── Stop process metrics side-car; fetch CSV ──────────────────────────────
 
     - name: Stop process metrics collection on DB node
       ansible.builtin.shell: |

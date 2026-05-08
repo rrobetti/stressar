@@ -1,0 +1,21 @@
+# ansible/vars/prod-ojp.yml
+#
+# Full-hardware production profile for OJP (SUT-B).
+
+# Benchmark run profile
+# NOTE: bench_replica_count is the number of bench JVM processes, not an OJP pool size.
+bench_replica_count:     16
+bench_target_rps:        500
+bench_warmup_seconds:    300
+bench_duration_seconds:  1800
+bench_cooldown_seconds:  120
+bench_repetitions:       5
+bench_slo_p95_ms:        50
+
+# OJP server-side pool budget profile
+# OJP clients do not use a local HikariCP pool.
+# Logical JDBC connections are exposed at the client tier, while real PostgreSQL
+# connections are pooled centrally in the OJP server tier.
+# Production topology: 3 OJP servers × 16 real backend connections = 48.
+bench_db_connection_budget: 48
+benchmark_profile_name: "ojp-prod"
