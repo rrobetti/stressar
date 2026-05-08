@@ -320,17 +320,22 @@ Key differences between the three dry-run profiles:
 |-----------|------------------|-------------|-------------------|---------|
 | `bench_num_accounts` | 10 000 | 10 000 | 10 000 | 1 000 000 |
 | `bench_num_orders` | 100 000 | 100 000 | 100 000 | 10 000 000 |
-| `bench_replica_count` | 1 | 1 | 1 | 4 |
-| `bench_target_rps` | 25 | 25 | 25 | 500 |
-| `bench_duration_seconds` | 60 | 60 | 60 | 300 |
+| `bench_replica_count` | 2 | 2 | 2 | 4 |
+| `bench_target_rps` | 50 | 50 | 50 | 500 |
+| `bench_duration_seconds` | 60 | 60 | 60 | 1800 |
 | `bench_slo_p95_ms` | 50 ms | 50 ms | 50 ms | 50 ms |
-| `bench_db_connection_budget` | 18 | — | — | 18 |
-| `bench_hikari_max_pool_size_per_replica` | 18 | — | — | 19 |
-| `pgbouncer_pool_size` | — | — | 18 | 6 |
-| `pgbouncer_min_pool_size` | — | — | 18 | 6 |
-| `pgbouncer_local_pool_size` | — | — | 2 | 2 |
+| `bench_db_connection_budget` | 20 | 6 | 18 (3×6) | 18 |
+| `bench_hikari_max_pool_size_per_replica` | 10 | — | — | 19 |
+| `pgbouncer_pool_size` | — | — | 6 | 6 |
+| `pgbouncer_min_pool_size` | — | — | 6 | 6 |
+| `pgbouncer_local_pool_size` | — | — | 4 | 20 |
 | `pg_shared_buffers` | 128 MB | 128 MB | 128 MB | 4 GB |
 | `pg_max_connections` | 50 | 50 | 50 | 400 |
+
+Dry-run rationale for these values:
+- `bench_target_rps=50` avoids under-stressing small environments where 25 RPS remains too comfortable.
+- pgBouncer dry-run keeps an explicit 18-backend ceiling (`3 nodes × 6 pool_size`) to match the intended comparison budget.
+- Hikari dry-run uses 10 connections per replica (Spring Boot default), so `2 replicas × 10 = 20` total.
 
 ---
 
