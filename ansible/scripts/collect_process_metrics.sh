@@ -80,29 +80,29 @@ read_kb_status_field() {
   awk -v f="${field}" '$1 == f ":" {print $2}' "/proc/${pid}/status" 2>/dev/null || echo 0
 }
 
-collect_descendants() {
-  local root_pid="${1}"
-  local child_pid
-  printf '%s\n' "${root_pid}"
-  while IFS= read -r child_pid; do
-    [[ -n "${child_pid}" ]] || continue
-    collect_descendants "${child_pid}"
-  done < <(pgrep -P "${root_pid}" 2>/dev/null || true)
-}
-
 collect_service_tree_pids() {
   local root_pid="${1}"
   local pid
+  local current_pid
+  local child_pid
+  local -a queue=("${root_pid}")
   # Intentionally scoped per invocation so dedup is reset each sample.
   declare -A seen=()
-  while IFS= read -r pid; do
-    [[ -n "${pid}" ]] || continue
-    [[ -d "/proc/${pid}" ]] || continue
-    if [[ -z "${seen[${pid}]+x}" ]]; then
-      seen["${pid}"]=1
-      printf '%s\n' "${pid}"
+  while [[ ${#queue[@]} -gt 0 ]]; do
+    current_pid="${queue[0]}"
+    queue=("${queue[@]:1}")
+    [[ -n "${current_pid}" ]] || continue
+    [[ -d "/proc/${current_pid}" ]] || continue
+    if [[ -n "${seen[${current_pid}]+x}" ]]; then
+      continue
     fi
-  done < <(collect_descendants "${root_pid}")
+    seen["${current_pid}"]=1
+    printf '%s\n' "${current_pid}"
+    while IFS= read -r child_pid; do
+      [[ -n "${child_pid}" ]] || continue
+      queue+=("${child_pid}")
+    done < <(pgrep -P "${current_pid}" 2>/dev/null || true)
+  done
 }
 
 # ── Polling loop ──────────────────────────────────────────────────────────────
@@ -128,13 +128,13 @@ while true; do
   delta_jiffies=0
   rss_kb_total=0
   vsz_kb_total=0
-  declare -A next_prev_jiffies_by_pid=()
+  declare -A current_jiffies_by_pid=()
 
   for pid in "${svc_pids[@]}"; do
     cur_jiffies=$(read_jiffies "${pid}")
     prev_jiffies="${prev_jiffies_by_pid[${pid}]:-${cur_jiffies}}"
     delta_jiffies=$(( delta_jiffies + cur_jiffies - prev_jiffies ))
-    next_prev_jiffies_by_pid["${pid}"]="${cur_jiffies}"
+    current_jiffies_by_pid["${pid}"]="${cur_jiffies}"
 
     rss_kb=$(read_kb_status_field "${pid}" "VmRSS")
     vsz_kb=$(read_kb_status_field "${pid}" "VmSize")
@@ -143,8 +143,8 @@ while true; do
   done
 
   prev_jiffies_by_pid=()
-  for pid in "${!next_prev_jiffies_by_pid[@]}"; do
-    prev_jiffies_by_pid["${pid}"]="${next_prev_jiffies_by_pid[${pid}]}"
+  for pid in "${!current_jiffies_by_pid[@]}"; do
+    prev_jiffies_by_pid["${pid}"]="${current_jiffies_by_pid[${pid}]}"
   done
 
   cur_ts=$(date +%s%N)
