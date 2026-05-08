@@ -351,21 +351,55 @@ Predefined full-hardware production profiles are available under `ansible/vars/`
 > **TODO:** playbook-level automatic repetition loops are not yet implemented; run each profile
 > multiple times and report median/min/max/variance across runs.
 
-Usage examples:
+### Recommended: run the full production comparison with one script
 
 ```bash
-# HikariCP Direct (SUT-A)
+# From repository root
+ansible/scripts/run_production_comparison.sh ansible/inventory.yml
+```
+
+This script executes the full sequence in order:
+
+1. teardown everything
+2. setup for Hikari disciplined (300)
+3. run Hikari disciplined benchmark
+4. teardown everything
+5. setup for OJP
+6. run OJP benchmark
+7. teardown everything
+8. setup for pgBouncer
+9. run pgBouncer benchmark
+10. teardown everything
+
+### Exact manual production steps (equivalent to the script)
+
+```bash
+# 0) Start from a clean baseline
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml
+
+# 1) HikariCP disciplined (SUT-A, budget=300)
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
+  --tags db,bench,init-db -e @ansible/vars/prod-hikari.yml
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_hikari.yml \
   -e @ansible/vars/prod-hikari.yml
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml
 
-# OJP (SUT-B)
+# 2) OJP (SUT-B)
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
+  --tags db,ojp,bench,init-db -e @ansible/vars/prod-ojp.yml
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \
   -e @ansible/vars/prod-ojp.yml
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml
 
-# pgBouncer (SUT-C)
+# 3) pgBouncer (SUT-C)
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
+  --tags db,pgbouncer,haproxy,bench,init-db -e @ansible/vars/prod-pgbouncer.yml
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_pgbouncer.yml \
   -e @ansible/vars/prod-pgbouncer.yml
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml
 ```
+
+Important: always pass a production profile (`prod-hikari.yml`, `prod-ojp.yml`, `prod-pgbouncer.yml`) to avoid inheriting non-production defaults.
 
 ---
 
@@ -542,7 +576,8 @@ ansible/
 │   ├── ojp-benchmark.yaml.j2          # Parameterised bench config template for OJP (SUT-B)
 │   └── pgbouncer-benchmark.yaml.j2    # Parameterised bench config template for pgBouncer (SUT-C)
 └── scripts/
-    └── generate_report.sh             # jq-based Markdown report generator
+    ├── generate_report.sh             # jq-based Markdown report generator
+    └── run_production_comparison.sh   # recommended production SUT-A/B/C comparison runner
 ```
 
 ---
