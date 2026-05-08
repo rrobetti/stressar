@@ -271,7 +271,7 @@
     - name: Read replica summary.json from loadgen hosts
       ansible.builtin.shell: |
         set -euo pipefail
-        summary_file="$(find "{{ remote_run_root }}/replica-{{ item }}" -type f -name "summary.json" | sort | tail -n 1)"
+        summary_file="$(find "{{ remote_run_root }}/replica-{{ item }}" -type f -name "summary.json" -printf '%T@ %p\n' | sort -n | tail -n 1 | cut -d' ' -f2-)"
         cat "${summary_file}"
       args:
         executable: /bin/bash
@@ -283,7 +283,7 @@
     - name: Read replica timeseries.csv from loadgen hosts
       ansible.builtin.shell: |
         set -euo pipefail
-        timeseries_file="$(find "{{ remote_run_root }}/replica-{{ item }}" -type f -name "timeseries.csv" | sort | tail -n 1)"
+        timeseries_file="$(find "{{ remote_run_root }}/replica-{{ item }}" -type f -name "timeseries.csv" -printf '%T@ %p\n' | sort -n | tail -n 1 | cut -d' ' -f2-)"
         cat "${timeseries_file}"
       args:
         executable: /bin/bash
