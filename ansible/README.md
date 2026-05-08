@@ -422,6 +422,30 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_pgbou
   -e pgbouncer_pool_size=4
 ```
 
+### Test B (Overload & Recovery) with Ansible
+
+All three benchmark run playbooks now support `bench overload` by setting
+`bench_test_mode=overload`.
+
+Use this for Test B:
+
+```bash
+# Example: OJP Test B (same overload vars also work with run_benchmarks_hikari.yml
+# and run_benchmarks_pgbouncer.yml)
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \
+  -e bench_test_mode=overload             \
+  -e bench_max_rps=<MST_FROM_TEST_A>      \
+  -e bench_overload_factor=1.3            \
+  -e bench_overload_duration_seconds=300  \
+  -e bench_cooldown_seconds=600
+```
+
+Notes:
+- `bench_max_rps` must be the MST found in Test A.
+- Recovery observation window is controlled by `bench_cooldown_seconds` (set to 600 for Test B).
+- The playbooks copy both `summary.json` and `timeseries.csv` per replica into
+  `results/<run-name>/replica-<id>/`.
+
 ---
 
 ## Selective execution with tags

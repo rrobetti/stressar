@@ -148,6 +148,12 @@
           For benchmark execution, define at least one host in the loadgen group.
           Check ansible/inventory.yml.example for the expected inventory structure.
 
+    - name: Assert benchmark mode is supported
+      ansible.builtin.assert:
+        that:
+          - bench_test_mode in ['run', 'overload']
+        fail_msg: "Unsupported bench_test_mode='{{ bench_test_mode }}'. Allowed values: run, overload."
+
     # ── Pre-run setup ─────────────────────────────────────────────────────────
 
     - name: Ensure results directories exist
@@ -169,6 +175,10 @@
         content: |
           {
             "scenario": "{{ benchmark_profile_name | default('pgbouncer-prod') }}",
+            "bench_test_mode": "{{ bench_test_mode }}",
+            "bench_max_rps": {{ bench_max_rps | int }},
+            "bench_overload_factor": {{ bench_overload_factor | float }},
+            "bench_overload_duration_seconds": {{ bench_overload_duration_seconds | int }},
             "configured_db_connection_budget": {{ ((groups['pgbouncer'] | length) * (pgbouncer_pool_size | int)) | int }},
             "bench_replica_count": {{ bench_replica_count | int }},
             "pgbouncer_nodes": {{ groups['pgbouncer'] | length }},
@@ -336,10 +346,17 @@
 
     - name: Launch benchmark replicas on loadgen hosts
       ansible.builtin.command: >
-        {{ remote_bench_binary }} run
+        {{ remote_bench_binary }} {{ bench_test_mode }}
         --config {{ remote_bench_config_file }}
+        {% if bench_test_mode == 'overload' -%}
+        --output-dir {{ remote_run_root }}/replica-{{ item }}/
+        --max-rps {{ bench_max_rps | int }}
+        --overload-factor {{ bench_overload_factor | float }}
+        --duration {{ bench_overload_duration_seconds | int }}
+        {% else -%}
         --output {{ remote_run_root }}/replica-{{ item }}/
         --instance-id {{ item }}
+        {% endif -%}
       async: 10800
       poll: 0
       register: bench_jobs
@@ -362,12 +379,28 @@
 
     - name: Print bench run output
       ansible.builtin.debug:
-        msg: "All {{ bench_replica_count }} replicas finished on loadgen hosts."
+        msg: "All {{ bench_replica_count }} replicas finished on loadgen hosts (mode={{ bench_test_mode }})."
 
     - name: Read replica summary.json from loadgen hosts
-      ansible.builtin.command: >
-        cat {{ remote_run_root }}/replica-{{ item }}/summary.json
+      ansible.builtin.shell: |
+        set -euo pipefail
+        summary_file="$(find "{{ remote_run_root }}/replica-{{ item }}" -type f -name "summary.json" -printf '%T@ %p\n' | sort -n | tail -n 1 | cut -d' ' -f2-)"
+        cat "${summary_file}"
+      args:
+        executable: /bin/bash
       register: remote_summaries
+      changed_when: false
+      delegate_to: "{{ loadgen_hosts[item | int % loadgen_count | int] }}"
+      loop: "{{ range(0, bench_replica_count | int) | list }}"
+
+    - name: Read replica timeseries.csv from loadgen hosts
+      ansible.builtin.shell: |
+        set -euo pipefail
+        timeseries_file="$(find "{{ remote_run_root }}/replica-{{ item }}" -type f -name "timeseries.csv" -printf '%T@ %p\n' | sort -n | tail -n 1 | cut -d' ' -f2-)"
+        cat "${timeseries_file}"
+      args:
+        executable: /bin/bash
+      register: remote_timeseries
       changed_when: false
       delegate_to: "{{ loadgen_hosts[item | int % loadgen_count | int] }}"
       loop: "{{ range(0, bench_replica_count | int) | list }}"
@@ -385,6 +418,13 @@
         dest: "{{ bench_results_dir }}/{{ run_name }}/replica-{{ item.item }}/summary.json"
         mode: "0644"
       loop: "{{ remote_summaries.results }}"
+
+    - name: Write replica timeseries.csv to control-node results directory
+      ansible.builtin.copy:
+        content: "{{ item.stdout }}"
+        dest: "{{ bench_results_dir }}/{{ run_name }}/replica-{{ item.item }}/timeseries.csv"
+        mode: "0644"
+      loop: "{{ remote_timeseries.results }}"
 
     # ── Stop PostgreSQL metrics side-car; fetch CSV ───────────────────────────
 
