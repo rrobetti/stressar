@@ -24,7 +24,7 @@
 #                     "haproxy", "postgresql@16-main"
 #   <output_csv>    — path of the CSV file to write
 #
-# Requirements: bash >= 4, systemctl, /proc filesystem (Linux only).
+# Requirements: bash >= 4, systemctl, pgrep, /proc filesystem (Linux only).
 # The service MainPID is discovered automatically via systemctl; no root needed.
 
 set -uo pipefail
