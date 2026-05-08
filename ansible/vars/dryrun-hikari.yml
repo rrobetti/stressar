@@ -30,7 +30,7 @@ bench_num_orders:   100000
 
 # ── Benchmark run ─────────────────────────────────────────────────────────────
 benchmark_profile_name: "hikari-dryrun"
-bench_replica_count:     2
+bench_replica_count:     4
 # Dry-runs use 50 RPS to create measurable queue/latency pressure.
 # At 25 RPS this profile was too comfortable and did not stress the system.
 bench_target_rps:        50
@@ -40,8 +40,8 @@ bench_cooldown_seconds:  10
 bench_slo_p95_ms:        50
 
 # ── HikariCP pool — realistic Spring Boot default per replica ─────────────────
-# Spring Boot's default Hikari maximumPoolSize is 10. With 2 replicas this dry-run
-# should model 20 direct PostgreSQL connections instead of an unrealistically low 12.
+# Spring Boot's default Hikari maximumPoolSize is 10. With 4 replicas this dry-run
+# keeps a conservative 20 direct PostgreSQL connections total (capped by budget).
 bench_db_connection_budget:             20
 bench_hikari_max_pool_size_per_replica: 10
 

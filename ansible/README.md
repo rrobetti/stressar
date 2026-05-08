@@ -320,7 +320,7 @@ Key differences between the three dry-run profiles:
 |-----------|------------------|-------------|-------------------|---------|
 | `bench_num_accounts` | 10 000 | 10 000 | 10 000 | 1 000 000 |
 | `bench_num_orders` | 100 000 | 100 000 | 100 000 | 10 000 000 |
-| `bench_replica_count` | 2 | 2 | 2 | 4 |
+| `bench_replica_count` | 4 | 4 | 4 | 4 |
 | `bench_target_rps` | 50 | 50 | 50 | 500 |
 | `bench_duration_seconds` | 60 | 60 | 60 | 1800 |
 | `bench_slo_p95_ms` | 50 ms | 50 ms | 50 ms | 50 ms |
@@ -335,7 +335,7 @@ Key differences between the three dry-run profiles:
 Dry-run rationale for these values:
 - `bench_target_rps=50` avoids under-stressing small environments where 25 RPS remains too comfortable.
 - pgBouncer dry-run keeps an explicit 18-backend ceiling (`3 nodes × 6 pool_size`) to match the intended comparison budget.
-- Hikari dry-run uses 10 connections per replica (Spring Boot default), so `2 replicas × 10 = 20` total.
+- Hikari dry-run keeps a 20-connection budget with 4 replicas, resulting in 5 direct PostgreSQL connections per replica.
 
 ---
 
