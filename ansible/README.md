@@ -8,7 +8,7 @@ Three benchmark scenarios are supported:
 | Scenario | Proxy Technology | Playbook |
 |----------|-----------------|----------|
 | **hikari-prod (SUT-A)** | Direct JDBC + local HikariCP per replica | `run_benchmarks_hikari.yml` |
-| **ojp-prod (SUT-B)** | OJP server tier (no local client-side HikariCP pool) | `run_benchmarks.yml` |
+| **ojp-prod (SUT-B)** | OJP server tier (no local client-side HikariCP pool) | `run_benchmarks_ojp.yml` |
 | **pgbouncer-prod (SUT-C)** | Local HikariCP + PgBouncer + HAProxy | `run_benchmarks_pgbouncer.yml` |
 
 ---
@@ -53,7 +53,7 @@ in `inventory.yml` (do not use `local`).
 |------|------------------|--------------|
 | 1 | `setup.yml` | Installs PostgreSQL 16 on the DB node and tunes it for benchmarking. Installs Java 24 + OJP Server on each proxy node (SUT-B). Installs pgBouncer on each proxy node and HAProxy on the LB node (SUT-C, via `--tags pgbouncer,haproxy`). Builds the `bench` tool on the control node. Initialises the benchmark database. |
 | 2a | `run_benchmarks_hikari.yml` | **hikari-prod (SUT-A):** orchestrated from `control`, benchmark JVM replicas run on `loadgen` hosts, direct JDBC to PostgreSQL with local HikariCP multiplication. |
-| 2b | `run_benchmarks.yml` | **ojp-prod (SUT-B):** orchestrated from `control`, benchmark JVM replicas run on `loadgen` hosts, OJP service validated on `ojp` nodes, no local client-side HikariCP pool. |
+| 2b | `run_benchmarks_ojp.yml` | **ojp-prod (SUT-B):** orchestrated from `control`, benchmark JVM replicas run on `loadgen` hosts, OJP service validated on `ojp` nodes, no local client-side HikariCP pool. |
 | 2c | `run_benchmarks_pgbouncer.yml` | **pgbouncer-prod (SUT-C):** orchestrated from `control`, benchmark JVM replicas run on `loadgen` hosts, traffic via `haproxy` to `pgbouncer` nodes. |
 | 3 | `teardown.yml` | Stops OJP Server, pgBouncer, and HAProxy on their respective nodes and resets PostgreSQL statistics for the next run. |
 | — | `scripts/generate_report.sh` | Pure shell + `jq` script called automatically by all run playbooks; can also be run standalone. |
@@ -149,7 +149,7 @@ the database.
 ### 3. Run the benchmark
 
 ```bash
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_ojp.yml
 ```
 
 Results land under `results/<run-name>/` on the control node.
@@ -251,7 +251,7 @@ ansible -i ansible/inventory.yml proxy \
   -m systemd -a "name=ojp-server state=started enabled=true" --become
 
 # 2. Run the benchmark
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_ojp.yml
 ```
 
 > **Tip:** Always reset PostgreSQL statistics between scenario runs so metrics are not polluted by
@@ -295,7 +295,7 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
   --tags db,ojp,bench,init-db  -e @ansible/vars/dryrun-ojp.yml
 
 # Run (each invocation creates a new timestamped folder under results/)
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_ojp.yml \
   -e @ansible/vars/dryrun-ojp.yml
 ```
 
@@ -387,7 +387,7 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml
 # 2) OJP (SUT-B)
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
   --tags db,ojp,bench,init-db -e @ansible/vars/prod-ojp.yml
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_ojp.yml \
   -e @ansible/vars/prod-ojp.yml
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml
 
@@ -441,7 +441,7 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_hikar
   -e bench_duration_seconds=300
 
 # OJP
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_ojp.yml \
   -e run_name=ojp-tuning-1      \
   -e bench_target_rps=1000      \
   -e bench_duration_seconds=600 \
@@ -561,7 +561,7 @@ ansible/
 ├── playbooks/
 │   ├── setup.yml                      # Full infrastructure setup (PostgreSQL + OJP/pgBouncer/HAProxy + bench)
 │   ├── run_benchmarks_hikari.yml      # Execute HikariCP Direct benchmarks (SUT-A) + generate report
-│   ├── run_benchmarks.yml             # Execute benchmarks (SUT-B) + generate report
+│   ├── run_benchmarks_ojp.yml             # Execute OJP benchmarks (SUT-B) + generate report
 │   ├── run_benchmarks_pgbouncer.yml   # Execute pgBouncer benchmarks (SUT-C) + generate report
 │   └── teardown.yml                   # Stop OJP/pgBouncer/HAProxy services, reset DB stats
 ├── vars/

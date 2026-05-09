@@ -14,7 +14,7 @@
 #     --tags db,ojp,bench,init-db  -e @ansible/vars/dryrun-ojp.yml
 #
 # Run:
-#   ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks.yml \
+#   ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_ojp.yml \
 #     -e @ansible/vars/dryrun-ojp.yml
 
 # ── Dataset (fast to seed) ────────────────────────────────────────────────────

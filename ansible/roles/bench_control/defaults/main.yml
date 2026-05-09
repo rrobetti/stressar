@@ -7,7 +7,7 @@ bench_java_min_version: 11
 # Number of parallel bench JVM replicas to launch.
 bench_replica_count: 16
 
-# Workload configuration defaults (overridden in run_benchmarks.yml vars).
+# Workload configuration defaults (overridden in run_benchmarks_ojp.yml vars).
 bench_target_rps:        500
 bench_warmup_seconds:    300
 bench_duration_seconds:  1800
