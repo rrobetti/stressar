@@ -358,7 +358,7 @@ Source: `SystemMetricsCollector.java`, wired into `BenchmarkRunner.java`.
 >
 > **`collect_jvm_metrics.sh` uses `jstat -gc`, NOT OS RSS,** to measure actual heap.
 
-The `run_benchmarks.yml` playbook deploys `ansible/scripts/collect_jvm_metrics.sh`
+The `run_benchmarks_ojp.yml` playbook deploys `ansible/scripts/collect_jvm_metrics.sh`
 to each proxy node, starts it in the background before bench replicas begin, stops
 it after all replicas finish, and fetches the resulting CSV to
 `results/<run_name>/node_metrics/proxy/<host>_jvm_metrics.csv`.
@@ -379,7 +379,7 @@ The report shows median `heap_used_mb`, median `heap_committed_mb`, and total GC
 
 ### PostgreSQL DB node
 
-The `run_benchmarks.yml` playbook deploys `ansible/scripts/collect_pg_metrics.sh`
+The `run_benchmarks_ojp.yml` playbook deploys `ansible/scripts/collect_pg_metrics.sh`
 to the DB node, starts it before bench replicas, stops it after, and fetches the
 CSV to `results/<run_name>/node_metrics/pg_metrics.csv`. PostgreSQL statistics are
 reset with `pg_stat_reset()` + `pg_stat_reset_shared('bgwriter')` before each run

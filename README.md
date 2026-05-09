@@ -101,7 +101,7 @@ Comprehensive documentation is available in the `docs/` directory:
 
 - **[ansible/README.md](ansible/README.md)** - Ansible automation (install software, run tests, collect results, generate report)
   - `setup.yml` — one command to install PostgreSQL, OJP Server, and build the bench tool
-  - `run_benchmarks.yml` — parallel bench replicas + automatic Markdown report
+  - `run_benchmarks_ojp.yml` — parallel bench replicas + automatic Markdown report
   - `teardown.yml` — stop services and reset DB statistics
   - `scripts/generate_report.sh` — standalone `jq`-based report generator
 

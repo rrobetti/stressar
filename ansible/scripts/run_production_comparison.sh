@@ -37,7 +37,7 @@ INVENTORY_FILE="${1:-${ANSIBLE_DIR}/inventory.yml}"
 SETUP_PLAYBOOK="${ANSIBLE_DIR}/playbooks/setup.yml"
 TEARDOWN_PLAYBOOK="${ANSIBLE_DIR}/playbooks/teardown.yml"
 RUN_HIKARI_PLAYBOOK="${ANSIBLE_DIR}/playbooks/run_benchmarks_hikari.yml"
-RUN_OJP_PLAYBOOK="${ANSIBLE_DIR}/playbooks/run_benchmarks.yml"
+RUN_OJP_PLAYBOOK="${ANSIBLE_DIR}/playbooks/run_benchmarks_ojp.yml"
 RUN_PGBOUNCER_PLAYBOOK="${ANSIBLE_DIR}/playbooks/run_benchmarks_pgbouncer.yml"
 
 PROD_HIKARI_VARS="${ANSIBLE_DIR}/vars/prod-hikari.yml"

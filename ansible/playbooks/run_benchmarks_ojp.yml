@@ -1,5 +1,5 @@
 ---
-# ansible/playbooks/run_benchmarks.yml
+# ansible/playbooks/run_benchmarks_ojp.yml
 #
 # Executes the full benchmark suite from the control node:
 #   1. Renders a bench config from the Jinja2 template.
@@ -23,7 +23,7 @@
 #       DB node; captures OS-level CPU% and RSS/VSZ for ojp-server and PostgreSQL.
 #
 # Usage:
-#   ansible-playbook -i inventory.yml playbooks/run_benchmarks.yml \
+#   ansible-playbook -i inventory.yml playbooks/run_benchmarks_ojp.yml \
 #     -e @ansible/vars/dryrun-ojp.yml
 #
 # Optional overrides:
@@ -33,7 +33,7 @@
 #   -e bench_replica_count=4
 
 - name: Pre-flight — verify OJP service is running on every OJP node
-  # run_benchmarks.yml never starts services — that is setup.yml's job.
+  # run_benchmarks_ojp.yml never starts services — that is setup.yml's job.
   # If ojp-server is not active on any proxy node, fail fast so the operator
   # knows to re-run: ansible-playbook setup.yml --tags ojp
   hosts: ojp
