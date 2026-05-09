@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * The application creates virtual JDBC connection handles that map
  * to a server-side pool managed by OJP.
  * Pool configuration is passed via OJP JDBC driver properties
- * (e.g., ojp.maxConnections) and applied on the OJP server side.
+ * (e.g., ojp.connection.pool.maximumPoolSize) and applied on the OJP server side.
  */
 public class OjpProvider implements ConnectionProvider {
     private static final Logger logger = LoggerFactory.getLogger(OjpProvider.class);
