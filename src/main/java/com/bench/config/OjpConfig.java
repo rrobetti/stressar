@@ -134,19 +134,19 @@ public class OjpConfig {
         
         // Add OJP-specific properties
         if (minConnections != null) {
-            props.setProperty("ojp.minConnections", String.valueOf(minConnections));
+            props.setProperty("ojp.connection.pool.minimumIdle", String.valueOf(minConnections));
         }
         if (maxConnections != null) {
-            props.setProperty("ojp.maxConnections", String.valueOf(maxConnections));
+            props.setProperty("ojp.connection.pool.maximumPoolSize", String.valueOf(maxConnections));
         }
         if (connectionTimeoutMs != null) {
-            props.setProperty("ojp.connectionTimeoutMs", String.valueOf(connectionTimeoutMs));
+            props.setProperty("ojp.connection.pool.connectionTimeout", String.valueOf(connectionTimeoutMs));
         }
         if (idleTimeoutMs != null) {
-            props.setProperty("ojp.idleTimeoutMs", String.valueOf(idleTimeoutMs));
+            props.setProperty("ojp.connection.pool.idleTimeout", String.valueOf(idleTimeoutMs));
         }
         if (maxLifetimeMs != null) {
-            props.setProperty("ojp.maxLifetimeMs", String.valueOf(maxLifetimeMs));
+            props.setProperty("ojp.connection.pool.maxLifetime", String.valueOf(maxLifetimeMs));
         }
         if (queueLimit != null) {
             props.setProperty("ojp.queueLimit", String.valueOf(queueLimit));
@@ -173,11 +173,11 @@ public class OjpConfig {
      */
     public Map<String, String> getPropertiesForLogging() {
         Map<String, String> props = new HashMap<>();
-        if (minConnections != null) props.put("ojp.minConnections", String.valueOf(minConnections));
-        if (maxConnections != null) props.put("ojp.maxConnections", String.valueOf(maxConnections));
-        if (connectionTimeoutMs != null) props.put("ojp.connectionTimeoutMs", String.valueOf(connectionTimeoutMs));
-        if (idleTimeoutMs != null) props.put("ojp.idleTimeoutMs", String.valueOf(idleTimeoutMs));
-        if (maxLifetimeMs != null) props.put("ojp.maxLifetimeMs", String.valueOf(maxLifetimeMs));
+        if (minConnections != null) props.put("ojp.connection.pool.minimumIdle", String.valueOf(minConnections));
+        if (maxConnections != null) props.put("ojp.connection.pool.maximumPoolSize", String.valueOf(maxConnections));
+        if (connectionTimeoutMs != null) props.put("ojp.connection.pool.connectionTimeout", String.valueOf(connectionTimeoutMs));
+        if (idleTimeoutMs != null) props.put("ojp.connection.pool.idleTimeout", String.valueOf(idleTimeoutMs));
+        if (maxLifetimeMs != null) props.put("ojp.connection.pool.maxLifetime", String.valueOf(maxLifetimeMs));
         if (queueLimit != null) props.put("ojp.queueLimit", String.valueOf(queueLimit));
         if (slowQueryThresholdMs != null) props.put("ojp.slowQueryThresholdMs", String.valueOf(slowQueryThresholdMs));
         if (poolKey != null) props.put("ojp.poolKey", poolKey);
