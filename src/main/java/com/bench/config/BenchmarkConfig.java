@@ -213,22 +213,18 @@ public class BenchmarkConfig {
     /**
      * Calculate OJP server-side pool allocation.
      * <p>
-     * {@code bench_db_connection_budget} is the per-OJP-server connection budget.
-     * Each OJP server instance gets the full budget as its {@code maxConnections},
-     * regardless of how many load-generator JVM replicas ({@code bench_replica_count})
-     * are running.  The load-generator replicas use virtual (logical) JDBC connections
-     * to OJP and do not consume real backend connections themselves, so dividing the
-     * budget by {@code bench_replica_count} would under-provision the OJP pool.
-     * <p>
-     * In SHARED mode (one pool shared across OJP instances) the same budget applies
-     * to the single shared pool.
+     * The Java client sends {@code bench_db_connection_budget} as {@code maxConnections}
+     * to every OJP server.  The OJP cluster is self-aware: each server knows the total
+     * cluster size and automatically divides the budget among its peers, so the client
+     * does not need to perform any division.  {@code bench_replica_count} counts
+     * load-generator JVMs and is completely unrelated to OJP pool sizing.
      *
-     * @return The maxConnections value to set for the OJP server-side pool
+     * @return The maxConnections value to pass to the OJP server-side pool
      */
     public int calculateOjpAllocation() {
-        // Both SHARED and PER_INSTANCE use the full budget per OJP server instance.
-        // bench_replica_count is the number of load-generator JVMs, not OJP servers,
-        // so it must not be used to divide the connection budget.
+        // Send the full budget to every OJP server.
+        // The OJP cluster divides it automatically across its nodes;
+        // the client (and bench_replica_count) play no part in that division.
         return Math.max(1, dbConnectionBudget);
     }
     

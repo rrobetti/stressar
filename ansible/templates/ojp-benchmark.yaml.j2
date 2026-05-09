@@ -19,11 +19,12 @@ replicas: {{ bench_replica_count }}
 ojp:
   virtualConnectionMode: PER_WORKER
   poolSharing: PER_INSTANCE
-  # bench_db_connection_budget is the per-OJP-server connection budget.
-  # Java sets maxConnections = bench_db_connection_budget (the full budget, not divided
-  # by bench_replica_count, because the load-generator replicas use virtual connections
-  # and do not consume real backend connections).
-  # minConnections mirrors maxConnections so the pool is fully pre-warmed.
+  # The OJP cluster is self-aware: every OJP server receives the full
+  # bench_db_connection_budget as maxConnections and the cluster automatically
+  # divides that budget across its nodes (e.g. budget=48, 3 servers → 16 each).
+  # The Java client never divides the budget; bench_replica_count (load-gen JVMs)
+  # is irrelevant to OJP pool sizing.
+  # minConnections = maxConnections so each node's share is fully pre-warmed.
   minConnections: {{ bench_db_connection_budget | int }}
   connectionTimeoutMs: 30000
   idleTimeoutMs: 600000
