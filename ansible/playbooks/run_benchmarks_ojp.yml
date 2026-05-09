@@ -85,6 +85,7 @@
     remote_db_proc_csv:  "/tmp/db_proc_metrics_{{ run_name }}.csv"
     # Local (control-node) paths where side-car CSVs are fetched to
     local_jvm_csv_dir:    "{{ bench_results_dir }}/{{ run_name }}/node_metrics/proxy"
+    local_ojp_log_dir:    "{{ bench_results_dir }}/{{ run_name }}/node_metrics/proxy"
     local_pg_csv:         "{{ bench_results_dir }}/{{ run_name }}/node_metrics/pg_metrics.csv"
     local_db_metrics_dir: "{{ bench_results_dir }}/{{ run_name }}/node_metrics/db"
     # Paths to side-car scripts on the control node (copied to remote nodes)
@@ -277,50 +278,66 @@
       delegate_to: "{{ groups['db'][0] }}"
       changed_when: true
 
-    # ── Warmup ───────────────────────────────────────────────────────────────
+    # ── Warmup + benchmark run (logs collected from OJP nodes on failure) ────
 
-    - name: Run warmup pass on first loadgen host
-      ansible.builtin.command: >
-        {{ remote_bench_binary }} warmup --config {{ remote_bench_config_file }}
-      register: warmup_out
-      changed_when: true
-      delegate_to: "{{ loadgen_hosts[0] }}"
+    - block:
+        - name: Run warmup pass on first loadgen host
+          ansible.builtin.command: >
+            {{ remote_bench_binary }} warmup --config {{ remote_bench_config_file }}
+          register: warmup_out
+          changed_when: true
+          delegate_to: "{{ loadgen_hosts[0] }}"
 
-    - name: Print warmup output
-      ansible.builtin.debug:
-        msg: "{{ warmup_out.stdout_lines[-10:] }}"
+        - name: Print warmup output
+          ansible.builtin.debug:
+            msg: "{{ warmup_out.stdout_lines[-10:] }}"
 
-    # ── Parallel benchmark replicas ──────────────────────────────────────────
+        # ── Parallel benchmark replicas ────────────────────────────────────
 
-    - name: Launch benchmark replicas on loadgen hosts
-      ansible.builtin.command: >
-        {{ remote_bench_binary }} run
-        --config {{ remote_bench_config_file }}
-        --output {{ remote_run_root }}/replica-{{ item }}/
-        --instance-id {{ item }}
-      async: 10800
-      poll: 0
-      register: bench_jobs
-      changed_when: true
-      delegate_to: "{{ loadgen_hosts[item | int % loadgen_count | int] }}"
-      loop: "{{ range(0, bench_replica_count | int) | list }}"
+        - name: Launch benchmark replicas on loadgen hosts
+          ansible.builtin.command: >
+            {{ remote_bench_binary }} run
+            --config {{ remote_bench_config_file }}
+            --output {{ remote_run_root }}/replica-{{ item }}/
+            --instance-id {{ item }}
+          async: 10800
+          poll: 0
+          register: bench_jobs
+          changed_when: true
+          delegate_to: "{{ loadgen_hosts[item | int % loadgen_count | int] }}"
+          loop: "{{ range(0, bench_replica_count | int) | list }}"
 
-    - name: Wait for all benchmark replicas
-      ansible.builtin.async_status:
-        jid: "{{ item.ansible_job_id }}"
-      register: bench_job_status
-      until: bench_job_status.finished
-      retries: 2160
-      delay: 5
-      loop: "{{ bench_jobs.results }}"
-      loop_control:
-        label: "replica-{{ item.item }}"
-      delegate_to: "{{ loadgen_hosts[item.item | int % loadgen_count | int] }}"
-      changed_when: false
+        - name: Wait for all benchmark replicas
+          ansible.builtin.async_status:
+            jid: "{{ item.ansible_job_id }}"
+          register: bench_job_status
+          until: bench_job_status.finished
+          retries: 2160
+          delay: 5
+          loop: "{{ bench_jobs.results }}"
+          loop_control:
+            label: "replica-{{ item.item }}"
+          delegate_to: "{{ loadgen_hosts[item.item | int % loadgen_count | int] }}"
+          changed_when: false
 
-    - name: Print bench run output
-      ansible.builtin.debug:
-        msg: "All {{ bench_replica_count }} replicas finished on loadgen hosts."
+        - name: Print bench run output
+          ansible.builtin.debug:
+            msg: "All {{ bench_replica_count }} replicas finished on loadgen hosts."
+
+      rescue:
+        - name: Collect OJP server logs from each proxy node on test failure
+          ansible.builtin.fetch:
+            src: /var/log/ojp-server.log
+            dest: "{{ local_ojp_log_dir }}/{{ item }}_ojp-server.log"
+            flat: true
+            fail_on_missing: false
+            validate_checksum: false
+          delegate_to: "{{ item }}"
+          loop: "{{ groups['ojp'] }}"
+
+        - name: Fail after collecting OJP server logs
+          ansible.builtin.fail:
+            msg: "Benchmark run failed. OJP server logs collected to {{ local_ojp_log_dir }}."
 
     - name: Read replica summary.json from loadgen hosts
       ansible.builtin.command: >

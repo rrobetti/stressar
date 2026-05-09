@@ -3,7 +3,7 @@
 # Variables shared by every host in the inventory.
 
 # ── OJP release ──────────────────────────────────────────────────────────────
-ojp_version: "0.4.10-beta"
+ojp_version: "0.4.11-beta"
 
 # ── PostgreSQL JDBC driver (used by OJP proxy nodes) ─────────────────────────
 pg_jdbc_driver_version: "42.7.8"
