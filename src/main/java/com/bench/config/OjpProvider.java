@@ -45,24 +45,24 @@ public class OjpProvider implements ConnectionProvider {
             dbConfig.getPassword()
         );
         
-        // Override maxConnections with calculated allocation
-        ojpProperties.setProperty("ojp.maxConnections", String.valueOf(allocatedMaxConnections));
+        // Override maximumPoolSize with calculated allocation
+        ojpProperties.setProperty("ojp.connection.pool.maximumPoolSize", String.valueOf(allocatedMaxConnections));
 
-        // Ensure minConnections does not exceed maxConnections.
-        // The Ansible template may set a static minConnections value that can exceed
-        // the computed maxConnections (e.g. minConnections=3 vs maxConnections=2 for
+        // Ensure minimumIdle does not exceed maximumPoolSize.
+        // The Ansible template may set a static minimumIdle value that can exceed
+        // the computed maximumPoolSize (e.g. minimumIdle=3 vs maximumPoolSize=2 for
         // budget=18/replicas=16), which causes OJP to reject the configuration and
         // fall back to its built-in default (20).
-        String configuredMin = ojpProperties.getProperty("ojp.minConnections");
+        String configuredMin = ojpProperties.getProperty("ojp.connection.pool.minimumIdle");
         if (configuredMin != null) {
             try {
                 if (Integer.parseInt(configuredMin) > allocatedMaxConnections) {
-                    logger.warn("ojp.minConnections={} exceeds allocatedMaxConnections={}; capping to {}",
+                    logger.warn("ojp.connection.pool.minimumIdle={} exceeds allocatedMaxConnections={}; capping to {}",
                             configuredMin, allocatedMaxConnections, allocatedMaxConnections);
-                    ojpProperties.setProperty("ojp.minConnections", String.valueOf(allocatedMaxConnections));
+                    ojpProperties.setProperty("ojp.connection.pool.minimumIdle", String.valueOf(allocatedMaxConnections));
                 }
             } catch (NumberFormatException e) {
-                logger.warn("ojp.minConnections='{}' is not a valid integer; ignoring", configuredMin);
+                logger.warn("ojp.connection.pool.minimumIdle='{}' is not a valid integer; ignoring", configuredMin);
             }
         }
 

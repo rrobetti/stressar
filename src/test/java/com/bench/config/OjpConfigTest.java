@@ -89,9 +89,9 @@ public class OjpConfigTest {
         
         assertEquals("user", props.getProperty("user"));
         assertEquals("pass", props.getProperty("password"));
-        assertEquals("5", props.getProperty("ojp.minConnections"));
-        assertEquals("100", props.getProperty("ojp.maxConnections"));
-        assertEquals("30000", props.getProperty("ojp.connectionTimeoutMs"));
+        assertEquals("5", props.getProperty("ojp.connection.pool.minimumIdle"));
+        assertEquals("100", props.getProperty("ojp.connection.pool.maximumPoolSize"));
+        assertEquals("30000", props.getProperty("ojp.connection.pool.connectionTimeout"));
         assertEquals("test-pool", props.getProperty("ojp.poolKey"));
     }
     
@@ -109,8 +109,8 @@ public class OjpConfigTest {
         assertFalse(logProps.containsKey("password"));
         
         // OJP properties should be present
-        assertEquals("5", logProps.get("ojp.minConnections"));
-        assertEquals("100", logProps.get("ojp.maxConnections"));
+        assertEquals("5", logProps.get("ojp.connection.pool.minimumIdle"));
+        assertEquals("100", logProps.get("ojp.connection.pool.maximumPoolSize"));
         assertEquals("test-pool", logProps.get("ojp.poolKey"));
         assertEquals("customValue", logProps.get("customProp"));
     }
