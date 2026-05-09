@@ -23,7 +23,7 @@ dependencies {
 
     // OJP JDBC driver (required for T4 / OJP connection mode)
     // Comment out if not running the T4 scenario to keep the build lean
-    implementation 'org.openjproxy:ojp-jdbc-driver:0.4.11-beta'
+    implementation 'org.openjproxy:ojp-jdbc-driver:0.4.13-beta'
     
     // Metrics
     implementation 'org.hdrhistogram:HdrHistogram:2.1.12'
