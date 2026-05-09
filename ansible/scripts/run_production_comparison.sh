@@ -98,7 +98,7 @@ collect_failure_logs() {
         -i "${INVENTORY_FILE}" \
         --become \
         -m ansible.builtin.shell \
-        -a "journalctl -u ojp-server.service --no-pager -n 1000 2>&1 || true" \
+        -a "journalctl -u ojp-server.service --no-pager -n 5000 2>&1 || true" \
         2>&1 | tee "${dest}/ojp-server.log" || true
     )
     echo "  OJP proxy logs      -> ${dest}/ojp-server.log"
@@ -110,7 +110,7 @@ collect_failure_logs() {
         -i "${INVENTORY_FILE}" \
         --become \
         -m ansible.builtin.shell \
-        -a "journalctl -u pgbouncer.service --no-pager -n 1000 2>&1 || true" \
+        -a "journalctl -u pgbouncer.service --no-pager -n 5000 2>&1 || true" \
         2>&1 | tee "${dest}/pgbouncer.log" || true
     )
     echo "  pgBouncer logs      -> ${dest}/pgbouncer.log"
