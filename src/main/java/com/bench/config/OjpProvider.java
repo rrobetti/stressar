@@ -47,12 +47,39 @@ public class OjpProvider implements ConnectionProvider {
         
         // Override maxConnections with calculated allocation
         ojpProperties.setProperty("ojp.maxConnections", String.valueOf(allocatedMaxConnections));
-        
+
+        // Ensure minConnections does not exceed maxConnections.
+        // The Ansible template may set a static minConnections value that can exceed
+        // the computed maxConnections (e.g. minConnections=3 vs maxConnections=2 for
+        // budget=18/replicas=16), which causes OJP to reject the configuration and
+        // fall back to its built-in default (20).
+        String configuredMin = ojpProperties.getProperty("ojp.minConnections");
+        if (configuredMin != null) {
+            try {
+                if (Integer.parseInt(configuredMin) > allocatedMaxConnections) {
+                    logger.warn("ojp.minConnections={} exceeds allocatedMaxConnections={}; capping to {}",
+                            configuredMin, allocatedMaxConnections, allocatedMaxConnections);
+                    ojpProperties.setProperty("ojp.minConnections", String.valueOf(allocatedMaxConnections));
+                }
+            } catch (NumberFormatException e) {
+                logger.warn("ojp.minConnections='{}' is not a valid integer; ignoring", configuredMin);
+            }
+        }
+
         logger.info("Initialized OJP provider (NO client-side pooling)");
         logger.info("  Virtual connection mode: {}", ojpConfig.getVirtualConnectionMode());
         logger.info("  Pool sharing: {}", ojpConfig.getPoolSharing());
         logger.info("  Server-side pool maxConnections: {}", allocatedMaxConnections);
-        logger.info("  OJP properties: {}", ojpConfig.getPropertiesForLogging());
+        // Log the actual effective JDBC properties sent to the OJP driver.
+        // Credentials (password, user) are excluded.
+        java.util.Map<String, String> loggableProps = new java.util.LinkedHashMap<>();
+        ojpProperties.forEach((k, v) -> {
+            String key = k.toString();
+            if (!key.equalsIgnoreCase("password") && !key.equalsIgnoreCase("user")) {
+                loggableProps.put(key, v.toString());
+            }
+        });
+        logger.info("  Effective OJP JDBC properties: {}", loggableProps);
     }
     
     @Override
