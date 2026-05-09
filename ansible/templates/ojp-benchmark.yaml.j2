@@ -19,11 +19,12 @@ replicas: {{ bench_replica_count }}
 ojp:
   virtualConnectionMode: PER_WORKER
   poolSharing: PER_INSTANCE
-  # minConnections must not exceed maxConnections.
-  # maxConnections is computed in Java as ceil(dbConnectionBudget / replicas).
-  # Mirror that formula here so the pool is fully pre-warmed and the configuration
-  # is always valid (min <= max).
-  minConnections: {{ [(bench_db_connection_budget / bench_replica_count) | round(0, 'ceil') | int, 1] | max }}
+  # bench_db_connection_budget is the per-OJP-server connection budget.
+  # Java sets maxConnections = bench_db_connection_budget (the full budget, not divided
+  # by bench_replica_count, because the load-generator replicas use virtual connections
+  # and do not consume real backend connections).
+  # minConnections mirrors maxConnections so the pool is fully pre-warmed.
+  minConnections: {{ bench_db_connection_budget | int }}
   connectionTimeoutMs: 30000
   idleTimeoutMs: 600000
   maxLifetimeMs: 1800000

@@ -15,7 +15,7 @@ public class OjpConfigTest {
         OjpConfig ojpConfig = config.getOjpConfig();
         ojpConfig.setPoolSharing(OjpPoolSharing.SHARED);
         
-        // SHARED mode: all replicas share one pool = full budget
+        // SHARED mode: the pool gets the full budget (bench_replica_count not used)
         int allocation = config.calculateOjpAllocation();
         assertEquals(100, allocation);
     }
@@ -30,37 +30,40 @@ public class OjpConfigTest {
         OjpConfig ojpConfig = config.getOjpConfig();
         ojpConfig.setPoolSharing(OjpPoolSharing.PER_INSTANCE);
         
-        // PER_INSTANCE mode: budget divided among replicas
+        // PER_INSTANCE mode: each OJP server gets the full budget as maxConnections.
+        // bench_replica_count (replicas=10) is load-gen JVMs, not OJP servers,
+        // so it must not reduce the per-instance pool size.
         int allocation = config.calculateOjpAllocation();
-        assertEquals(10, allocation);
+        assertEquals(100, allocation);
     }
     
     @Test
-    public void testOjpAllocationPerInstanceRounding() {
+    public void testOjpAllocationPerInstanceWithHighReplicaCount() {
         BenchmarkConfig config = new BenchmarkConfig();
         config.setConnectionMode(ConnectionMode.OJP);
-        config.setDbConnectionBudget(100);
-        config.setReplicas(16);
+        config.setDbConnectionBudget(48);
+        config.setReplicas(16);   // 16 load-gen JVMs
         
         OjpConfig ojpConfig = config.getOjpConfig();
         ojpConfig.setPoolSharing(OjpPoolSharing.PER_INSTANCE);
         
-        // PER_INSTANCE mode: 100 / 16 = 6.25 -> ceil to 7
+        // Each OJP server instance should get 48 connections (the full budget),
+        // NOT ceil(48/16)=3. bench_replica_count is irrelevant to OJP pool sizing.
         int allocation = config.calculateOjpAllocation();
-        assertEquals(7, allocation);
+        assertEquals(48, allocation);
     }
     
     @Test
-    public void testOjpAllocationPerInstanceMinimum() {
+    public void testOjpAllocationMinimum() {
         BenchmarkConfig config = new BenchmarkConfig();
         config.setConnectionMode(ConnectionMode.OJP);
-        config.setDbConnectionBudget(10);
-        config.setReplicas(100);
+        config.setDbConnectionBudget(0);
+        config.setReplicas(10);
         
         OjpConfig ojpConfig = config.getOjpConfig();
         ojpConfig.setPoolSharing(OjpPoolSharing.PER_INSTANCE);
         
-        // PER_INSTANCE mode: 10 / 100 = 0.1 -> clamped to 1
+        // Budget of 0 is clamped to 1
         int allocation = config.calculateOjpAllocation();
         assertEquals(1, allocation);
     }

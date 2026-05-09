@@ -127,7 +127,7 @@
             "configured_db_connection_budget": {{ bench_db_connection_budget | int }},
             "bench_replica_count": {{ bench_replica_count | int }},
             "ojp_servers": {{ groups['ojp'] | length }},
-            "real_db_connections_per_ojp_server": {{ (bench_db_connection_budget | int // (groups['ojp'] | length if (groups['ojp'] | length) > 0 else 1)) | int }},
+            "real_db_connections_per_ojp_server": {{ bench_db_connection_budget | int }},
             "external_lb": false
           }
 
