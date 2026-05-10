@@ -520,6 +520,34 @@ Example — re-run only the OJP proxy setup after a server replacement:
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml --tags ojp
 ```
 
+### Force reinstall a component
+
+Re-running `setup.yml` with tags is usually enough for reconfiguration, but some downloads are
+guarded by `creates:` and package installs use `state: present`. To force a clean reinstall, remove
+the component first, then run the tagged setup again.
+
+Example — force reinstall OJP on proxy nodes:
+
+```bash
+# Remove OJP install dir + service unit, then re-run OJP setup
+ansible -i ansible/inventory.yml ojp -b \
+  -m file -a "path=/opt/ojp state=absent"
+ansible -i ansible/inventory.yml ojp -b \
+  -m file -a "path=/etc/systemd/system/ojp-server.service state=absent"
+
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml --tags ojp
+```
+
+Example — force reinstall another apt-managed component (pgBouncer shown):
+
+```bash
+# Uninstall package first, then re-run the component setup tag
+ansible -i ansible/inventory.yml pgbouncer -b \
+  -m apt -a "name=pgbouncer state=absent purge=true update_cache=true"
+
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml --tags pgbouncer
+```
+
 ---
 
 ## Report generation (standalone)
