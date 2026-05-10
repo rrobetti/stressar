@@ -143,9 +143,10 @@ PROD_PGBOUNCER_VARS="${ANSIBLE_DIR}/vars/prod-pgbouncer.yml"
 FAILURE_LOGS_DIR="${REPO_DIR}/results/failure-logs"
 FAILED_STEPS=()
 CURRENT_STEP=0
-# Keep this aligned with the number of run_step calls in each benchmark sequence:
-# setup, run, teardown.
+# Keep this aligned with the three run_step phases in each benchmark sequence:
+# setup, run, and teardown.
 STEPS_PER_BENCHMARK=3
+# +1 accounts for the initial teardown that always runs before any benchmark.
 TOTAL_STEPS=$((1 + (STEPS_PER_BENCHMARK * ${#BENCHMARKS_TO_RUN[@]})))
 
 if [[ ! -f "${INVENTORY_FILE}" ]]; then
