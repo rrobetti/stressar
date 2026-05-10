@@ -38,20 +38,27 @@ REPO_DIR="$(cd "${ANSIBLE_DIR}/.." && pwd)"
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") [inventory_file] [--tests hikari,pgbouncer,ojp]
-  $(basename "$0") --inventory <path> [--tests hikari,pgbouncer,ojp]
+  $(basename "$0") [inventory_file] [--tests hikari,pgbouncer,ojp] [--log-file PATH]
+  $(basename "$0") --inventory <path> [--tests hikari,pgbouncer,ojp] [--log-file PATH]
 
 Options:
   -i, --inventory PATH   Inventory file (default: ${ANSIBLE_DIR}/inventory.yml)
       --tests LIST       Comma-separated benchmarks to run: hikari, pgbouncer, ojp
+      --log-file PATH    File to write Ansible debug output to.
+                         Defaults to ansible-debug-<timestamp>.log in the current
+                         working directory when not specified.
   -h, --help             Show this help
 
 If --tests is omitted, the script runs all benchmarks in the default order:
   hikari, pgbouncer, ojp
+
+All ansible-playbook invocations run with -vvv (debug verbosity) and their
+output is captured in the log file in addition to being printed to the terminal.
 EOF
 }
 
 INVENTORY_FILE="${ANSIBLE_DIR}/inventory.yml"
+LOG_FILE=""
 DEFAULT_BENCHMARKS=(hikari pgbouncer ojp)
 BENCHMARKS_TO_RUN=("${DEFAULT_BENCHMARKS[@]}")
 POSITIONAL_INVENTORY_SET=false
@@ -66,6 +73,20 @@ while [[ $# -gt 0 ]]; do
       fi
       INVENTORY_FILE="$2"
       POSITIONAL_INVENTORY_SET=true
+      shift 2
+      ;;
+    --log-file)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: missing value for --log-file" >&2
+        usage >&2
+        exit 1
+      fi
+      if [[ -z "$2" ]]; then
+        echo "ERROR: --log-file value cannot be empty" >&2
+        usage >&2
+        exit 1
+      fi
+      LOG_FILE="$2"
       shift 2
       ;;
     --tests)
@@ -154,10 +175,19 @@ if [[ ! -f "${INVENTORY_FILE}" ]]; then
   exit 1
 fi
 
+# Default log file: ansible-debug-<timestamp>.log in the current directory.
+if [[ -z "${LOG_FILE}" ]]; then
+  LOG_FILE="$(pwd)/ansible-debug-$(date +%Y%m%d-%H%M%S).log"
+fi
+export ANSIBLE_LOG_PATH="${LOG_FILE}"
+
+echo "Ansible debug log: ${LOG_FILE}"
+echo ""
+
 run_playbook() {
   local playbook="$1"
   shift
-  (cd "${REPO_DIR}" && ansible-playbook -i "${INVENTORY_FILE}" "${playbook}" "$@")
+  (cd "${REPO_DIR}" && ansible-playbook -vvv -i "${INVENTORY_FILE}" "${playbook}" "$@")
 }
 
 # collect_failure_logs STEP_LABEL [PROXY_TYPE]
