@@ -78,15 +78,32 @@ collect_failure_logs() {
   echo ""
 
   # ── Load Generator node logs ──────────────────────────────────────────────
+  # ansible.builtin.fetch cannot transfer directories; create a tarball on
+  # each loadgen host first, fetch it, then extract locally.
   echo "  Collecting Load Generator node run directories..."
   (
     cd "${REPO_DIR}" && \
     ansible loadgen \
       -i "${INVENTORY_FILE}" \
-      -m ansible.builtin.fetch \
-      -a "src=/tmp/stressar-runs dest=${dest}/loadgen flat=no fail_on_missing=false" \
+      -m ansible.builtin.shell \
+      -a "if [ -d /tmp/stressar-runs ]; then tar -czf /tmp/stressar-runs.tar.gz -C /tmp stressar-runs; else echo 'WARN: /tmp/stressar-runs not found on this host' >&2; fi" \
       2>&1 || true
   )
+  (
+    cd "${REPO_DIR}" && \
+    ansible loadgen \
+      -i "${INVENTORY_FILE}" \
+      -m ansible.builtin.fetch \
+      -a "src=/tmp/stressar-runs.tar.gz dest=${dest}/loadgen/ flat=no fail_on_missing=false" \
+      2>&1 || true
+  )
+  # Extract each per-host tarball so the directory tree is human-readable.
+  find "${dest}/loadgen" -name 'stressar-runs.tar.gz' | while IFS= read -r tarball; do
+    if ! tar -xzf "${tarball}" -C "$(dirname "${tarball}")" 2>&1; then
+      echo "  WARN: failed to extract ${tarball} — archive may be incomplete" >&2
+    fi
+    rm -f "${tarball}"
+  done
   echo "  Load Generator logs -> ${dest}/loadgen/"
 
   # ── Proxy service logs (when applicable) ──────────────────────────────────
