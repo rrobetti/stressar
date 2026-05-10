@@ -364,6 +364,21 @@ ansible/scripts/run_production_comparison.sh ansible/inventory.yml --tests ojp
 ansible/scripts/run_production_comparison.sh ansible/inventory.yml --tests hikari,ojp
 ```
 
+To enable Ansible verbose output (`-vvv`) and capture the full log to a file, pass `--debug`:
+
+```bash
+# Enable debug mode (log written to ansible-debug-<timestamp>.log in the current directory)
+ansible/scripts/run_production_comparison.sh ansible/inventory.yml --debug
+
+# Enable debug mode with a custom log file path
+ansible/scripts/run_production_comparison.sh ansible/inventory.yml --debug --log-file /tmp/ansible.log
+
+# Debug mode with a subset of benchmarks
+ansible/scripts/run_production_comparison.sh ansible/inventory.yml --tests hikari,ojp --debug
+```
+
+Debug mode is disabled by default; without `--debug` the playbooks run at normal verbosity and no log file is written.
+
 By default this script executes the full sequence in order:
 
 1. teardown everything

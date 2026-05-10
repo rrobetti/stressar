@@ -25,6 +25,8 @@
 #   ansible/scripts/run_production_comparison.sh [inventory_file]
 #   ansible/scripts/run_production_comparison.sh [inventory_file] --tests hikari
 #   ansible/scripts/run_production_comparison.sh [inventory_file] --tests hikari,ojp
+#   ansible/scripts/run_production_comparison.sh [inventory_file] --debug
+#   ansible/scripts/run_production_comparison.sh [inventory_file] --debug --log-file /path/to/ansible.log
 #
 # Default inventory file:
 #   ansible/inventory.yml
@@ -38,27 +40,29 @@ REPO_DIR="$(cd "${ANSIBLE_DIR}/.." && pwd)"
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") [inventory_file] [--tests hikari,pgbouncer,ojp] [--log-file PATH]
-  $(basename "$0") --inventory <path> [--tests hikari,pgbouncer,ojp] [--log-file PATH]
+  $(basename "$0") [inventory_file] [--tests hikari,pgbouncer,ojp] [--debug [--log-file PATH]]
+  $(basename "$0") --inventory <path> [--tests hikari,pgbouncer,ojp] [--debug [--log-file PATH]]
 
 Options:
   -i, --inventory PATH   Inventory file (default: ${ANSIBLE_DIR}/inventory.yml)
       --tests LIST       Comma-separated benchmarks to run: hikari, pgbouncer, ojp
-      --log-file PATH    File to write Ansible debug output to.
+      --debug            Enable Ansible verbose output (-vvv) and capture to a log file.
+      --log-file PATH    File to write Ansible debug output to (implies --debug).
                          Defaults to ansible-debug-<timestamp>.log in the current
-                         working directory when not specified.
+                         working directory when --debug is set without --log-file.
   -h, --help             Show this help
 
 If --tests is omitted, the script runs all benchmarks in the default order:
   hikari, pgbouncer, ojp
 
-All ansible-playbook invocations run with -vvv (debug verbosity) and their
-output is captured in the log file in addition to being printed to the terminal.
+Debug mode is disabled by default. Pass --debug to enable -vvv verbosity and
+capture ansible-playbook output to a log file.
 EOF
 }
 
 INVENTORY_FILE="${ANSIBLE_DIR}/inventory.yml"
 LOG_FILE=""
+DEBUG_MODE=false
 DEFAULT_BENCHMARKS=(hikari pgbouncer ojp)
 BENCHMARKS_TO_RUN=("${DEFAULT_BENCHMARKS[@]}")
 POSITIONAL_INVENTORY_SET=false
@@ -87,7 +91,12 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       LOG_FILE="$2"
+      DEBUG_MODE=true
       shift 2
+      ;;
+    --debug)
+      DEBUG_MODE=true
+      shift
       ;;
     --tests)
       if [[ $# -lt 2 ]]; then
@@ -175,19 +184,24 @@ if [[ ! -f "${INVENTORY_FILE}" ]]; then
   exit 1
 fi
 
-# Default log file: ansible-debug-<timestamp>.log in the current directory.
-if [[ -z "${LOG_FILE}" ]]; then
-  LOG_FILE="$(pwd)/ansible-debug-$(date +%Y%m%d-%H%M%S).log"
+# Set up debug logging only when debug mode is enabled.
+if [[ "${DEBUG_MODE}" == true ]]; then
+  if [[ -z "${LOG_FILE}" ]]; then
+    LOG_FILE="$(pwd)/ansible-debug-$(date +%Y%m%d-%H%M%S).log"
+  fi
+  export ANSIBLE_LOG_PATH="${LOG_FILE}"
+  echo "Debug mode enabled. Ansible log: ${LOG_FILE}"
+  echo ""
 fi
-export ANSIBLE_LOG_PATH="${LOG_FILE}"
-
-echo "Ansible debug log: ${LOG_FILE}"
-echo ""
 
 run_playbook() {
   local playbook="$1"
   shift
-  (cd "${REPO_DIR}" && ansible-playbook -vvv -i "${INVENTORY_FILE}" "${playbook}" "$@")
+  if [[ "${DEBUG_MODE}" == true ]]; then
+    (cd "${REPO_DIR}" && ansible-playbook -vvv -i "${INVENTORY_FILE}" "${playbook}" "$@")
+  else
+    (cd "${REPO_DIR}" && ansible-playbook -i "${INVENTORY_FILE}" "${playbook}" "$@")
+  fi
 }
 
 # collect_failure_logs STEP_LABEL [PROXY_TYPE]
