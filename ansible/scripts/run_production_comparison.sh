@@ -97,7 +97,7 @@ done
 
 NORMALIZED_BENCHMARKS=()
 for benchmark in "${BENCHMARKS_TO_RUN[@]}"; do
-  benchmark="${benchmark,,}"
+  benchmark="$(printf '%s' "${benchmark}" | tr '[:upper:]' '[:lower:]')"
   benchmark="${benchmark//[[:space:]]/}"
 
   case "${benchmark}" in
@@ -143,6 +143,8 @@ PROD_PGBOUNCER_VARS="${ANSIBLE_DIR}/vars/prod-pgbouncer.yml"
 FAILURE_LOGS_DIR="${REPO_DIR}/results/failure-logs"
 FAILED_STEPS=()
 CURRENT_STEP=0
+# Keep this aligned with the number of run_step calls in each benchmark sequence:
+# setup, run, teardown.
 STEPS_PER_BENCHMARK=3
 TOTAL_STEPS=$((1 + (STEPS_PER_BENCHMARK * ${#BENCHMARKS_TO_RUN[@]})))
 

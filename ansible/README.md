@@ -377,7 +377,7 @@ By default this script executes the full sequence in order:
 9. run OJP benchmark
 10. teardown everything
 
-Use `--tests` to run only the named benchmarks while preserving the same setup/run/teardown pattern for each selected benchmark.
+Use `--tests` to run only the named benchmarks. The script still performs the initial teardown first, then preserves the same setup/run/teardown pattern for each selected benchmark.
 
 ### Exact manual production steps (equivalent to the script)
 
