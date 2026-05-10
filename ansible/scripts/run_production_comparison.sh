@@ -52,7 +52,8 @@ EOF
 }
 
 INVENTORY_FILE="${ANSIBLE_DIR}/inventory.yml"
-SELECTED_BENCHMARKS=(hikari pgbouncer ojp)
+DEFAULT_BENCHMARKS=(hikari pgbouncer ojp)
+BENCHMARKS_TO_RUN=("${DEFAULT_BENCHMARKS[@]}")
 POSITIONAL_INVENTORY_SET=false
 
 while [[ $# -gt 0 ]]; do
@@ -73,7 +74,7 @@ while [[ $# -gt 0 ]]; do
         usage >&2
         exit 1
       fi
-      IFS=',' read -r -a SELECTED_BENCHMARKS <<< "$2"
+      IFS=',' read -r -a BENCHMARKS_TO_RUN <<< "$2"
       shift 2
       ;;
     -h|--help)
@@ -95,7 +96,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 NORMALIZED_BENCHMARKS=()
-for benchmark in "${SELECTED_BENCHMARKS[@]}"; do
+for benchmark in "${BENCHMARKS_TO_RUN[@]}"; do
   benchmark="${benchmark,,}"
   benchmark="${benchmark//[[:space:]]/}"
 
@@ -128,7 +129,7 @@ if [[ ${#NORMALIZED_BENCHMARKS[@]} -eq 0 ]]; then
   exit 1
 fi
 
-SELECTED_BENCHMARKS=("${NORMALIZED_BENCHMARKS[@]}")
+BENCHMARKS_TO_RUN=("${NORMALIZED_BENCHMARKS[@]}")
 SETUP_PLAYBOOK="${ANSIBLE_DIR}/playbooks/setup.yml"
 TEARDOWN_PLAYBOOK="${ANSIBLE_DIR}/playbooks/teardown.yml"
 RUN_HIKARI_PLAYBOOK="${ANSIBLE_DIR}/playbooks/run_benchmarks_hikari.yml"
@@ -143,7 +144,7 @@ FAILURE_LOGS_DIR="${REPO_DIR}/results/failure-logs"
 FAILED_STEPS=()
 CURRENT_STEP=0
 STEPS_PER_BENCHMARK=3
-TOTAL_STEPS=$((1 + (STEPS_PER_BENCHMARK * ${#SELECTED_BENCHMARKS[@]})))
+TOTAL_STEPS=$((1 + (STEPS_PER_BENCHMARK * ${#BENCHMARKS_TO_RUN[@]})))
 
 if [[ ! -f "${INVENTORY_FILE}" ]]; then
   echo "ERROR: inventory file not found: ${INVENTORY_FILE}" >&2
@@ -315,7 +316,7 @@ run_step \
   "" \
   run_playbook "${TEARDOWN_PLAYBOOK}"
 
-for benchmark in "${SELECTED_BENCHMARKS[@]}"; do
+for benchmark in "${BENCHMARKS_TO_RUN[@]}"; do
   case "${benchmark}" in
     hikari)
       run_hikari_sequence
