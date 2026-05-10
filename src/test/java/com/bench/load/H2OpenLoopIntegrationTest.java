@@ -3,6 +3,7 @@ package com.bench.load;
 import com.bench.config.ConnectionProvider;
 import com.bench.metrics.LatencyRecorder;
 import com.bench.metrics.MetricsCollector;
+import com.bench.metrics.MetricsSnapshot;
 import com.bench.workloads.Workload;
 import org.junit.After;
 import org.junit.Before;
@@ -141,6 +142,8 @@ public class H2OpenLoopIntegrationTest {
         }
         generator.stop();
 
+        MetricsSnapshot metricsSnapshot = cumulativeMetrics.getSnapshot();
+        assertEquals("Load generator should not record errors", 0L, metricsSnapshot.getErrors());
         assertEquals("All planned operations should complete", totalOps, tracking.getCompletedPlannedOps());
         assertEquals("SELECT count mismatch", selectOps, tracking.count(SqlType.SELECT));
         assertEquals("INSERT count mismatch", insertOps, tracking.count(SqlType.INSERT));
@@ -235,18 +238,18 @@ public class H2OpenLoopIntegrationTest {
 
     private static final class H2OperationWorkload extends Workload {
         private static final long WORKLOAD_SEED = 1L;
-        private static final long UNUSED_NUM_ACCOUNTS = 1L;
-        private static final long UNUSED_NUM_ITEMS = 1L;
+        private static final long BASE_NUM_ACCOUNTS = 1L;
+        private static final long BASE_NUM_ITEMS = 1L;
         private static final boolean ZIPF_DISABLED = false;
-        private static final double UNUSED_ZIPF_ALPHA = 1.0;
+        private static final double ZIPF_ALPHA = 1.0;
 
         private final List<SqlType> plan;
         private final OperationTracking tracking;
         private final AtomicLong insertedSequence = new AtomicLong(0);
 
         H2OperationWorkload(ConnectionProvider connectionProvider, List<SqlType> plan, OperationTracking tracking) {
-            super(connectionProvider, WORKLOAD_SEED, UNUSED_NUM_ACCOUNTS, UNUSED_NUM_ITEMS,
-                ZIPF_DISABLED, UNUSED_ZIPF_ALPHA);
+            super(connectionProvider, WORKLOAD_SEED, BASE_NUM_ACCOUNTS, BASE_NUM_ITEMS,
+                ZIPF_DISABLED, ZIPF_ALPHA);
             this.plan = plan;
             this.tracking = tracking;
         }
@@ -301,10 +304,9 @@ public class H2OpenLoopIntegrationTest {
         }
 
         private void executeUpdate() throws java.sql.SQLException {
-            Long id = tracking.peekId();
+            Long id = tracking.pollId();
             if (id == null) {
-                executeInsert();
-                return;
+                throw new java.sql.SQLException("No active row available for UPDATE");
             }
             try (Connection conn = connectionProvider.getConnection();
                  PreparedStatement stmt = conn.prepareStatement(
@@ -314,16 +316,16 @@ public class H2OpenLoopIntegrationTest {
                 stmt.setLong(3, id);
                 int updated = stmt.executeUpdate();
                 if (updated == 0) {
-                    executeInsert();
+                    throw new java.sql.SQLException("UPDATE affected 0 rows for id=" + id);
                 }
+                tracking.trackId(id);
             }
         }
 
         private void executeDelete() throws java.sql.SQLException {
             Long id = tracking.pollId();
             if (id == null) {
-                executeInsert();
-                return;
+                throw new java.sql.SQLException("No active row available for DELETE");
             }
             try (Connection conn = connectionProvider.getConnection();
                  PreparedStatement stmt = conn.prepareStatement(
@@ -331,7 +333,7 @@ public class H2OpenLoopIntegrationTest {
                 stmt.setLong(1, id);
                 int deleted = stmt.executeUpdate();
                 if (deleted == 0) {
-                    executeInsert();
+                    throw new java.sql.SQLException("DELETE affected 0 rows for id=" + id);
                 }
             }
         }
