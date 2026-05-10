@@ -85,8 +85,8 @@ collect_failure_logs() {
     cd "${REPO_DIR}" && \
     ansible loadgen \
       -i "${INVENTORY_FILE}" \
-      -m ansible.builtin.command \
-      -a "tar -czf /tmp/stressar-runs.tar.gz -C /tmp stressar-runs" \
+      -m ansible.builtin.shell \
+      -a "if [ -d /tmp/stressar-runs ]; then tar -czf /tmp/stressar-runs.tar.gz -C /tmp stressar-runs; else echo 'WARN: /tmp/stressar-runs not found on this host' >&2; fi" \
       2>&1 || true
   )
   (
@@ -99,7 +99,9 @@ collect_failure_logs() {
   )
   # Extract each per-host tarball so the directory tree is human-readable.
   find "${dest}/loadgen" -name 'stressar-runs.tar.gz' | while IFS= read -r tarball; do
-    tar -xzf "${tarball}" -C "$(dirname "${tarball}")" 2>/dev/null || true
+    if ! tar -xzf "${tarball}" -C "$(dirname "${tarball}")" 2>&1; then
+      echo "  WARN: failed to extract ${tarball} — archive may be incomplete" >&2
+    fi
     rm -f "${tarball}"
   done
   echo "  Load Generator logs -> ${dest}/loadgen/"
