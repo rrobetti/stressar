@@ -124,7 +124,8 @@ public class H2OpenLoopIntegrationTest {
         assertEquals("Expected 1000 write operations", 1000, totalWriteOps);
 
         List<SqlType> plan = buildPlan(selectOps, insertOps, updateOps, deleteOps);
-        OperationTracking tracking = new OperationTracking(totalOps);
+        OperationTracking tracking = new OperationTracking();
+        tracking.trackIds(loadExistingIds());
 
         Workload workload = new H2OperationWorkload(connectionProvider, plan, tracking);
         MetricsCollector cumulativeMetrics = new MetricsCollector();
@@ -213,6 +214,18 @@ public class H2OpenLoopIntegrationTest {
         }
     }
 
+    private List<Long> loadExistingIds() throws Exception {
+        List<Long> ids = new ArrayList<>();
+        try (Connection conn = connectionProvider.getConnection();
+             PreparedStatement stmt = conn.prepareStatement("SELECT id FROM latency_test");
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                ids.add(rs.getLong(1));
+            }
+        }
+        return ids;
+    }
+
     private enum SqlType {
         INSERT,
         UPDATE,
@@ -221,12 +234,19 @@ public class H2OpenLoopIntegrationTest {
     }
 
     private static final class H2OperationWorkload extends Workload {
+        private static final long WORKLOAD_SEED = 1L;
+        private static final long UNUSED_NUM_ACCOUNTS = 1L;
+        private static final long UNUSED_NUM_ITEMS = 1L;
+        private static final boolean ZIPF_DISABLED = false;
+        private static final double UNUSED_ZIPF_ALPHA = 1.0;
+
         private final List<SqlType> plan;
         private final OperationTracking tracking;
         private final AtomicLong insertedSequence = new AtomicLong(0);
 
         H2OperationWorkload(ConnectionProvider connectionProvider, List<SqlType> plan, OperationTracking tracking) {
-            super(connectionProvider, 1L, 1L, 1L, false, 1.0);
+            super(connectionProvider, WORKLOAD_SEED, UNUSED_NUM_ACCOUNTS, UNUSED_NUM_ITEMS,
+                ZIPF_DISABLED, UNUSED_ZIPF_ALPHA);
             this.plan = plan;
             this.tracking = tracking;
         }
@@ -355,13 +375,10 @@ public class H2OpenLoopIntegrationTest {
         private final Map<SqlType, AtomicInteger> counts = new HashMap<>();
         private final Map<SqlType, LatencyRecorder> recorders = new HashMap<>();
 
-        OperationTracking(int totalPlannedOps) {
+        OperationTracking() {
             for (SqlType type : SqlType.values()) {
                 counts.put(type, new AtomicInteger(0));
                 recorders.put(type, new LatencyRecorder(60000, 3));
-            }
-            for (long id = 1; id <= totalPlannedOps; id++) {
-                activeIds.add(id);
             }
         }
 
@@ -389,6 +406,10 @@ public class H2OpenLoopIntegrationTest {
 
         void trackId(long id) {
             activeIds.add(id);
+        }
+
+        void trackIds(List<Long> ids) {
+            activeIds.addAll(ids);
         }
 
         Long peekId() {
