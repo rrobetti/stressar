@@ -8,9 +8,9 @@ application tier nodes if used).
 > Ensure the OJP Server is already running on the proxy nodes before continuing —
 > see [OJP.md](OJP.md).
 
-**Current release:** `0.4.13-beta` &nbsp;|&nbsp; **Minimum Java:** `11`
+**Current release:** `0.4.14-beta` &nbsp;|&nbsp; **Minimum Java:** `11`
 
-**Maven Central coordinates:** `org.openjproxy:ojp-jdbc-driver:0.4.13-beta`
+**Maven Central coordinates:** `org.openjproxy:ojp-jdbc-driver:0.4.14-beta`
 
 ---
 
@@ -48,7 +48,7 @@ The OJP JDBC driver is already declared as a dependency in the benchmark tool's 
 
 ```groovy
 dependencies {
-    implementation 'org.openjproxy:ojp-jdbc-driver:0.4.13-beta'
+    implementation 'org.openjproxy:ojp-jdbc-driver:0.4.14-beta'
     // ... other dependencies
 }
 ```

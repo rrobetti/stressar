@@ -10,7 +10,7 @@ Step-by-step instructions for deploying and running the OJP Performance Benchmar
 | 1 | All remote machines are already provisioned with a Linux OS and accessible via SSH. |
 | 2 | Your laptop (the **control node**) has SSH access to every remote machine. |
 | 3 | Every machine has unrestricted outbound internet access (`curl`, `apt-get`, etc. work). |
-| 4 | OJP version **0.4.13-beta** is used for both the server and the JDBC driver. |
+| 4 | OJP version **0.4.14-beta** is used for both the server and the JDBC driver. |
 | 5 | The `bench` tool is **built and run on the control node only**. No bench process is deployed on remote machines. |
 | 6 | The OJP Server requires **Java 24+** on each proxy node. The control node (bench tool) requires **Java 11+**. |
 
@@ -38,7 +38,7 @@ Step-by-step instructions for deploying and running the OJP Performance Benchmar
 graph TD
     CTRL["🖥️ Control Node (Laptop)\n─────────────────\n• builds bench tool\n• runs all bench JVM replicas\n• SSH to all remote machines"]
 
-    subgraph PROXY_TIER ["Proxy Tier — 3 × OJP Server 0.4.13-beta (gRPC :1059)"]
+    subgraph PROXY_TIER ["Proxy Tier — 3 × OJP Server 0.4.14-beta (gRPC :1059)"]
         P1["PROXY-1\nOJP :1059"]
         P2["PROXY-2\nOJP :1059"]
         P3["PROXY-3\nOJP :1059"]
@@ -273,10 +273,10 @@ sudo apt-get install -y temurin-24-jdk
 # Create OJP directories
 sudo mkdir -p /opt/ojp/bin /opt/ojp/ojp-libs
 
-# Download OJP Server 0.4.13-beta shaded JAR
+# Download OJP Server 0.4.14-beta shaded JAR
 sudo curl -L \
-  https://repo1.maven.org/maven2/org/openjproxy/ojp-server/0.4.13-beta/ojp-server-0.4.13-beta-shaded.jar \
-  -o /opt/ojp/bin/ojp-server-0.4.13-beta-shaded.jar
+  https://repo1.maven.org/maven2/org/openjproxy/ojp-server/0.4.14-beta/ojp-server-0.4.14-beta-shaded.jar \
+  -o /opt/ojp/bin/ojp-server-0.4.14-beta-shaded.jar
 
 # Download PostgreSQL JDBC driver
 sudo curl -L \
@@ -360,7 +360,7 @@ for PROXY_IP in "${PROXY1_IP}" "${PROXY2_IP}" "${PROXY3_IP}"; do
 nohup java -Duser.timezone=UTC \
            -Dojp.libs.path=/opt/ojp/ojp-libs \
            -Dojp.server.port=1059 \
-           -jar /opt/ojp/bin/ojp-server-0.4.13-beta-shaded.jar \
+           -jar /opt/ojp/bin/ojp-server-0.4.14-beta-shaded.jar \
            > /var/log/ojp-server.log 2>&1 &
 echo "OJP PID: \$!"
 
@@ -481,7 +481,7 @@ See [RESULTS_FORMAT.md](RESULTS_FORMAT.md) for the full schema.
 
 ```bash
 for PROXY_IP in "${PROXY1_IP}" "${PROXY2_IP}" "${PROXY3_IP}"; do
-  ssh ${SSH_USER}@${PROXY_IP} "pkill -f ojp-server-0.4.13-beta-shaded.jar && echo 'OJP stopped on ${PROXY_IP}'"
+  ssh ${SSH_USER}@${PROXY_IP} "pkill -f ojp-server-0.4.14-beta-shaded.jar && echo 'OJP stopped on ${PROXY_IP}'"
 done
 ```
 
