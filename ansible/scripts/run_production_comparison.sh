@@ -23,6 +23,8 @@
 #
 # Usage:
 #   ansible/scripts/run_production_comparison.sh [inventory_file]
+#   ansible/scripts/run_production_comparison.sh [inventory_file] --tests hikari
+#   ansible/scripts/run_production_comparison.sh [inventory_file] --tests hikari,ojp
 #
 # Default inventory file:
 #   ansible/inventory.yml
@@ -33,7 +35,100 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANSIBLE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_DIR="$(cd "${ANSIBLE_DIR}/.." && pwd)"
 
-INVENTORY_FILE="${1:-${ANSIBLE_DIR}/inventory.yml}"
+usage() {
+  cat <<EOF
+Usage:
+  $(basename "$0") [inventory_file] [--tests hikari,pgbouncer,ojp]
+  $(basename "$0") --inventory <path> [--tests hikari,pgbouncer,ojp]
+
+Options:
+  -i, --inventory PATH   Inventory file (default: ${ANSIBLE_DIR}/inventory.yml)
+      --tests LIST       Comma-separated benchmarks to run: hikari, pgbouncer, ojp
+  -h, --help             Show this help
+
+If --tests is omitted, the script runs all benchmarks in the default order:
+  hikari, pgbouncer, ojp
+EOF
+}
+
+INVENTORY_FILE="${ANSIBLE_DIR}/inventory.yml"
+SELECTED_BENCHMARKS=(hikari pgbouncer ojp)
+POSITIONAL_INVENTORY_SET=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -i|--inventory)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: missing value for $1" >&2
+        usage >&2
+        exit 1
+      fi
+      INVENTORY_FILE="$2"
+      POSITIONAL_INVENTORY_SET=true
+      shift 2
+      ;;
+    --tests)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: missing value for --tests" >&2
+        usage >&2
+        exit 1
+      fi
+      IFS=',' read -r -a SELECTED_BENCHMARKS <<< "$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      if [[ "${POSITIONAL_INVENTORY_SET}" == false ]]; then
+        INVENTORY_FILE="$1"
+        POSITIONAL_INVENTORY_SET=true
+        shift
+      else
+        echo "ERROR: unrecognized argument: $1" >&2
+        usage >&2
+        exit 1
+      fi
+      ;;
+  esac
+done
+
+NORMALIZED_BENCHMARKS=()
+for benchmark in "${SELECTED_BENCHMARKS[@]}"; do
+  benchmark="${benchmark,,}"
+  benchmark="${benchmark//[[:space:]]/}"
+
+  case "${benchmark}" in
+    hikari|pgbouncer|ojp)
+      already_present=false
+      for existing in "${NORMALIZED_BENCHMARKS[@]}"; do
+        if [[ "${existing}" == "${benchmark}" ]]; then
+          already_present=true
+          break
+        fi
+      done
+      if [[ "${already_present}" == false ]]; then
+        NORMALIZED_BENCHMARKS+=("${benchmark}")
+      fi
+      ;;
+    "")
+      ;;
+    *)
+      echo "ERROR: unsupported benchmark in --tests: ${benchmark}" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ ${#NORMALIZED_BENCHMARKS[@]} -eq 0 ]]; then
+  echo "ERROR: --tests must select at least one benchmark" >&2
+  usage >&2
+  exit 1
+fi
+
+SELECTED_BENCHMARKS=("${NORMALIZED_BENCHMARKS[@]}")
 SETUP_PLAYBOOK="${ANSIBLE_DIR}/playbooks/setup.yml"
 TEARDOWN_PLAYBOOK="${ANSIBLE_DIR}/playbooks/teardown.yml"
 RUN_HIKARI_PLAYBOOK="${ANSIBLE_DIR}/playbooks/run_benchmarks_hikari.yml"
@@ -46,6 +141,8 @@ PROD_PGBOUNCER_VARS="${ANSIBLE_DIR}/vars/prod-pgbouncer.yml"
 
 FAILURE_LOGS_DIR="${REPO_DIR}/results/failure-logs"
 FAILED_STEPS=()
+CURRENT_STEP=0
+TOTAL_STEPS=$((1 + (3 * ${#SELECTED_BENCHMARKS[@]})))
 
 if [[ ! -f "${INVENTORY_FILE}" ]]; then
   echo "ERROR: inventory file not found: ${INVENTORY_FILE}" >&2
@@ -139,62 +236,97 @@ collect_failure_logs() {
   FAILED_STEPS+=("${step_label} -> ${dest}")
 }
 
-# ── Step 1: Initial teardown ──────────────────────────────────────────────────
-echo "== [1/10] Teardown all services and reset DB stats =="
-run_playbook "${TEARDOWN_PLAYBOOK}" || {
-  collect_failure_logs "step-1-teardown"
+run_step() {
+  local step_slug="$1"
+  local step_message="$2"
+  local proxy_type="$3"
+  shift 3
+
+  CURRENT_STEP=$((CURRENT_STEP + 1))
+  echo "== [${CURRENT_STEP}/${TOTAL_STEPS}] ${step_message} =="
+
+  "$@" || collect_failure_logs "step-${CURRENT_STEP}-${step_slug}" "${proxy_type}"
 }
 
-# ── Steps 2–3: Hikari disciplined (budget 300) ────────────────────────────────
-echo "== [2/10] Setup Hikari disciplined environment (prod-hikari: budget 300) =="
-run_playbook "${SETUP_PLAYBOOK}" --tags db,bench,init-db -e @"${PROD_HIKARI_VARS}" || {
-  collect_failure_logs "step-2-hikari-setup"
+run_hikari_sequence() {
+  run_step \
+    "hikari-setup" \
+    "Setup Hikari disciplined environment (prod-hikari: budget 300)" \
+    "" \
+    run_playbook "${SETUP_PLAYBOOK}" --tags db,bench,init-db -e @"${PROD_HIKARI_VARS}"
+
+  run_step \
+    "hikari-run" \
+    "Run Hikari disciplined production benchmark" \
+    "" \
+    run_playbook "${RUN_HIKARI_PLAYBOOK}" -e @"${PROD_HIKARI_VARS}"
+
+  run_step \
+    "teardown" \
+    "Teardown all services and reset DB stats" \
+    "" \
+    run_playbook "${TEARDOWN_PLAYBOOK}"
 }
 
-echo "== [3/10] Run Hikari disciplined production benchmark =="
-run_playbook "${RUN_HIKARI_PLAYBOOK}" -e @"${PROD_HIKARI_VARS}" || {
-  collect_failure_logs "step-3-hikari-run"
+run_pgbouncer_sequence() {
+  run_step \
+    "pgbouncer-setup" \
+    "Setup pgBouncer environment" \
+    "pgbouncer" \
+    run_playbook "${SETUP_PLAYBOOK}" --tags db,pgbouncer,haproxy,bench,init-db -e @"${PROD_PGBOUNCER_VARS}"
+
+  run_step \
+    "pgbouncer-run" \
+    "Run pgBouncer production benchmark" \
+    "pgbouncer" \
+    run_playbook "${RUN_PGBOUNCER_PLAYBOOK}" -e @"${PROD_PGBOUNCER_VARS}"
+
+  run_step \
+    "teardown" \
+    "Teardown all services and reset DB stats" \
+    "" \
+    run_playbook "${TEARDOWN_PLAYBOOK}"
 }
 
-# ── Step 4: Teardown ──────────────────────────────────────────────────────────
-echo "== [4/10] Teardown all services and reset DB stats =="
-run_playbook "${TEARDOWN_PLAYBOOK}" || {
-  collect_failure_logs "step-4-teardown"
+run_ojp_sequence() {
+  run_step \
+    "ojp-setup" \
+    "Setup OJP environment" \
+    "ojp" \
+    run_playbook "${SETUP_PLAYBOOK}" --tags db,ojp,bench,init-db -e @"${PROD_OJP_VARS}"
+
+  run_step \
+    "ojp-run" \
+    "Run OJP production benchmark" \
+    "ojp" \
+    run_playbook "${RUN_OJP_PLAYBOOK}" -e @"${PROD_OJP_VARS}"
+
+  run_step \
+    "teardown" \
+    "Teardown all services and reset DB stats" \
+    "" \
+    run_playbook "${TEARDOWN_PLAYBOOK}"
 }
 
-# ── Steps 5–6: pgBouncer ──────────────────────────────────────────────────────
-echo "== [5/10] Setup pgBouncer environment =="
-run_playbook "${SETUP_PLAYBOOK}" --tags db,pgbouncer,haproxy,bench,init-db -e @"${PROD_PGBOUNCER_VARS}" || {
-  collect_failure_logs "step-5-pgbouncer-setup" "pgbouncer"
-}
+run_step \
+  "teardown" \
+  "Teardown all services and reset DB stats" \
+  "" \
+  run_playbook "${TEARDOWN_PLAYBOOK}"
 
-echo "== [6/10] Run pgBouncer production benchmark =="
-run_playbook "${RUN_PGBOUNCER_PLAYBOOK}" -e @"${PROD_PGBOUNCER_VARS}" || {
-  collect_failure_logs "step-6-pgbouncer-run" "pgbouncer"
-}
-
-# ── Step 7: Teardown ──────────────────────────────────────────────────────────
-echo "== [7/10] Teardown all services and reset DB stats =="
-run_playbook "${TEARDOWN_PLAYBOOK}" || {
-  collect_failure_logs "step-7-teardown"
-}
-
-# ── Steps 8–9: OJP ───────────────────────────────────────────────────────────
-echo "== [8/10] Setup OJP environment =="
-run_playbook "${SETUP_PLAYBOOK}" --tags db,ojp,bench,init-db -e @"${PROD_OJP_VARS}" || {
-  collect_failure_logs "step-8-ojp-setup" "ojp"
-}
-
-echo "== [9/10] Run OJP production benchmark =="
-run_playbook "${RUN_OJP_PLAYBOOK}" -e @"${PROD_OJP_VARS}" || {
-  collect_failure_logs "step-9-ojp-run" "ojp"
-}
-
-# ── Step 10: Final teardown ───────────────────────────────────────────────────
-echo "== [10/10] Final teardown all services and reset DB stats =="
-run_playbook "${TEARDOWN_PLAYBOOK}" || {
-  collect_failure_logs "step-10-teardown"
-}
+for benchmark in "${SELECTED_BENCHMARKS[@]}"; do
+  case "${benchmark}" in
+    hikari)
+      run_hikari_sequence
+      ;;
+    pgbouncer)
+      run_pgbouncer_sequence
+      ;;
+    ojp)
+      run_ojp_sequence
+      ;;
+  esac
+done
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""

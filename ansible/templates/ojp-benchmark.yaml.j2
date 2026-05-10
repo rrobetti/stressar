@@ -18,12 +18,13 @@ replicas: {{ bench_replica_count }}
 
 ojp:
   virtualConnectionMode: PER_WORKER
-  poolSharing: PER_INSTANCE
+  poolSharing: SHARED
+  # Use one shared server-side OJP pool for the entire benchmark run.
   # The OJP cluster is self-aware: every OJP server receives the full
   # bench_db_connection_budget as maxConnections and the cluster automatically
   # divides that budget across its nodes (e.g. budget=48, 3 servers → 16 each).
-  # The Java client never divides the budget; bench_replica_count (load-gen JVMs)
-  # is irrelevant to OJP pool sizing.
+  # bench_replica_count (load-gen JVMs) does not create replica-scoped pools in
+  # this production benchmark template.
   # minConnections = maxConnections so each node's share is fully pre-warmed.
   minConnections: {{ bench_db_connection_budget | int }}
   connectionTimeoutMs: 30000

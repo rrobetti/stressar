@@ -356,20 +356,28 @@ Predefined full-hardware production profiles are available under `ansible/vars/`
 ```bash
 # From repository root
 ansible/scripts/run_production_comparison.sh ansible/inventory.yml
+
+# Run only OJP
+ansible/scripts/run_production_comparison.sh ansible/inventory.yml --tests ojp
+
+# Run a subset
+ansible/scripts/run_production_comparison.sh ansible/inventory.yml --tests hikari,ojp
 ```
 
-This script executes the full sequence in order:
+By default this script executes the full sequence in order:
 
 1. teardown everything
 2. setup for Hikari disciplined (300)
 3. run Hikari disciplined benchmark
 4. teardown everything
-5. setup for OJP
-6. run OJP benchmark
+5. setup for pgBouncer
+6. run pgBouncer benchmark
 7. teardown everything
-8. setup for pgBouncer
-9. run pgBouncer benchmark
+8. setup for OJP
+9. run OJP benchmark
 10. teardown everything
+
+Use `--tests` to run only the named benchmarks while preserving the same setup/run/teardown pattern for each selected benchmark.
 
 ### Exact manual production steps (equivalent to the script)
 
@@ -384,18 +392,18 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_hikar
   -e @ansible/vars/prod-hikari.yml
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml
 
-# 2) OJP (SUT-B)
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
-  --tags db,ojp,bench,init-db -e @ansible/vars/prod-ojp.yml
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_ojp.yml \
-  -e @ansible/vars/prod-ojp.yml
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml
-
-# 3) pgBouncer (SUT-C)
+# 2) pgBouncer (SUT-C)
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
   --tags db,pgbouncer,haproxy,bench,init-db -e @ansible/vars/prod-pgbouncer.yml
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_pgbouncer.yml \
   -e @ansible/vars/prod-pgbouncer.yml
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml
+
+# 3) OJP (SUT-B)
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
+  --tags db,ojp,bench,init-db -e @ansible/vars/prod-ojp.yml
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_ojp.yml \
+  -e @ansible/vars/prod-ojp.yml
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml
 ```
 
@@ -419,7 +427,7 @@ Rationale and parameter decisions:
 Important notes:
 
 - For OJP, `bench_replica_count` is number of bench JVM replicas; it is **not** OJP pool size.
-- In OJP `PER_INSTANCE` mode, max connections per replica are derived from `ceil(dbConnectionBudget / replicas)`.
+- The production OJP benchmark template uses `poolSharing: SHARED`, so all bench replicas share one OJP server-side pool and `bench_replica_count` does not divide the configured budget.
 - For pgBouncer, this repo supports both:
   - **main production profile**: `pgbouncer_local_pool_size: 20`, `pgbouncer_reserve_pool_size: 0`
 
