@@ -538,7 +538,7 @@ ansible -i ansible/inventory.yml ojp -b \
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml --tags ojp
 ```
 
-Example — force reinstall another apt-managed component (pgBouncer shown):
+Example — force reinstall another apt-managed component (pgbouncer shown):
 
 ```bash
 # Uninstall package first, then re-run the component setup tag
