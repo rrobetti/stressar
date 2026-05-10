@@ -236,8 +236,9 @@ public class H2OpenLoopIntegrationTest {
             for (int i = 0; i < rows; i++) {
                 statement.setString(1, "seed-" + i);
                 statement.setTimestamp(2, Timestamp.from(Instant.now()));
-                executeUpdateInstrumented(() -> statement.executeUpdate(), flowInstrumentation);
+                statement.addBatch();
             }
+            executeBatchInstrumented(statement::executeBatch, flowInstrumentation);
         } finally {
             closeInstrumented(stmt, flowInstrumentation);
             closeInstrumented(conn, flowInstrumentation);
@@ -275,6 +276,11 @@ public class H2OpenLoopIntegrationTest {
         int execute() throws java.sql.SQLException;
     }
 
+    @FunctionalInterface
+    private interface BatchSupplier {
+        int[] execute() throws java.sql.SQLException;
+    }
+
     private static ResultSet executeQueryInstrumented(QuerySupplier supplier, FlowInstrumentation flowInstrumentation)
         throws java.sql.SQLException {
         long startNanos = System.nanoTime();
@@ -292,6 +298,16 @@ public class H2OpenLoopIntegrationTest {
             return supplier.execute();
         } finally {
             flowInstrumentation.recordExecuteUpdate(System.nanoTime() - startNanos);
+        }
+    }
+
+    private static int[] executeBatchInstrumented(BatchSupplier supplier, FlowInstrumentation flowInstrumentation)
+        throws java.sql.SQLException {
+        long startNanos = System.nanoTime();
+        try {
+            return supplier.execute();
+        } finally {
+            flowInstrumentation.recordExecuteBatch(System.nanoTime() - startNanos);
         }
     }
 
@@ -548,6 +564,7 @@ public class H2OpenLoopIntegrationTest {
         private final LatencyRecorder connect = new LatencyRecorder(60000, 3);
         private final LatencyRecorder executeQuery = new LatencyRecorder(60000, 3);
         private final LatencyRecorder executeUpdate = new LatencyRecorder(60000, 3);
+        private final LatencyRecorder executeBatch = new LatencyRecorder(60000, 3);
         private final LatencyRecorder close = new LatencyRecorder(60000, 3);
         private final AtomicLong grpcParsingCount = new AtomicLong(0);
 
@@ -563,6 +580,10 @@ public class H2OpenLoopIntegrationTest {
             executeUpdate.recordNanos(latencyNanos);
         }
 
+        void recordExecuteBatch(long latencyNanos) {
+            executeBatch.recordNanos(latencyNanos);
+        }
+
         void recordClose(long latencyNanos) {
             close.recordNanos(latencyNanos);
         }
@@ -573,14 +594,16 @@ public class H2OpenLoopIntegrationTest {
 
         String report() {
             return String.format(
-                "flowMs(connect/executeQuery/executeUpdate/close) median: %.3f / %.3f / %.3f / %.3f; count: %d / %d / %d / %d",
+                "flowMs(connect/executeQuery/executeUpdate/executeBatch/close) median: %.3f / %.3f / %.3f / %.3f / %.3f; count: %d / %d / %d / %d / %d",
                 connect.getPercentile(50.0),
                 executeQuery.getPercentile(50.0),
                 executeUpdate.getPercentile(50.0),
+                executeBatch.getPercentile(50.0),
                 close.getPercentile(50.0),
                 connect.getCount(),
                 executeQuery.getCount(),
                 executeUpdate.getCount(),
+                executeBatch.getCount(),
                 close.getCount()
             );
         }
@@ -599,7 +622,7 @@ public class H2OpenLoopIntegrationTest {
             config.setUsername("sa");
             config.setPassword("");
             config.setMaximumPoolSize(POOL_SIZE);
-            config.setMinimumIdle(10);
+            config.setMinimumIdle(POOL_SIZE);
             config.setAutoCommit(true);
             config.setPoolName("h2-open-loop-test-pool");
             this.dataSource = new HikariDataSource(config);
@@ -632,12 +655,7 @@ public class H2OpenLoopIntegrationTest {
 
         @Override
         public void close() {
-            long startNanos = System.nanoTime();
-            try {
-                dataSource.close();
-            } finally {
-                flowInstrumentation.recordClose(System.nanoTime() - startNanos);
-            }
+            dataSource.close();
         }
     }
 }
