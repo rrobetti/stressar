@@ -42,6 +42,7 @@ bin/
 results/
 *.hlog
 *.csv
+!src/test/resources/*.csv
 *.png
 
 # Temporary files
