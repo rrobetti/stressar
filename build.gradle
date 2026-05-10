@@ -51,6 +51,7 @@ dependencies {
     // Testing
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.hamcrest:hamcrest:2.2'
+    testImplementation 'com.h2database:h2:2.2.224'
 }
 
 application {
