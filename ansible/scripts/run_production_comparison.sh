@@ -142,7 +142,8 @@ PROD_PGBOUNCER_VARS="${ANSIBLE_DIR}/vars/prod-pgbouncer.yml"
 FAILURE_LOGS_DIR="${REPO_DIR}/results/failure-logs"
 FAILED_STEPS=()
 CURRENT_STEP=0
-TOTAL_STEPS=$((1 + (3 * ${#SELECTED_BENCHMARKS[@]})))
+STEPS_PER_BENCHMARK=3
+TOTAL_STEPS=$((1 + (STEPS_PER_BENCHMARK * ${#SELECTED_BENCHMARKS[@]})))
 
 if [[ ! -f "${INVENTORY_FILE}" ]]; then
   echo "ERROR: inventory file not found: ${INVENTORY_FILE}" >&2
