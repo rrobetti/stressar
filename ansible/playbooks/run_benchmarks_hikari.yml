@@ -140,6 +140,35 @@
         - not (item.failed | default(false))
         - not (item.changed | default(false))
 
+    - name: Clean up PostgreSQL log on DB node
+      become: true
+      ansible.builtin.shell: |
+        if [ -f "/var/log/postgresql/postgresql-{{ hostvars[groups['db'][0]]['pg_version'] | default(16) }}-main.log" ]; then
+          truncate -s 0 "/var/log/postgresql/postgresql-{{ hostvars[groups['db'][0]]['pg_version'] | default(16) }}-main.log"
+          echo "CLEARED"
+        else
+          echo "NOT_FOUND"
+        fi
+      args:
+        executable: /bin/bash
+      delegate_to: "{{ groups['db'][0] }}"
+      register: db_log_cleanup_result
+      failed_when: false
+
+    - name: Report PostgreSQL log cleanup failure
+      ansible.builtin.debug:
+        msg: >-
+          WARN: Failed to clear PostgreSQL log on {{ groups['db'][0] }}; continuing.
+          Details: {{ db_log_cleanup_result.stderr | default(db_log_cleanup_result.msg | default('unknown error')) }}
+      when: db_log_cleanup_result.rc | default(0) != 0
+
+    - name: Report PostgreSQL log not found
+      ansible.builtin.debug:
+        msg: "INFO: PostgreSQL log not found on {{ groups['db'][0] }}; continuing."
+      when:
+        - db_log_cleanup_result.rc | default(0) == 0
+        - "'NOT_FOUND' in (db_log_cleanup_result.stdout | default(''))"
+
     - name: Ensure remote bench root exists on loadgen hosts
       ansible.builtin.file:
         path: "{{ remote_bench_root }}"
