@@ -254,7 +254,19 @@ collect_failure_logs() {
 
   # ── Proxy service logs (when applicable) ──────────────────────────────────
   if [[ "${proxy_type}" == "ojp" ]]; then
-    echo "  Collecting OJP proxy service logs..."
+    echo "  Collecting OJP proxy application logs..."
+    (
+      cd "${REPO_DIR}" && \
+      ansible ojp \
+        -i "${INVENTORY_FILE}" \
+        --become \
+        -m ansible.builtin.fetch \
+        -a "src=/var/log/ojp-server.log dest=${dest}/ojp/ flat=no fail_on_missing=false validate_checksum=false" \
+        2>&1 || true
+    )
+    echo "  OJP proxy app logs  -> ${dest}/ojp/"
+
+    echo "  Collecting OJP proxy journal logs..."
     (
       cd "${REPO_DIR}" && \
       ansible ojp \
@@ -262,9 +274,9 @@ collect_failure_logs() {
         --become \
         -m ansible.builtin.shell \
         -a "journalctl -u ojp-server.service --no-pager -n 5000 2>&1 || true" \
-        2>&1 | tee "${dest}/ojp-server.log" || true
+        2>&1 | tee "${dest}/ojp-server.journal.log" || true
     )
-    echo "  OJP proxy logs      -> ${dest}/ojp-server.log"
+    echo "  OJP proxy journal   -> ${dest}/ojp-server.journal.log"
   elif [[ "${proxy_type}" == "pgbouncer" ]]; then
     echo "  Collecting pgBouncer proxy service logs..."
     (

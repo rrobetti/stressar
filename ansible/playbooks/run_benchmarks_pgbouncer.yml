@@ -322,8 +322,11 @@
     # ── Warmup ───────────────────────────────────────────────────────────────
 
     - name: Run warmup pass on first loadgen host
-      ansible.builtin.command: >
-        {{ remote_bench_binary }} warmup --config {{ remote_bench_config_file }}
+      ansible.builtin.shell: >
+        "{{ remote_bench_binary }}" warmup --config "{{ remote_bench_config_file }}"
+        >"{{ remote_run_root }}/warmup.log" 2>&1
+      args:
+        executable: /bin/bash
       register: warmup_out
       changed_when: true
       delegate_to: "{{ loadgen_hosts[0] }}"
@@ -335,11 +338,15 @@
     # ── Parallel benchmark replicas ──────────────────────────────────────────
 
     - name: Launch benchmark replicas on loadgen hosts
-      ansible.builtin.command: >
-        {{ remote_bench_binary }} run
-        --config {{ remote_bench_config_file }}
-        --output {{ remote_run_root }}/replica-{{ item }}/
+      ansible.builtin.shell: >
+        mkdir -p "{{ remote_run_root }}/replica-{{ item }}" &&
+        "{{ remote_bench_binary }}" run
+        --config "{{ remote_bench_config_file }}"
+        --output "{{ remote_run_root }}/replica-{{ item }}/"
         --instance-id {{ item }}
+        >"{{ remote_run_root }}/replica-{{ item }}/application.log" 2>&1
+      args:
+        executable: /bin/bash
       async: 10800
       poll: 0
       register: bench_jobs
