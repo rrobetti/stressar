@@ -394,6 +394,9 @@ By default this script executes the full sequence in order:
 8. setup for OJP
 9. run OJP benchmark
 10. teardown everything
+11. setup for OJP with slow query segregation enabled
+12. run OJP benchmark with slow query segregation enabled
+13. teardown everything
 
 Use `--tests` to run only the named benchmarks (`hikari`, `pgbouncer`, `ojp`, `ojp_sqs`). The script still performs the initial teardown first, then preserves the same setup/run/teardown pattern for each selected benchmark.
 

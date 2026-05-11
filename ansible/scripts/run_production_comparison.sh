@@ -57,7 +57,7 @@ Options:
   -h, --help             Show this help
 
 If --tests is omitted, the script runs all benchmarks in the default order:
-  hikari, pgbouncer, ojp
+  hikari, pgbouncer, ojp, ojp_sqs
 
 Debug mode is disabled by default. Pass --debug to enable -vvv verbosity and
 capture ansible-playbook output to a log file.
@@ -68,7 +68,7 @@ INVENTORY_FILE="${ANSIBLE_DIR}/inventory.yml"
 LOG_FILE=""
 DEBUG_MODE=false
 RUN_REPETITIONS=1
-DEFAULT_BENCHMARKS=(hikari pgbouncer ojp)
+DEFAULT_BENCHMARKS=(hikari pgbouncer ojp ojp_sqs)
 BENCHMARKS_TO_RUN=("${DEFAULT_BENCHMARKS[@]}")
 POSITIONAL_INVENTORY_SET=false
 
