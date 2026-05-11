@@ -345,6 +345,7 @@ Predefined full-hardware production profiles are available under `ansible/vars/`
 
 - `prod-hikari.yml` (SUT-A): 16 replicas, budget 300, max per replica 19
 - `prod-ojp.yml` (SUT-B): 16 replicas, OJP budget 48
+- `prod-ojp-sqs.yml` (SUT-B variant): OJP profile with slow query segregation enabled
 - `prod-pgbouncer.yml` (SUT-C): 16 replicas, pgBouncer pool 16 per proxy node, local bench pool 20
 - all production profiles set `bench_repetitions: 5` for report methodology alignment
 
@@ -359,6 +360,9 @@ ansible/scripts/run_production_comparison.sh ansible/inventory.yml
 
 # Run only OJP
 ansible/scripts/run_production_comparison.sh ansible/inventory.yml --tests ojp
+
+# Run only OJP with slow query segregation enabled
+ansible/scripts/run_production_comparison.sh ansible/inventory.yml --tests ojp_sqs
 
 # Run a subset
 ansible/scripts/run_production_comparison.sh ansible/inventory.yml --tests hikari,ojp
@@ -392,7 +396,7 @@ By default this script executes the full sequence in order:
 9. run OJP benchmark
 10. teardown everything
 
-Use `--tests` to run only the named benchmarks. The script still performs the initial teardown first, then preserves the same setup/run/teardown pattern for each selected benchmark.
+Use `--tests` to run only the named benchmarks (`hikari`, `pgbouncer`, `ojp`, `ojp_sqs`). The script still performs the initial teardown first, then preserves the same setup/run/teardown pattern for each selected benchmark.
 
 ### Exact manual production steps (equivalent to the script)
 
@@ -420,9 +424,16 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_ojp.yml \
   -e @ansible/vars/prod-ojp.yml
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml
+
+# 4) OJP with slow query segregation enabled (SUT-B variant)
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
+  --tags db,ojp,bench,init-db -e @ansible/vars/prod-ojp-sqs.yml
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_ojp.yml \
+  -e @ansible/vars/prod-ojp-sqs.yml
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml
 ```
 
-Important: always pass a production profile (`prod-hikari.yml`, `prod-ojp.yml`, `prod-pgbouncer.yml`) to avoid inheriting non-production defaults.
+Important: always pass a production profile (`prod-hikari.yml`, `prod-ojp.yml`, `prod-ojp-sqs.yml`, `prod-pgbouncer.yml`) to avoid inheriting non-production defaults.
 
 ---
 
