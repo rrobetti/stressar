@@ -121,6 +121,7 @@
         state: absent
       delegate_to: "{{ item }}"
       loop: "{{ loadgen_hosts }}"
+      ignore_errors: true
 
     - name: Ensure remote bench root exists on loadgen hosts
       ansible.builtin.file:
