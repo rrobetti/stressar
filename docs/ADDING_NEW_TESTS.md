@@ -3,7 +3,8 @@
 This project already ships four runnable scenario options:
 - Hikari direct: `ansible/playbooks/run_benchmarks_hikari.yml`
 - OJP: `ansible/playbooks/run_benchmarks_ojp.yml`
-- OJP with slow query segregation (`ojp_sqs`): `ansible/playbooks/run_benchmarks_ojp.yml` with `ansible/vars/prod-ojp-sqs.yml` (or `ansible/scripts/run_production_comparison.sh --tests ojp_sqs`)
+- OJP with slow query segregation (`ojp_sqs`): `ansible/playbooks/run_benchmarks_ojp.yml`
+  with `ansible/vars/prod-ojp-sqs.yml` (or `ansible/scripts/run_production_comparison.sh --tests ojp_sqs`)
 - pgBouncer: `ansible/playbooks/run_benchmarks_pgbouncer.yml`
 
 If you want to add a new scenario (for example ProxySQL + MySQL) and compare it to OJP, reuse the same structure.
