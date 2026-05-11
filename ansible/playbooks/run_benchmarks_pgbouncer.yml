@@ -195,7 +195,24 @@
         state: absent
       delegate_to: "{{ item }}"
       loop: "{{ loadgen_hosts }}"
-      ignore_errors: true
+      register: loadgen_cleanup_results
+      failed_when: false
+
+    - name: Report loadgen log cleanup delete failures
+      ansible.builtin.debug:
+        msg: >-
+          WARN: Failed to delete /tmp/stressar-runs on {{ item.item }}; continuing.
+          Details: {{ item.msg | default(item.stderr | default(item.exception | default('unknown error'))) }}
+      loop: "{{ loadgen_cleanup_results.results | default([]) }}"
+      when: item.failed | default(false)
+
+    - name: Report loadgen log directory already absent
+      ansible.builtin.debug:
+        msg: "INFO: /tmp/stressar-runs not found on {{ item.item }}; continuing."
+      loop: "{{ loadgen_cleanup_results.results | default([]) }}"
+      when:
+        - not (item.failed | default(false))
+        - not (item.changed | default(false))
 
     - name: Ensure remote bench root exists on loadgen hosts
       ansible.builtin.file:
