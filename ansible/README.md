@@ -347,10 +347,6 @@ Predefined full-hardware production profiles are available under `ansible/vars/`
 - `prod-ojp.yml` (SUT-B): 16 replicas, OJP budget 48
 - `prod-ojp-sqs.yml` (SUT-B variant): OJP profile with slow query segregation enabled
 - `prod-pgbouncer.yml` (SUT-C): 16 replicas, pgBouncer pool 16 per proxy node, local bench pool 20
-- all production profiles set `bench_repetitions: 5` for report methodology alignment
-
-> **TODO:** playbook-level automatic repetition loops are not yet implemented; run each profile
-> multiple times and report median/min/max/variance across runs.
 
 ### Recommended: run the full production comparison with one script
 
@@ -366,6 +362,9 @@ ansible/scripts/run_production_comparison.sh ansible/inventory.yml --tests ojp_s
 
 # Run a subset
 ansible/scripts/run_production_comparison.sh ansible/inventory.yml --tests hikari,ojp
+
+# Run selected benchmarks 5 times
+ansible/scripts/run_production_comparison.sh ansible/inventory.yml --tests hikari,ojp --repeat 5
 ```
 
 To enable Ansible verbose output (`-vvv`) and capture the full log to a file, pass `--debug`:

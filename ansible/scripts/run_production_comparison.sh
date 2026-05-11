@@ -26,6 +26,7 @@
 #   ansible/scripts/run_production_comparison.sh [inventory_file] --tests hikari
 #   ansible/scripts/run_production_comparison.sh [inventory_file] --tests hikari,ojp
 #   ansible/scripts/run_production_comparison.sh [inventory_file] --tests ojp_sqs
+#   ansible/scripts/run_production_comparison.sh [inventory_file] --tests ojp --repeat 5
 #   ansible/scripts/run_production_comparison.sh [inventory_file] --debug
 #   ansible/scripts/run_production_comparison.sh [inventory_file] --debug --log-file /path/to/ansible.log
 #
@@ -41,12 +42,14 @@ REPO_DIR="$(cd "${ANSIBLE_DIR}/.." && pwd)"
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") [inventory_file] [--tests hikari,pgbouncer,ojp,ojp_sqs] [--debug [--log-file PATH]]
-  $(basename "$0") --inventory <path> [--tests hikari,pgbouncer,ojp,ojp_sqs] [--debug [--log-file PATH]]
+  $(basename "$0") [inventory_file] [--tests hikari,pgbouncer,ojp,ojp_sqs] [--repeat N] [--debug [--log-file PATH]]
+  $(basename "$0") --inventory <path> [--tests hikari,pgbouncer,ojp,ojp_sqs] [--repeat N] [--debug [--log-file PATH]]
 
 Options:
   -i, --inventory PATH   Inventory file (default: ${ANSIBLE_DIR}/inventory.yml)
       --tests LIST       Comma-separated benchmarks to run: hikari, pgbouncer, ojp, ojp_sqs
+      --repeat N         Number of times to run the selected benchmark sequence (default: 1)
+      --repetitions N    Alias for --repeat
       --debug            Enable Ansible verbose output (-vvv) and capture to a log file.
       --log-file PATH    File to write Ansible debug output to (implies --debug).
                          Defaults to ansible-debug-<timestamp>.log in the current
@@ -64,6 +67,7 @@ EOF
 INVENTORY_FILE="${ANSIBLE_DIR}/inventory.yml"
 LOG_FILE=""
 DEBUG_MODE=false
+RUN_REPETITIONS=1
 DEFAULT_BENCHMARKS=(hikari pgbouncer ojp)
 BENCHMARKS_TO_RUN=("${DEFAULT_BENCHMARKS[@]}")
 POSITIONAL_INVENTORY_SET=false
@@ -106,6 +110,20 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       IFS=',' read -r -a BENCHMARKS_TO_RUN <<< "$2"
+      shift 2
+      ;;
+    --repeat|--repetitions)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: missing value for $1" >&2
+        usage >&2
+        exit 1
+      fi
+      if ! [[ "$2" =~ ^[1-9][0-9]*$ ]]; then
+        echo "ERROR: $1 must be a positive integer (got: $2)" >&2
+        usage >&2
+        exit 1
+      fi
+      RUN_REPETITIONS="$2"
       shift 2
       ;;
     -h|--help)
@@ -179,7 +197,7 @@ CURRENT_STEP=0
 # setup, run, and teardown.
 STEPS_PER_BENCHMARK=3
 # +1 accounts for the initial teardown that always runs before any benchmark.
-TOTAL_STEPS=$((1 + (STEPS_PER_BENCHMARK * ${#BENCHMARKS_TO_RUN[@]})))
+TOTAL_STEPS=$((1 + (STEPS_PER_BENCHMARK * ${#BENCHMARKS_TO_RUN[@]} * RUN_REPETITIONS)))
 
 if [[ ! -f "${INVENTORY_FILE}" ]]; then
   echo "ERROR: inventory file not found: ${INVENTORY_FILE}" >&2
@@ -397,21 +415,28 @@ run_step \
   "" \
   run_playbook "${TEARDOWN_PLAYBOOK}"
 
-for benchmark in "${BENCHMARKS_TO_RUN[@]}"; do
-  case "${benchmark}" in
-    hikari)
-      run_hikari_sequence
-      ;;
-    pgbouncer)
-      run_pgbouncer_sequence
-      ;;
-    ojp)
-      run_ojp_sequence
-      ;;
-    ojp_sqs)
-      run_ojp_sqs_sequence
-      ;;
-  esac
+for repetition in $(seq 1 "${RUN_REPETITIONS}"); do
+  if [[ "${RUN_REPETITIONS}" -gt 1 ]]; then
+    echo ""
+    echo "== Repetition ${repetition}/${RUN_REPETITIONS} =="
+  fi
+
+  for benchmark in "${BENCHMARKS_TO_RUN[@]}"; do
+    case "${benchmark}" in
+      hikari)
+        run_hikari_sequence
+        ;;
+      pgbouncer)
+        run_pgbouncer_sequence
+        ;;
+      ojp)
+        run_ojp_sequence
+        ;;
+      ojp_sqs)
+        run_ojp_sqs_sequence
+        ;;
+    esac
+  done
 done
 
 # ── Summary ───────────────────────────────────────────────────────────────────

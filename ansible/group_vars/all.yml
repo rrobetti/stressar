@@ -39,7 +39,6 @@ bench_target_rps:           500
 bench_warmup_seconds:       300
 bench_duration_seconds:     1800
 bench_cooldown_seconds:     120
-bench_repetitions:          5
 bench_slo_p95_ms:           50
 bench_workload_type:        "W2_MIXED"
 bench_connection_mode:      "OJP"
