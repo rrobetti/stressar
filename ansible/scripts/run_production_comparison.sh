@@ -264,7 +264,7 @@ collect_failure_logs() {
         -a "src=/var/log/ojp-server.log dest=${dest}/ojp/ flat=no fail_on_missing=false validate_checksum=false" \
         2>&1 || true
     )
-    echo "  OJP proxy app logs  -> ${dest}/ojp/"
+    echo "  OJP proxy app logs   -> ${dest}/ojp/"
 
     echo "  Collecting OJP proxy journal logs..."
     (

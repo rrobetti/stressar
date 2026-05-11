@@ -220,7 +220,7 @@
 
     - name: Print warmup output
       ansible.builtin.debug:
-        msg: "{{ warmup_out.stdout_lines[-10:] }}"
+        msg: "Warmup log written to {{ remote_run_root }}/warmup.log on {{ loadgen_hosts[0] }}"
 
     # ── Parallel benchmark replicas ──────────────────────────────────────────
 
