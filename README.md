@@ -132,6 +132,8 @@ Comprehensive documentation is available in the `docs/` directory:
   - Expected outcomes stated as falsifiable hypotheses
   - Analysis and reporting procedures
 
+- **[ADDING_NEW_TESTS.md](docs/ADDING_NEW_TESTS.md)** - What is required to add a new benchmark scenario (for example ProxySQL + MySQL) and compare it with existing OJP runs
+
 - **[RUNBOOK.md](docs/RUNBOOK.md)** - Complete operational guide with exact commands
   - PostgreSQL setup and configuration
   - Database initialization
