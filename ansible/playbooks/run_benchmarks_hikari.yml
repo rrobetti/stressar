@@ -143,8 +143,9 @@
     - name: Clean up PostgreSQL log on DB node
       become: true
       ansible.builtin.shell: |
-        if [ -f "/var/log/postgresql/postgresql-{{ hostvars[groups['db'][0]]['pg_version'] | default(16) }}-main.log" ]; then
-          truncate -s 0 "/var/log/postgresql/postgresql-{{ hostvars[groups['db'][0]]['pg_version'] | default(16) }}-main.log"
+        pg_log_file="/var/log/postgresql/postgresql-{{ hostvars[groups['db'][0]]['pg_version'] | default(16) }}-main.log"
+        if [ -f "${pg_log_file}" ]; then
+          truncate -s 0 "${pg_log_file}"
           echo "CLEARED"
         else
           echo "NOT_FOUND"
