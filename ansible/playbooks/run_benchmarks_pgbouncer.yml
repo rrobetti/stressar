@@ -214,7 +214,7 @@
         - not (item.failed | default(false))
         - not (item.changed | default(false))
 
-    - name: Clean up pgBouncer logs on pgBouncer nodes
+    - name: Clean up pgBouncer log on pgBouncer nodes
       become: true
       ansible.builtin.shell: |
         if [ -f "/var/log/pgbouncer/pgbouncer.log" ]; then
@@ -246,7 +246,7 @@
         - item.rc | default(0) == 0
         - "'NOT_FOUND' in (item.stdout | default(''))"
 
-    - name: Clean up HAProxy logs on HAProxy nodes
+    - name: Clean up HAProxy log on HAProxy nodes
       become: true
       ansible.builtin.shell: |
         if [ -f "/var/log/haproxy.log" ]; then

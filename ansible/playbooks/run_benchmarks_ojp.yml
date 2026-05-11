@@ -172,7 +172,7 @@
         - not (item.failed | default(false))
         - not (item.changed | default(false))
 
-    - name: Clean up OJP server logs on OJP nodes
+    - name: Clean up OJP server log on OJP nodes
       become: true
       ansible.builtin.shell: |
         if [ -f "/var/log/ojp-server.log" ]; then
