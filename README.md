@@ -1,6 +1,6 @@
 # Stressar
 
-A benchmark tool to stress test JDBC-based solutions, including but not limited to connection pooling (HikariCP) and proxied solutions (OJP, PgBouncer). Stressar enables rigorous, reproducible comparison of PostgreSQL connection strategies from a standard JDBC client perspective.
+A benchmark tool to stress test JDBC-based solutions, including but not limited to connection pooling (HikariCP) and proxied solutions (OJP, PgBouncer). Stressar enables rigorous, reproducible comparison of PostgreSQL connection strategies from a standard JDBC client perspective. It can also be expanded to test other database vendors.
 
 ---
 
