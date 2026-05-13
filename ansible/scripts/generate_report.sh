@@ -569,8 +569,24 @@ if awk "BEGIN {exit !(${total_failed_requests} > 0)}"; then
   printf '|----------|------------|-------|---------------------|\n'
   for f in "${SUMMARY_FILES[@]}"; do
     inst=$(jq -r ".runInfo.instanceId // \"?\"" "${f}")
-    # Emit one row per error type with first sample error message
-    jq -r --arg inst "${inst}" '. as $root | .errorsByType // {} | to_entries[] | "| \($inst) | \(.key) | \(.value) | \($root.firstErrorMessageByType[.key] // "—") |"' "${f}"
+    failed_for_instance=$(jq -r '.failedRequests // 0' "${f}")
+    typed_error_count=$(jq -r '(.errorsByType // {} | [.[]] | add) // 0' "${f}")
+
+    # Emit one row per error type with first sample error message.
+    # Normalize message text so markdown tables remain valid.
+    jq -r --arg inst "${inst}" '
+      . as $root
+      | (.errorsByType // {})
+      | to_entries[]?
+      | "| \($inst) | \(.key) | \(.value) | \((($root.firstErrorMessageByType[.key] // "—") | tostring | gsub("\\r|\\n"; " ") | gsub("\\|"; "\\\\|"))) |"
+    ' "${f}"
+
+    if [[ "${failed_for_instance}" =~ ^[0-9]+$ && "${typed_error_count}" =~ ^[0-9]+$ ]]; then
+      unattributed_error_count=$((failed_for_instance - typed_error_count))
+      if (( unattributed_error_count > 0 )); then
+        printf '| %s | unknown | %s | — |\n' "${inst}" "${unattributed_error_count}"
+      fi
+    fi
   done
 fi
 if [[ -n "${jvm_section}" ]]; then
