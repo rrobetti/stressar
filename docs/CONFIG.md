@@ -279,14 +279,19 @@ workload:
 ```yaml
 workload:
   type: W3_SLOW_QUERY
-  slowQueryPercent: 0.01  # 1% slow queries
+  slowQueryPercent: 0.10  # 10% slow queries (default)
 ```
 
 **Mix:**
-- 1%: Slow query (aggregation, table scan)
-- 99%: Fast queries (indexed lookups)
+- 10%: Slow query (aggregation, table scan — ~2 s typical duration)
+- 90%: Fast queries (indexed lookups)
 
-**Use Case:** Testing tail latency behavior under mixed fast/slow workload.
+**Use Case:** Testing connection-pool behaviour and tail latency under a mixed fast/slow workload.
+The 10 % default is chosen so that approximately 12–13 of the 18 per-replica pool connections are
+occupied by slow queries simultaneously (at 1,000 RPS aggregate), creating measurable pool-queue
+pressure that differentiates SUT queueing strategies. See
+[PARAMETER_DECISIONS.md §36](PARAMETER_DECISIONS.md#36-w3-slow-query-mix--10--slowquerypercent--010)
+for full rationale.
 
 ---
 
@@ -536,24 +541,32 @@ workload:
 
 ---
 
-#### `workload.slowQueryPercent` (double, default: 0.01)
+#### `workload.slowQueryPercent` (double, default: 0.10)
 
-Percentage of requests that are slow queries.
+Percentage of requests that are slow analytical queries.
 
 **Used by:** W3_SLOW_QUERY
 
 **Range:** 0.0 to 1.0
 
+**Rationale for 10% default:** At 1,000 RPS aggregate load and a ~2 s slow query duration,
+Little's Law predicts ~12–13 slow connections occupied simultaneously per 18-connection pool
+budget. This creates measurable pool-queue pressure that differentiates SUT queueing strategies.
+At the original 1% default only ~1–2 slow connections are ever occupied, pool queue depth stays
+at zero for all SUTs, and no differentiation is observable. See
+[PARAMETER_DECISIONS.md §36](PARAMETER_DECISIONS.md#36-w3-slow-query-mix--10--slowquerypercent--010)
+for full analysis.
+
 **Examples:**
 ```yaml
-# 1% slow queries (realistic)
+# 1% slow queries (low-stress, original default — pool rarely pressured)
 slowQueryPercent: 0.01
 
-# 5% slow queries (more stress)
-slowQueryPercent: 0.05
-
-# 10% slow queries (high contention)
+# 10% slow queries (default — moderate pool pressure, differentiates SUTs)
 slowQueryPercent: 0.10
+
+# 20% slow queries (high contention — full pool saturation test)
+slowQueryPercent: 0.20
 ```
 
 **Slow Query Example:**
@@ -1117,7 +1130,7 @@ workload:
   warmupSeconds: 300
   durationSeconds: 600
   cooldownSeconds: 120
-  slowQueryPercent: 0.01  # 1% slow queries
+  slowQueryPercent: 0.10  # 10% slow queries (default — keeps pool under measurable pressure)
 
 numAccounts: 10000
 numItems: 5000

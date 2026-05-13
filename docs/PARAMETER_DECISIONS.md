@@ -78,6 +78,7 @@ identical client-side pool settings.
 33. [PostgreSQL — shared_buffers = 64 GB](#33-postgresql--shared_buffers--64-gb)
 34. [JVM Settings — G1GC, -Xms4g -Xmx8g](#34-jvm-settings--g1gc--xms4g--xmx8g)
 35. [Hardware Specification — 8-Core Load Generators](#35-hardware-specification--8-core-load-generators)
+36. [W3 Slow-Query Mix — 10 % (`slowQueryPercent = 0.10`)](#36-w3-slow-query-mix--10--slowquerypercent--010)
 
 ---
 
@@ -792,7 +793,58 @@ pooler's p99 contribution.
 
 ---
 
-*Document version: 1.0 — April 2026*
+## 36. W3 Slow-Query Mix — 10 % (`slowQueryPercent = 0.10`)
+
+**Value:** `slowQueryPercent: 0.10` — 10 % of W3_SLOW_QUERY operations are slow analytical
+queries; the remaining 90 % are fast indexed lookups.
+
+**Reason:** The primary purpose of the W3_SLOW_QUERY workload is to keep enough connections
+simultaneously occupied with long-running queries to create visible and measurable pool-queueing
+pressure across all SUTs. At the original 1 % rate the workload failed to achieve this goal:
+
+| Parameter | Value |
+|-----------|-------|
+| Aggregate load | 1,000 RPS |
+| Slow query duration (typical) | ~2 s |
+| Expected concurrent slow connections at 1 % | 1,000 RPS × 0.01 × 2 s = **20 connections** across 16 replicas ≈ **1.25 per replica** |
+| Expected concurrent slow connections at 10 % | 1,000 RPS × 0.10 × 2 s = **200 connections** across 16 replicas ≈ **12.5 per replica** |
+| Per-replica pool budget (SUT-B / SUT-C) | **18 connections** |
+
+At 1 %, Little's Law predicts fewer than 2 connections per replica are ever occupied by slow
+queries, against a budget of 18. Pool queue depth stays at zero for all SUTs, and all SUTs produce
+indistinguishable results. The workload differentiates nothing.
+
+At 10 %, approximately 12–13 connections per replica are persistently occupied by slow queries.
+This leaves only 5–6 connections available for the 900 fast queries per second, creating
+measurable connection-acquisition wait times. The congestion is strong enough to distinguish SUTs
+with different queueing behaviours (e.g., OJP virtual-connection scheduling vs. HikariCP's
+first-come-first-served queue vs. PgBouncer's transaction-mode connection reuse).
+
+**Why not higher (e.g., 20 % or 50 %):**
+At 20 % the expected concurrent slow connections per replica exceeds the pool budget by more than
+2×, which saturates the pool for all SUTs simultaneously. Every SUT queues requests; the workload
+becomes a test of queue management under pathological overload rather than a test of normal
+pool-utilisation efficiency. The 10 % value was chosen as the lowest percentage that produces
+measurable differentiation while keeping the workload in the regime of moderate pool pressure
+rather than full saturation.
+
+**Configuring a custom percentage:**
+The `slowQueryPercent` parameter is fully configurable per run via the YAML config file and is
+read by the benchmark at startup. The default (10 %) is appropriate for the standard production
+comparison run. To reproduce the original 1 % behaviour or to explore higher contention levels,
+set it explicitly:
+
+```yaml
+workload:
+  type: W3_SLOW_QUERY
+  slowQueryPercent: 0.01   # original low-stress value
+  # slowQueryPercent: 0.10  # default — moderate pool pressure
+  # slowQueryPercent: 0.20  # high-stress / full saturation test
+```
+
+---
+
+*Document version: 1.1 — May 2026*
 
 ---
 
