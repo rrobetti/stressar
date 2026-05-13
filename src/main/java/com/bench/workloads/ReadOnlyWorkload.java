@@ -36,6 +36,7 @@ public class ReadOnlyWorkload extends Workload {
     
     private void executeQueryA() throws SQLException {
         long accountId = generateAccountId();
+        long startNanos = System.nanoTime();
         
         try (Connection conn = connectionProvider.getConnection();
              PreparedStatement stmt = conn.prepareStatement(QUERY_A)) {
@@ -51,13 +52,20 @@ public class ReadOnlyWorkload extends Workload {
                 }
             }
         }
+        if (queryLatencyRecorder != null) {
+            queryLatencyRecorder.record("query_a", System.nanoTime() - startNanos);
+        }
     }
     
     private void executeQueryB() throws SQLException {
+        long startNanos = System.nanoTime();
         executeSingleLongParamQuery(
             WorkloadQueries.LAST_20_ORDERS_BY_ACCOUNT,
             generateAccountId(),
             WorkloadQueries::consumeLastOrdersRow);
+        if (queryLatencyRecorder != null) {
+            queryLatencyRecorder.record("query_b", System.nanoTime() - startNanos);
+        }
     }
     
     @Override

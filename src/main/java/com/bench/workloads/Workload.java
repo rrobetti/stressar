@@ -1,6 +1,7 @@
 package com.bench.workloads;
 
 import com.bench.config.ConnectionProvider;
+import com.bench.metrics.QueryLatencyRecorder;
 import com.bench.util.RandomGenerator;
 import com.bench.util.ZipfGenerator;
 
@@ -22,6 +23,9 @@ public abstract class Workload {
     protected final RandomGenerator random;
     protected final ZipfGenerator zipfGenerator;
     protected final boolean useZipf;
+    
+    /** Recorder for per-query-type latency; may be null if not configured. */
+    protected QueryLatencyRecorder queryLatencyRecorder;
     
     // Dataset bounds
     protected long numAccounts;
@@ -52,6 +56,15 @@ public abstract class Workload {
      * Get workload name.
      */
     public abstract String getName();
+
+    /**
+     * Set the per-query latency recorder.
+     * Sub-classes that compose other workloads should override this to propagate
+     * the recorder to their children.
+     */
+    public void setQueryLatencyRecorder(QueryLatencyRecorder recorder) {
+        this.queryLatencyRecorder = recorder;
+    }
     
     /**
      * Generate an account ID based on distribution.
