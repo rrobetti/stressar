@@ -63,6 +63,10 @@ jq_field() {
   jq -r "${field} // \"N/A\"" "${file}"
 }
 
+is_non_negative_int() {
+  [[ "$1" =~ ^[0-9]+$ ]]
+}
+
 # ── Aggregate bench-client metrics across all instances ──────────────────────
 
 total_achieved_rps=0
@@ -569,8 +573,28 @@ if awk "BEGIN {exit !(${total_failed_requests} > 0)}"; then
   printf '|----------|------------|-------|---------------------|\n'
   for f in "${SUMMARY_FILES[@]}"; do
     inst=$(jq -r ".runInfo.instanceId // \"?\"" "${f}")
-    # Emit one row per error type with first sample error message
-    jq -r --arg inst "${inst}" '. as $root | .errorsByType // {} | to_entries[] | "| \($inst) | \(.key) | \(.value) | \($root.firstErrorMessageByType[.key] // "—") |"' "${f}"
+    failed_for_instance=$(jq -r '.failedRequests // 0' "${f}")
+    typed_error_count=$(jq -r '(.errorsByType // {} | [.[]] | add) // 0' "${f}")
+
+    # Emit one row per error type with first sample error message.
+    # Normalize message text so markdown tables remain valid.
+    jq -r --arg inst "${inst}" '
+      . as $root
+      | (.errorsByType // {})
+      | to_entries[]?
+      | ($root.firstErrorMessageByType[.key] // "—") as $msg
+      | (if ($msg | type) == "string" then $msg else ($msg | tostring) end
+         | gsub("\\r|\\n"; " ")
+         | gsub("\\|"; "\\\\|")) as $safe_msg
+      | "| \($inst) | \(.key) | \(.value) | \($safe_msg) |"
+    ' "${f}"
+
+    if is_non_negative_int "${failed_for_instance}" && is_non_negative_int "${typed_error_count}"; then
+      unattributed_error_count=$((failed_for_instance - typed_error_count))
+      if (( unattributed_error_count > 0 )); then
+        printf '| %s | unknown | %s | — |\n' "${inst}" "${unattributed_error_count}"
+      fi
+    fi
   done
 fi
 if [[ -n "${jvm_section}" ]]; then
