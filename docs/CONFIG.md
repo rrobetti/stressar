@@ -279,14 +279,20 @@ workload:
 ```yaml
 workload:
   type: W3_SLOW_QUERY
-  slowQueryPercent: 0.01  # 1% slow queries
+  slowQueryPercent: 0.10  # 10% slow queries (default)
+  queryAPercent: 0.30     # of the fast 90%: 30% QueryA (account lookup)
+  writePercent: 0.20      # of the fast 90%: 20% writes
 ```
 
 **Mix:**
-- 1%: Slow query (aggregation, table scan)
-- 99%: Fast queries (indexed lookups)
+- 10%: Slow query (aggregation over recent orders — ~2 s typical duration)
+- 90%: W2_MIXED operations (20% writes, 80% reads with 30% QueryA / 70% QueryB)
 
-**Use Case:** Testing tail latency behavior under mixed fast/slow workload.
+**Use Case:** Testing connection-pool behaviour and tail latency under a mixed fast/slow workload.
+W3_SLOW_QUERY extends W2_MIXED by adding a slow analytical query layer on top, keeping several
+connections occupied concurrently and creating measurable pool-queue pressure. See
+[PARAMETER_DECISIONS.md §36](PARAMETER_DECISIONS.md#36-w3-slow-query-mix--10--slowquerypercent--010)
+for rationale.
 
 ---
 
@@ -536,24 +542,27 @@ workload:
 
 ---
 
-#### `workload.slowQueryPercent` (double, default: 0.01)
+#### `workload.slowQueryPercent` (double, default: 0.10)
 
-Percentage of requests that are slow queries.
+Percentage of requests that are slow analytical queries.
 
 **Used by:** W3_SLOW_QUERY
 
 **Range:** 0.0 to 1.0
 
+**Rationale for 10% default:** At 1,000 RPS aggregate load and a ~2 s slow query duration,
+Little's Law predicts ~12–13 slow connections occupied simultaneously per 18-connection pool
+budget, creating measurable pool-queue pressure. See
+[PARAMETER_DECISIONS.md §36](PARAMETER_DECISIONS.md#36-w3-slow-query-mix--10--slowquerypercent--010)
+for full analysis.
+
 **Examples:**
 ```yaml
-# 1% slow queries (realistic)
-slowQueryPercent: 0.01
-
-# 5% slow queries (more stress)
-slowQueryPercent: 0.05
-
-# 10% slow queries (high contention)
+# 10% slow queries (default — moderate pool pressure)
 slowQueryPercent: 0.10
+
+# 20% slow queries (high contention)
+slowQueryPercent: 0.20
 ```
 
 **Slow Query Example:**
@@ -1117,7 +1126,7 @@ workload:
   warmupSeconds: 300
   durationSeconds: 600
   cooldownSeconds: 120
-  slowQueryPercent: 0.01  # 1% slow queries
+  slowQueryPercent: 0.10  # 10% slow queries (default — keeps pool under measurable pressure)
 
 numAccounts: 10000
 numItems: 5000

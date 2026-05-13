@@ -1,18 +1,16 @@
 # W3 Slow Query Workload Configuration
-# Tests mixed workload with fast queries and occasional slow queries
-# Useful for testing tail latency behavior under mixed query patterns
+# W3_SLOW_QUERY = W2_MIXED operations + a slow analytical query layer.
+# At each operation: 10% → slow path (heavy join/aggregate);
+#                    90% → W2_MIXED (read/write OLTP).
 #
 # Query Mix:
-#   - Fast queries (99%): Indexed lookups (QueryA, QueryB)
-#   - Slow queries (1%): Complex aggregations, table scans
+#   - Slow queries (10%): Complex aggregations over recent orders
+#   - Fast queries (90%, W2_MIXED):
+#       - Writes (20%): Insert order + lines + update total
+#       - Reads (80%): 30% QueryA (account lookup), 70% QueryB (last 20 orders)
 #
-# Slow Query Example:
-#   SELECT a.id, COUNT(o.id) as order_count, SUM(o.total) as total_spent
-#   FROM accounts a
-#   LEFT JOIN orders o ON o.account_id = a.id
-#   GROUP BY a.id
-#   ORDER BY total_spent DESC
-#   LIMIT 100;
+# The 10% slow-query rate keeps several connections occupied concurrently,
+# ensuring the pool operates under measurable pressure throughout the benchmark.
 #
 # Run with:
 #   bench run --config w3-slow-query.yaml --output results/w3/
@@ -39,7 +37,9 @@ workload:
   repeatCount: 5
   
   # Workload mix for W3_SLOW_QUERY
-  slowQueryPercent: 0.01  # 1% slow queries, 99% fast queries
+  slowQueryPercent: 0.10  # 10% slow queries; remaining 90% uses W2_MIXED distribution
+  queryAPercent: 0.30     # Of the fast 90%: 30% QueryA (account lookup)
+  writePercent: 0.20      # Of the fast 90%: 20% writes (insert order + lines)
   
   # Parameter distribution
   useZipf: false

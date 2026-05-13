@@ -43,7 +43,9 @@ public class WorkloadFactory {
             case W3_SLOW_QUERY:
                 return new SlowQueryWorkload(connectionProvider, seed,
                     numAccounts, numItems, useZipf, zipfAlpha,
-                    workloadConfig.getSlowQueryPercent());
+                    workloadConfig.getSlowQueryPercent(),
+                    workloadConfig.getQueryAPercent(),
+                    workloadConfig.getWritePercent());
                     
             default:
                 throw new IllegalArgumentException("Unknown workload type: " + type);
