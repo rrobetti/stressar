@@ -287,9 +287,8 @@ workload:
 - 90%: Fast queries (indexed lookups)
 
 **Use Case:** Testing connection-pool behaviour and tail latency under a mixed fast/slow workload.
-The 10 % default is chosen so that approximately 12–13 of the 18 per-replica pool connections are
-occupied by slow queries simultaneously (at 1,000 RPS aggregate), creating measurable pool-queue
-pressure that differentiates SUT queueing strategies. See
+At 1,000 RPS aggregate, 10 % slow queries occupies approximately 12–13 of the 18 per-replica pool
+connections concurrently (Little's Law), creating measurable pool-queue pressure. See
 [PARAMETER_DECISIONS.md §36](PARAMETER_DECISIONS.md#36-w3-slow-query-mix--10--slowquerypercent--010)
 for full rationale.
 
@@ -551,21 +550,16 @@ Percentage of requests that are slow analytical queries.
 
 **Rationale for 10% default:** At 1,000 RPS aggregate load and a ~2 s slow query duration,
 Little's Law predicts ~12–13 slow connections occupied simultaneously per 18-connection pool
-budget. This creates measurable pool-queue pressure that differentiates SUT queueing strategies.
-At the original 1% default only ~1–2 slow connections are ever occupied, pool queue depth stays
-at zero for all SUTs, and no differentiation is observable. See
+budget, creating measurable pool-queue pressure. See
 [PARAMETER_DECISIONS.md §36](PARAMETER_DECISIONS.md#36-w3-slow-query-mix--10--slowquerypercent--010)
 for full analysis.
 
 **Examples:**
 ```yaml
-# 1% slow queries (low-stress, original default — pool rarely pressured)
-slowQueryPercent: 0.01
-
-# 10% slow queries (default — moderate pool pressure, differentiates SUTs)
+# 10% slow queries (default — moderate pool pressure)
 slowQueryPercent: 0.10
 
-# 20% slow queries (high contention — full pool saturation test)
+# 20% slow queries (high contention)
 slowQueryPercent: 0.20
 ```
 
