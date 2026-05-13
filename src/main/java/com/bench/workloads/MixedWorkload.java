@@ -1,6 +1,7 @@
 package com.bench.workloads;
 
 import com.bench.config.ConnectionProvider;
+import com.bench.metrics.QueryLatencyRecorder;
 
 import java.sql.SQLException;
 
@@ -31,6 +32,13 @@ public class MixedWorkload extends Workload {
         } else {
             readWorkload.execute();
         }
+    }
+
+    @Override
+    public void setQueryLatencyRecorder(QueryLatencyRecorder recorder) {
+        super.setQueryLatencyRecorder(recorder);
+        readWorkload.setQueryLatencyRecorder(recorder);
+        writeWorkload.setQueryLatencyRecorder(recorder);
     }
     
     @Override

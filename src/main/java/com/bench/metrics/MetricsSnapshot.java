@@ -29,6 +29,10 @@ public class MetricsSnapshot {
     private Long gcPauseMsTotal;
     private Integer dbActiveConnectionsMedian;
     private Integer queueDepthMax;
+
+    // Per-query latency (mean in ms) and execution counts
+    private Map<String, Double> perQueryMeanLatencyMs = new HashMap<>();
+    private Map<String, Long> perQueryCount = new HashMap<>();
     
     public double getAchievedThroughput() {
         if (timestampMs <= startTimeMs) {
@@ -189,5 +193,21 @@ public class MetricsSnapshot {
 
     public void setQueueDepthMax(Integer queueDepthMax) {
         this.queueDepthMax = queueDepthMax;
+    }
+
+    public Map<String, Double> getPerQueryMeanLatencyMs() {
+        return perQueryMeanLatencyMs;
+    }
+
+    public void setPerQueryMeanLatencyMs(Map<String, Double> perQueryMeanLatencyMs) {
+        this.perQueryMeanLatencyMs = perQueryMeanLatencyMs;
+    }
+
+    public Map<String, Long> getPerQueryCount() {
+        return perQueryCount;
+    }
+
+    public void setPerQueryCount(Map<String, Long> perQueryCount) {
+        this.perQueryCount = perQueryCount;
     }
 }

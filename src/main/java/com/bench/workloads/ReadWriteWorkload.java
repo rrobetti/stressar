@@ -38,6 +38,7 @@ public class ReadWriteWorkload extends Workload {
     public void execute() throws SQLException {
         long accountId = generateAccountId();
         int numLines = random.nextInt(1, 5);
+        long startNanos = System.nanoTime();
         
         try (Connection conn = connectionProvider.getConnection()) {
             conn.setAutoCommit(false);
@@ -86,6 +87,9 @@ public class ReadWriteWorkload extends Workload {
                 conn.rollback();
                 throw e;
             }
+        }
+        if (queryLatencyRecorder != null) {
+            queryLatencyRecorder.record("write_transaction", System.nanoTime() - startNanos);
         }
     }
     

@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class MetricsCollector {
     private final LatencyRecorder latencyRecorder;
+    private final QueryLatencyRecorder queryLatencyRecorder;
     private final AtomicLong attemptedRequests;
     private final AtomicLong completedRequests;
     private final AtomicLong errors;
@@ -22,6 +23,7 @@ public class MetricsCollector {
     
     public MetricsCollector() {
         this.latencyRecorder = new LatencyRecorder(60000, 3); // Track up to 60s latencies
+        this.queryLatencyRecorder = new QueryLatencyRecorder();
         this.attemptedRequests = new AtomicLong(0);
         this.completedRequests = new AtomicLong(0);
         this.errors = new AtomicLong(0);
@@ -98,6 +100,10 @@ public class MetricsCollector {
             snapshot.setMean(latencyRecorder.getMean());
         }
         
+        // Per-query average latency
+        snapshot.setPerQueryMeanLatencyMs(queryLatencyRecorder.getMeanLatenciesByQuery());
+        snapshot.setPerQueryCount(queryLatencyRecorder.getCountByQuery());
+        
         return snapshot;
     }
     
@@ -111,6 +117,7 @@ public class MetricsCollector {
         errorsByType.clear();
         firstErrorMessageByType.clear();
         latencyRecorder.reset();
+        queryLatencyRecorder.reset();
     }
     
     /**
@@ -118,6 +125,13 @@ public class MetricsCollector {
      */
     public LatencyRecorder getLatencyRecorder() {
         return latencyRecorder;
+    }
+
+    /**
+     * Get the per-query latency recorder.
+     */
+    public QueryLatencyRecorder getQueryLatencyRecorder() {
+        return queryLatencyRecorder;
     }
     
     public long getStartTimeMs() {

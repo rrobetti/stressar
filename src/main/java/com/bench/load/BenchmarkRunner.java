@@ -63,6 +63,9 @@ public class BenchmarkRunner {
 
             // Create metrics collector
             MetricsCollector metrics = new MetricsCollector();
+
+            // Attach per-query latency recorder to the workload
+            workload.setQueryLatencyRecorder(metrics.getQueryLatencyRecorder());
             
             // Create interval metrics collector for per-interval percentiles
             MetricsCollector intervalMetrics = new MetricsCollector();
@@ -244,6 +247,13 @@ public class BenchmarkRunner {
                 logger.info("Latency p50: {} ms", String.format("%.2f", summary.latencyMs.p50));
                 logger.info("Latency p95: {} ms", String.format("%.2f", summary.latencyMs.p95));
                 logger.info("Latency p99: {} ms", String.format("%.2f", summary.latencyMs.p99));
+                if (!summary.perQueryLatencyMs.isEmpty()) {
+                    logger.info("=== Per-query average latency ===");
+                    summary.perQueryLatencyMs.forEach((query, avgMs) -> {
+                        long count = summary.perQueryCount.getOrDefault(query, 0L);
+                        logger.info("  {}: avg={} ms, count={}", query, String.format("%.2f", avgMs), count);
+                    });
+                }
             }
             logger.info("Results written to: {}", outputDir);
         }

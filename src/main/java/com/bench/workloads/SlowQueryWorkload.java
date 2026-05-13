@@ -1,6 +1,7 @@
 package com.bench.workloads;
 
 import com.bench.config.ConnectionProvider;
+import com.bench.metrics.QueryLatencyRecorder;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -48,8 +49,15 @@ public class SlowQueryWorkload extends Workload {
             mixedWorkload.execute();
         }
     }
+
+    @Override
+    public void setQueryLatencyRecorder(QueryLatencyRecorder recorder) {
+        super.setQueryLatencyRecorder(recorder);
+        mixedWorkload.setQueryLatencyRecorder(recorder);
+    }
     
     private void executeSlowQuery() throws SQLException {
+        long startNanos = System.nanoTime();
         try (Connection conn = connectionProvider.getConnection();
              PreparedStatement stmt = conn.prepareStatement(SLOW_QUERY)) {
             
@@ -63,6 +71,9 @@ public class SlowQueryWorkload extends Workload {
                     rs.getLong("computed_total");
                 }
             }
+        }
+        if (queryLatencyRecorder != null) {
+            queryLatencyRecorder.record("slow_query", System.nanoTime() - startNanos);
         }
     }
     

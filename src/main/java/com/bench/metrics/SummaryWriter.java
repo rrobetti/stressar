@@ -53,6 +53,10 @@ public class SummaryWriter {
         summary.errorsByType = snapshot.getErrorsByType();
         summary.firstErrorMessageByType = snapshot.getFirstErrorMessageByType();
         
+        // Per-query average latency
+        summary.perQueryLatencyMs = snapshot.getPerQueryMeanLatencyMs();
+        summary.perQueryCount = snapshot.getPerQueryCount();
+        
         // System metrics
         if (snapshot.getAppCpuMedian() != null) {
             summary.appCpuMedian = snapshot.getAppCpuMedian();
@@ -83,6 +87,8 @@ public class SummaryWriter {
         public LatencyMetrics latencyMs;
         public Map<String, Long> errorsByType = new HashMap<>();
         public Map<String, String> firstErrorMessageByType = new HashMap<>();
+        public Map<String, Double> perQueryLatencyMs = new HashMap<>();
+        public Map<String, Long> perQueryCount = new HashMap<>();
         
         // Optional system metrics
         public Double appCpuMedian;
