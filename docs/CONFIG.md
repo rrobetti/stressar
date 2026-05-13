@@ -280,17 +280,19 @@ workload:
 workload:
   type: W3_SLOW_QUERY
   slowQueryPercent: 0.10  # 10% slow queries (default)
+  queryAPercent: 0.30     # of the fast 90%: 30% QueryA (account lookup)
+  writePercent: 0.20      # of the fast 90%: 20% writes
 ```
 
 **Mix:**
-- 10%: Slow query (aggregation, table scan — ~2 s typical duration)
-- 90%: Fast queries (indexed lookups)
+- 10%: Slow query (aggregation over recent orders — ~2 s typical duration)
+- 90%: W2_MIXED operations (20% writes, 80% reads with 30% QueryA / 70% QueryB)
 
 **Use Case:** Testing connection-pool behaviour and tail latency under a mixed fast/slow workload.
-At 1,000 RPS aggregate, 10 % slow queries occupies approximately 12–13 of the 18 per-replica pool
-connections concurrently (Little's Law), creating measurable pool-queue pressure. See
+W3_SLOW_QUERY extends W2_MIXED by adding a slow analytical query layer on top, keeping several
+connections occupied concurrently and creating measurable pool-queue pressure. See
 [PARAMETER_DECISIONS.md §36](PARAMETER_DECISIONS.md#36-w3-slow-query-mix--10--slowquerypercent--010)
-for full rationale.
+for rationale.
 
 ---
 

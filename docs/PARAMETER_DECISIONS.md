@@ -796,19 +796,21 @@ pooler's p99 contribution.
 ## 36. W3 Slow-Query Mix — 10 % (`slowQueryPercent = 0.10`)
 
 **Value:** `slowQueryPercent: 0.10` — 10 % of W3_SLOW_QUERY operations are slow analytical
-queries; the remaining 90 % are fast indexed lookups.
+queries; the remaining 90 % follow the W2_MIXED distribution (20 % writes, 80 % reads).
 
 **Reason:** By Little's Law, at 1,000 RPS aggregate load with a ~2 s slow query duration,
 10 % keeps approximately 12–13 of the 18 per-replica pool connections occupied by slow queries
-concurrently, leaving 5–6 connections available for fast queries. This is enough to create
-measurable pool-queue pressure without pushing into pathological saturation.
+concurrently, leaving 5–6 connections available for the W2_MIXED operations. This is enough to
+create measurable pool-queue pressure without pushing into pathological saturation.
 
-The `slowQueryPercent` parameter is fully configurable per run:
+The `slowQueryPercent`, `queryAPercent`, and `writePercent` parameters are all configurable per run:
 
 ```yaml
 workload:
   type: W3_SLOW_QUERY
   slowQueryPercent: 0.10   # default
+  queryAPercent: 0.30      # of the fast 90%: 30% QueryA / 70% QueryB
+  writePercent: 0.20       # of the fast 90%: 20% writes
 ```
 
 ---

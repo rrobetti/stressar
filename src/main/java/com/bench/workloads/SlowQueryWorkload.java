@@ -9,14 +9,17 @@ import java.sql.SQLException;
 
 /**
  * W3: Slow-query mix workload.
- * Mix: 90% fast path (same as W1 QueryB) / 10% slow path (heavy join/aggregate).
- * The 10% slow-query rate is intentional: at typical RPS and query durations it
- * keeps several connections occupied simultaneously, ensuring the connection pool
- * operates under measurable pressure throughout the benchmark.
+ * Combines the W2_MIXED query distribution with an additional slow analytical path.
+ * Mix: {@code slowQueryPercent} slow path (heavy join/aggregate) /
+ *      {@code (1 - slowQueryPercent)} W2_MIXED operations (read/write OLTP).
+ * At the default 10% slow-query rate and typical RPS, several connections are
+ * occupied concurrently by slow queries, keeping the pool under measurable
+ * pressure throughout the benchmark.
  */
 public class SlowQueryWorkload extends Workload {
     private final double slowQueryPercent;
-    
+    private final MixedWorkload mixedWorkload;
+
     // Slow path: heavy join/aggregate query
     private static final String SLOW_QUERY =
         "SELECT o.order_id, o.account_id, o.created_at, o.status, " +
@@ -29,9 +32,12 @@ public class SlowQueryWorkload extends Workload {
     
     public SlowQueryWorkload(ConnectionProvider connectionProvider, long seed,
                             long numAccounts, long numItems, boolean useZipf,
-                            double zipfAlpha, double slowQueryPercent) {
+                            double zipfAlpha, double slowQueryPercent,
+                            double queryAPercent, double writePercent) {
         super(connectionProvider, seed, numAccounts, numItems, useZipf, zipfAlpha);
         this.slowQueryPercent = slowQueryPercent;
+        this.mixedWorkload = new MixedWorkload(connectionProvider, seed + 1,
+            numAccounts, numItems, useZipf, zipfAlpha, queryAPercent, writePercent);
     }
     
     @Override
@@ -39,15 +45,8 @@ public class SlowQueryWorkload extends Workload {
         if (random.nextDouble() < slowQueryPercent) {
             executeSlowQuery();
         } else {
-            executeFastQuery();
+            mixedWorkload.execute();
         }
-    }
-    
-    private void executeFastQuery() throws SQLException {
-        executeSingleLongParamQuery(
-            WorkloadQueries.LAST_20_ORDERS_BY_ACCOUNT,
-            generateAccountId(),
-            WorkloadQueries::consumeLastOrdersRow);
     }
     
     private void executeSlowQuery() throws SQLException {
