@@ -17,7 +17,7 @@ public class WorkloadConfig {
     // Workload-specific parameters
     private double queryAPercent = 0.30;  // For W1
     private double writePercent = 0.20;   // For mixed workloads
-    private double slowQueryPercent = 0.01; // For W3
+    private double slowQueryPercent = 0.10; // For W3
     
     // Parameter distributions
     private boolean useZipf = false;

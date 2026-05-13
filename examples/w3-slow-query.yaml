@@ -1,10 +1,15 @@
 # W3 Slow Query Workload Configuration
-# Tests mixed workload with fast queries and occasional slow queries
-# Useful for testing tail latency behavior under mixed query patterns
+# Tests mixed workload with fast queries and occasional slow queries.
+# Useful for measuring connection-pool pressure and tail latency under a
+# realistic analytics-vs-OLTP mix.
 #
 # Query Mix:
-#   - Fast queries (99%): Indexed lookups (QueryA, QueryB)
-#   - Slow queries (1%): Complex aggregations, table scans
+#   - Fast queries (90%): Indexed lookups (QueryA, QueryB)
+#   - Slow queries (10%): Complex aggregations, table scans
+#
+# The 10% slow-query rate is chosen so that at typical RPS and query durations
+# several connections are occupied concurrently, keeping the pool under
+# measurable pressure throughout the benchmark.
 #
 # Slow Query Example:
 #   SELECT a.id, COUNT(o.id) as order_count, SUM(o.total) as total_spent
@@ -39,7 +44,7 @@ workload:
   repeatCount: 5
   
   # Workload mix for W3_SLOW_QUERY
-  slowQueryPercent: 0.01  # 1% slow queries, 99% fast queries
+  slowQueryPercent: 0.10  # 10% slow queries, 90% fast queries — keeps pool under pressure
   
   # Parameter distribution
   useZipf: false

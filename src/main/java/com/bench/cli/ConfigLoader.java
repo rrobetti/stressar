@@ -174,6 +174,15 @@ public class ConfigLoader {
         if (wlData.containsKey("openLoop")) {
             wlConfig.setOpenLoop((Boolean) wlData.get("openLoop"));
         }
+        if (wlData.containsKey("slowQueryPercent")) {
+            wlConfig.setSlowQueryPercent(yamlDouble(wlData.get("slowQueryPercent")));
+        }
+        if (wlData.containsKey("queryAPercent")) {
+            wlConfig.setQueryAPercent(yamlDouble(wlData.get("queryAPercent")));
+        }
+        if (wlData.containsKey("writePercent")) {
+            wlConfig.setWritePercent(yamlDouble(wlData.get("writePercent")));
+        }
     }
 
     private static void applyWorkloadTiming(Map<String, Object> wlData, WorkloadConfig wlConfig) {

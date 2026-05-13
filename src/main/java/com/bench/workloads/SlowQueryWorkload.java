@@ -9,7 +9,10 @@ import java.sql.SQLException;
 
 /**
  * W3: Slow-query mix workload.
- * Mix: 99% fast path (same as W1 QueryB) / 1% slow path (heavy join/aggregate).
+ * Mix: 90% fast path (same as W1 QueryB) / 10% slow path (heavy join/aggregate).
+ * The 10% slow-query rate is intentional: at typical RPS and query durations it
+ * keeps several connections occupied simultaneously, ensuring the connection pool
+ * operates under measurable pressure throughout the benchmark.
  */
 public class SlowQueryWorkload extends Workload {
     private final double slowQueryPercent;
