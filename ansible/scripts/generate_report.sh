@@ -584,7 +584,7 @@ if awk "BEGIN {exit !(${total_failed_requests} > 0)}"; then
       | to_entries[]?
       | ($root.firstErrorMessageByType[.key] // "—") as $msg
       | (if ($msg | type) == "string" then $msg else ($msg | tostring) end
-         | gsub("\\r|\\n"; " ")
+         | gsub("[\\r\\n]+"; " ")
          | gsub("\\|"; "\\\\|")) as $safe_msg
       | "| \($inst) | \(.key) | \(.value) | \($safe_msg) |"
     ' "${f}"
