@@ -68,7 +68,7 @@ The three systems under test (run in this order):
 ./gradlew installDist
 ```
 
-The executable will be at: `build/install/ojp-performance-tester/bin/bench`
+The executable will be at: `build/install/stressar/bin/bench`
 
 ### 2. Initialize Database
 
@@ -76,7 +76,7 @@ The executable will be at: `build/install/ojp-performance-tester/bin/bench`
 > dataset (1 M accounts / 100 K items / 10 M orders) is seeded by the Ansible automation.
 
 ```bash
-build/install/ojp-performance-tester/bin/bench init-db \
+build/install/stressar/bin/bench init-db \
   --jdbc-url "jdbc:postgresql://localhost:5432/benchdb" \
   --username benchuser \
   --password benchpass \
@@ -88,7 +88,7 @@ build/install/ojp-performance-tester/bin/bench init-db \
 ### 3. Run Benchmark
 
 ```bash
-build/install/ojp-performance-tester/bin/bench run \
+build/install/stressar/bin/bench run \
   --config examples/w2-open-loop-500rps.yaml \
   --output results/
 ```

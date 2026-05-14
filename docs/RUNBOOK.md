@@ -149,16 +149,16 @@ EOF
 > The `./gradlew` wrapper downloads Gradle automatically on first use.
 
 ```bash
-cd ojp-performance-tester-tool
+cd stressar-tool
 ./gradlew build
 ./gradlew installDist
 ```
 
-The executable will be at: `build/install/ojp-performance-tester/bin/bench`
+The executable will be at: `build/install/stressar/bin/bench`
 
 For convenience, add an alias:
 ```bash
-alias bench="$(pwd)/build/install/ojp-performance-tester/bin/bench"
+alias bench="$(pwd)/build/install/stressar/bin/bench"
 ```
 
 ### Initialize Schema and Data

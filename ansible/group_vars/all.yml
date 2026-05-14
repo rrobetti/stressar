@@ -60,4 +60,4 @@ bench_seed:         0.42
 # playbook_dir resolves to ansible/playbooks/ — go two levels up to reach the repo root.
 bench_repo_dir:   "{{ playbook_dir }}/../.."
 bench_results_dir: "{{ bench_repo_dir }}/results"
-bench_binary:     "{{ bench_repo_dir }}/build/install/ojp-performance-tester/bin/bench"
+bench_binary:     "{{ bench_repo_dir }}/build/install/stressar/bin/bench"

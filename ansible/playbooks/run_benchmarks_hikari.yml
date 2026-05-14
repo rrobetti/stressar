@@ -49,7 +49,7 @@
     loadgen_hosts: "{{ groups['loadgen'] | default([]) }}"
     loadgen_count: "{{ loadgen_hosts | length }}"
     remote_bench_root: "/tmp/stressar-bench"
-    remote_bench_home: "{{ remote_bench_root }}/ojp-performance-tester"
+    remote_bench_home: "{{ remote_bench_root }}/stressar"
     remote_bench_binary: "{{ remote_bench_home }}/bin/bench"
     remote_run_root: "/tmp/stressar-runs/{{ run_name }}"
     remote_bench_config_file: "{{ remote_run_root }}/hikari-benchmark.yaml"
@@ -188,7 +188,7 @@
 
     - name: Copy bench distribution to loadgen hosts
       ansible.builtin.copy:
-        src: "{{ bench_repo_dir }}/build/install/ojp-performance-tester/"
+        src: "{{ bench_repo_dir }}/build/install/stressar/"
         dest: "{{ remote_bench_home }}/"
         mode: preserve
       delegate_to: "{{ item }}"

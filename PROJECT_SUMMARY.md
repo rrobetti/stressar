@@ -125,20 +125,20 @@ com.bench/
 ./gradlew installDist
 
 # 2. Initialize database
-./build/install/ojp-performance-tester/bin/bench init-db \
+./build/install/stressar/bin/bench init-db \
   --jdbc-url jdbc:postgresql://localhost:5432/benchdb \
   --username benchuser --password benchpass
 
 # 3. Run benchmark
-./build/install/ojp-performance-tester/bin/bench run \
+./build/install/stressar/bin/bench run \
   --config examples/w2-open-loop-500rps.yaml
 
 # 4. Capacity sweep
-./build/install/ojp-performance-tester/bin/bench sweep \
+./build/install/stressar/bin/bench sweep \
   --config examples/w1-read-only.yaml
 
 # 5. Aggregate results
-./build/install/ojp-performance-tester/bin/bench aggregate \
+./build/install/stressar/bin/bench aggregate \
   --input-dir results/raw --output-dir results
 ```
 

@@ -296,20 +296,20 @@ done
 
 ```bash
 # Clone the repository (if not already done)
-git clone https://github.com/rrobetti/ojp-performance-tester-tool.git
-cd ojp-performance-tester-tool
+git clone https://github.com/rrobetti/stressar-tool.git
+cd stressar-tool
 
 # Build and create the runnable distribution
 ./gradlew installDist
 
 # Verify the executable
-build/install/ojp-performance-tester/bin/bench --help
+build/install/stressar/bin/bench --help
 ```
 
 Add a convenience alias for the session:
 
 ```bash
-alias bench="$(pwd)/build/install/ojp-performance-tester/bin/bench"
+alias bench="$(pwd)/build/install/stressar/bin/bench"
 ```
 
 ---
