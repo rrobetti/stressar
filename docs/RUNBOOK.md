@@ -149,7 +149,7 @@ EOF
 > The `./gradlew` wrapper downloads Gradle automatically on first use.
 
 ```bash
-cd stressar-tool
+cd stressar
 ./gradlew build
 ./gradlew installDist
 ```

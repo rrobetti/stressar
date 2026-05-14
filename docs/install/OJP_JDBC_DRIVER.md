@@ -56,7 +56,7 @@ dependencies {
 Build (or rebuild) the tool to pull in the driver:
 
 ```bash
-cd stressar-tool
+cd stressar
 ./gradlew installDist
 ```
 

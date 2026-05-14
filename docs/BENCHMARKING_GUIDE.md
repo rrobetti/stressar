@@ -288,8 +288,8 @@ to 8 GB and document this deviation.
 On LG-1 and LG-2 (run the same commands on both machines):
 
 ```bash
-git clone https://github.com/rrobetti/stressar-tool.git
-cd stressar-tool
+git clone https://github.com/rrobetti/stressar.git
+cd stressar
 ./gradlew installDist
 export BENCH="$(pwd)/build/install/stressar/bin/bench"
 ```

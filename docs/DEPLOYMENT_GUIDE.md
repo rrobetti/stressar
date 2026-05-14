@@ -296,8 +296,8 @@ done
 
 ```bash
 # Clone the repository (if not already done)
-git clone https://github.com/rrobetti/stressar-tool.git
-cd stressar-tool
+git clone https://github.com/rrobetti/stressar.git
+cd stressar
 
 # Build and create the runnable distribution
 ./gradlew installDist
