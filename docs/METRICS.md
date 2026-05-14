@@ -1,13 +1,26 @@
 # Metrics Reference — What Is Measured and How
 
-This document describes every metric the OJP Performance Benchmark Tool collects,
-the mechanism used to collect it, the output file it appears in, and how to
-interpret it.
+This document has two parts:
+
+- **[Section 0](#0-reading-the-report--field-reference)** — Plain-English reference for every field in the benchmark report, organized in the same order they appear. Start here if you want to understand what you are reading.
+- **Sections 1–9** — Technical details: how the measurement clock works, the collection pipeline, output file schemas, workload SQL, and known limitations.
 
 ---
 
 ## Table of Contents
 
+0. [Reading the Report — Field Reference](#0-reading-the-report--field-reference)
+   - [Report Header](#report-header)
+   - [Aggregate Metrics](#aggregate-metrics)
+   - [Connection Budget — Configured and Observed](#connection-budget--configured-and-observed)
+   - [Topology-Specific Summary](#topology-specific-summary)
+   - [Bench JVM System Metrics](#bench-jvm-system-metrics)
+   - [SLO Evaluation](#slo-evaluation)
+   - [Per-Instance Breakdown](#per-instance-breakdown)
+   - [Error Breakdown](#error-breakdown)
+   - [PostgreSQL — Database Statistics](#postgresql--database-statistics)
+   - [Process Resource Utilization](#process-resource-utilization)
+   - [OJP Proxy — JVM Heap and GC Metrics (OJP runs only)](#ojp-proxy--jvm-heap-and-gc-metrics-ojp-runs-only)
 1. [Measurement Scope (What the Latency Clock Covers)](#1-measurement-scope)
 2. [Collection Pipeline — How Metrics Flow](#2-collection-pipeline)
 3. [Output Files](#3-output-files)
@@ -28,6 +41,218 @@ interpret it.
 7. [Environment Snapshot](#7-environment-snapshot)
 8. [Multi-Replica Aggregation](#8-multi-replica-aggregation)
 9. [Limitations and Known Issues](#9-limitations-and-known-issues)
+
+---
+
+## 0. Reading the Report — Field Reference
+
+This section explains every field that appears in the benchmark report, in the
+order they appear. For deeper technical details see sections 1–9 below.
+
+---
+
+### Report Header
+
+| Field | What it means |
+|-------|---------------|
+| **SUT** | System Under Test — the database connection stack being benchmarked (e.g. `HIKARI_DISCIPLINED`, `OJP`, `PGBOUNCER`). |
+| **Workload** | The query mix used (e.g. `W1_READ_ONLY`, `W2_MIXED`, `W3_SLOW_QUERY`). See [§6](#6-workload-operations) for the SQL details. |
+| **Run time** | UTC timestamp when the benchmark started. |
+| **Duration** | Length of the steady-state measurement window in seconds. Warmup and cooldown phases are excluded from all metrics. |
+| **Instances** | Number of parallel bench JVM replicas. Each runs independently and sends load to the database. |
+| **Target RPS** | Requested operations per second per instance. The open-loop dispatcher submits work at this rate regardless of how quickly the database responds. |
+| **Results dir** | Local path where all output files (CSVs, histograms, this report) are stored. |
+
+---
+
+### Aggregate Metrics
+
+Computed across all instances. Latency percentiles are the arithmetic mean of
+per-instance values (each instance builds its own histogram over the full
+steady-state phase).
+
+| Metric | What it means | How it is collected |
+|--------|---------------|---------------------|
+| **Achieved throughput** | Actual completed requests per second, per instance (mean across instances). | `achievedThroughputRps` from each `instance_N/summary.json`, averaged. |
+| **Total throughput** | Sum of achieved RPS across all instances. | Sum of per-instance `achievedThroughputRps`. |
+| **p50 latency** | The median response time — half of all requests finished faster than this. | 50th percentile of the cumulative HDR histogram. |
+| **p95 latency** | 95% of requests finished faster than this. This is the primary SLO metric. | 95th percentile of the cumulative HDR histogram. |
+| **p99 latency** | 99% of requests finished faster. Reveals tail behaviour. | 99th percentile of the cumulative HDR histogram. |
+| **p999 latency** | 99.9% of requests finished faster. Captures extreme outliers. | 99.9th percentile of the cumulative HDR histogram. |
+| **Error rate** | Fraction of requests that failed (e.g. `0.001` = 0.1%). | `failedRequests / (completedRequests + failedRequests)`, averaged across instances. |
+| **Total requests** | Total requests made during steady state (successes + failures). | Sum of `totalRequests` across all instances. |
+| **Failed requests** | Total requests that ended in an error. | Sum of `failedRequests` across all instances. |
+
+> **What latency includes:** time waiting for a free connection from the pool,
+> network round-trip to the database (or proxy), query execution on PostgreSQL,
+> and reading the result set.  
+> **What latency excludes:** OS scheduling jitter between when a task is queued
+> and when a worker thread picks it up (tracked separately as
+> `openLoopSchedulingDelayMs`).
+
+---
+
+### Connection Budget — Configured and Observed
+
+Compares how many DB connections were configured vs. what PostgreSQL actually saw.
+
+| Field | What it means | Source |
+|-------|---------------|--------|
+| `configured_db_connection_budget` | Max DB connections the SUT was configured to open. | `runInfo.configuredDbConnectionBudget` in `summary.json`. |
+| `observed_postgres_backends_max_numbackends` | Peak total backend connections seen by PostgreSQL during the run. | Maximum value of `pg_stat_database.numbackends`, sampled every 5 s. |
+| `observed_postgres_backends_avg_numbackends` | Average total backend connections over the run. | Mean of all `pg_stat_database.numbackends` samples. |
+| `observed_postgres_backends_median_numbackends` | Typical total backend connections (less skewed by spikes than the average). | Median of all `pg_stat_database.numbackends` samples. |
+| `observed_client_backends_active_median` | Typical number of application connections actively executing a query. | Median of `count(*) WHERE state='active' AND backend_type='client backend'` from `pg_stat_activity`, sampled every 5 s. |
+| `observed_client_backends_active_max` | Peak number of application connections actively executing a query. | Maximum of the same query. |
+| `observed_client_backends_idle_median` | Typical number of application connections open but idle (not running a query). | Median of `count(*) WHERE state='idle'` from `pg_stat_activity`. |
+| `observed_client_backends_idle_max` | Peak idle application connections. | Maximum of the same query. |
+
+> `numbackends` counts all backend processes PostgreSQL knows about, including
+> replication slots and autovacuum workers. The `client backends` rows isolate
+> only application connections, which is usually the more meaningful number.
+
+---
+
+### Topology-Specific Summary
+
+Describes how the tested stack is configured. Fields that do not apply to the
+current topology are shown as `N/A`.
+
+| Field | What it means |
+|-------|---------------|
+| **Scenario profile** | The Ansible variable file used for this run (e.g. `hikari-prod`, `ojp-prod`). |
+| **Configured replicas** | Number of bench JVM replicas that ran in parallel. |
+| **Configured client pool size (per replica)** | HikariCP pool size on the bench client. |
+| **OJP servers** | Number of OJP proxy server instances in the topology. |
+| **Real DB connections per OJP server** | Actual PostgreSQL connections held open by each OJP server. |
+| **OJP proxy-tier CPU (avg / peak, summed)** | CPU% summed across all OJP proxy nodes — average over the run / single highest 5-second sample. 100% = 1 fully busy CPU core. |
+| **OJP proxy-tier RSS (avg / peak, summed)** | Physical RAM (MiB) summed across all OJP proxy nodes. |
+| **PgBouncer nodes** | Number of PgBouncer connection-pooler instances. |
+| **PgBouncer server pool size per node** | Max server-side (PostgreSQL-facing) connections per PgBouncer node. |
+| **pgbouncer_reserve_pool_size** | Reserve pool size configured in PgBouncer (`reserve_pool_size`). |
+| **PgBouncer local HikariCP pool size per replica** | HikariCP pool size on the bench client when connecting via PgBouncer. |
+| **HAProxy nodes** | Number of HAProxy load-balancer instances. |
+| **PgBouncer tier CPU / RSS** | CPU and RAM for PgBouncer nodes only. |
+| **HAProxy CPU / RSS** | CPU and RAM for HAProxy load-balancer nodes. |
+| **Total PgBouncer proxy-tier CPU / RSS** | Combined CPU and RAM for PgBouncer + HAProxy together (the full proxy tier). |
+
+> CPU and RSS values for proxy-tier components are collected by
+> `collect_proc_metrics.sh`, which polls `ps` every 5 seconds on each node.
+
+---
+
+### Bench JVM System Metrics
+
+Resources consumed by the bench client JVM itself — not the database or proxy.
+Collected inside the JVM during the steady-state phase only.
+
+| Metric | What it means | How it is collected |
+|--------|---------------|---------------------|
+| **Bench JVM CPU (median)** | Median % of one CPU core used by the bench process. | `OperatingSystemMXBean.getProcessCpuLoad()`, sampled every 5 s; median taken across all samples and all instances. |
+| **Bench JVM GC pause total** | Total time the JVM spent paused for garbage collection during the run. | `GarbageCollectorMXBean.getCollectionTime()` delta from start to end of steady state, summed across all instances. |
+
+> High GC pause time can inflate latency measurements because the latency clock
+> runs inside the same JVM. If GC pause exceeds ~5% of the run duration,
+> the bench JVM itself may be a bottleneck.
+
+---
+
+### SLO Evaluation
+
+A simple pass/fail check against two thresholds.
+
+| SLO | Default threshold | What a FAIL means |
+|-----|-------------------|-------------------|
+| **p95 latency** | < 50 ms | 95% of requests are not completing within the target latency. |
+| **Error rate** | < 0.1% (0.001) | More than 1 in 1,000 requests resulted in an error. |
+
+Thresholds can be overridden via arguments to `generate_report.sh`.
+
+---
+
+### Per-Instance Breakdown
+
+Same latency and throughput metrics split by individual bench JVM instance.
+Use this to check for outliers — if one instance shows much higher p99 than
+others, it may indicate a problem specific to that machine.
+
+| Column | What it means |
+|--------|---------------|
+| **Instance** | Bench JVM replica index (0-based). |
+| **p50 / p95 / p99** | Latency percentiles from this instance's own HDR histogram. |
+| **Throughput (RPS)** | Completed requests per second for this instance. |
+| **Error Rate** | `failedRequests / totalRequests` for this instance. |
+| **CPU (%)** | Median process CPU for this instance's bench JVM. |
+| **GC pause (ms)** | Total GC pause time for this instance's bench JVM. |
+
+---
+
+### Error Breakdown
+
+Lists each type of error that occurred, per instance.
+
+| Column | What it means |
+|--------|---------------|
+| **Instance** | Bench JVM replica index. |
+| **Error type** | `sql_exception` = generic JDBC error (e.g. connection refused, pool timeout); `timeout` = query or connection timed out; `other` = unexpected JVM exception. |
+| **Count** | Number of times this error occurred in this instance during steady state. |
+| **First error message** | The exception message from the first occurrence — useful for diagnosing the root cause. |
+
+---
+
+### PostgreSQL — Database Statistics
+
+Collected by `collect_pg_metrics.sh` running on the DB node, polling PostgreSQL
+every 5 s. Statistics are reset with `pg_stat_reset()` at the start of each run
+for clean per-run deltas.
+
+| Metric | What it means | Source |
+|--------|---------------|--------|
+| **PostgreSQL backends (median, `numbackends`)** | Typical total connections to PostgreSQL (all backend types). | Median of `pg_stat_database.numbackends`. |
+| **Client backends `state='active'` (median / max)** | Typical / peak application connections actively running a query. | `pg_stat_activity` filtered to `backend_type='client backend'` and `state='active'`. |
+| **Client backends `state='idle'` (median / max)** | Typical / peak application connections open but not running a query. | Same, with `state='idle'`. |
+| **Buffer cache hit ratio** | % of block reads served from PostgreSQL's in-memory cache (`shared_buffers`). Values below 99% suggest the cache is too small. | `blks_hit / (blks_hit + blks_read) × 100` from `pg_stat_database`. |
+| **Transactions committed** | Total committed transactions since stats reset. Should roughly match bench RPS × duration. | `pg_stat_database.xact_commit`. |
+| **Transactions rolled back** | Non-zero means contention or application errors are causing rollbacks. | `pg_stat_database.xact_rollback`. |
+| **Temp file bytes written** | Bytes written to disk because a sort or hash exceeded `work_mem`. Non-zero suggests increasing `work_mem`. | `pg_stat_database.temp_bytes`. |
+| **Deadlocks** | Number of deadlocks detected. Should be 0 for well-behaved OLTP workloads. | `pg_stat_database.deadlocks`. |
+| **Peak ungranted lock waits** | Highest instantaneous count of lock requests that were not yet granted. Greater than 0 indicates row-level contention. | `count(*) FROM pg_locks WHERE NOT granted`, peak across all 5-second samples. |
+| **Checkpoint buffers written** | Buffers flushed to disk by the checkpointer. High values mean frequent or large checkpoints (WAL/I/O pressure). | `pg_stat_bgwriter.buffers_checkpoint`. |
+| **Checkpoint write time (ms)** | Cumulative time PostgreSQL spent writing data during checkpoints. High values indicate I/O-bound checkpoints. | `pg_stat_bgwriter.checkpoint_write_time`. |
+
+---
+
+### Process Resource Utilization
+
+OS-level CPU and memory for each component node, collected by
+`collect_proc_metrics.sh` polling `ps` every 5 s on the respective host.
+
+| Column | What it means |
+|--------|---------------|
+| **Component** | Which part of the stack: `PostgreSQL`, `Proxy (OJP / pgBouncer)`, or `HAProxy`. |
+| **Node** | Hostname of the machine. |
+| **Avg CPU (%)** | Mean CPU% used by the process over the run. 100% = 1 fully busy CPU core. |
+| **Peak CPU (%)** | Highest CPU% seen in any single 5-second sample. |
+| **Avg RSS (MiB)** | Mean physical RAM used by the process (Resident Set Size). |
+| **Peak RSS (MiB)** | Highest physical RAM seen in any single 5-second sample. |
+
+---
+
+### OJP Proxy — JVM Heap and GC Metrics *(OJP runs only)*
+
+This section appears only when OJP proxy servers are part of the topology.
+Heap is measured with `jstat -gc` rather than OS RSS because Java keeps memory
+reserved from the OS even after garbage collection — OS RSS would significantly
+overstate actual heap usage.
+
+| Column | What it means | Source |
+|--------|---------------|--------|
+| **Proxy host** | Hostname of the OJP server node. |
+| **Heap used — median (MB)** | Typical live heap (actual objects in memory) during the run. | Median of `(S0U + S1U + EU + OU) / 1024` from `jstat -gc`, sampled every second. |
+| **Heap committed — median (MB)** | Typical heap capacity reserved from the OS. Always ≥ heap used. | Median of `(S0C + S1C + EC + OC) / 1024` from `jstat -gc`. |
+| **Total GC time (s)** | Total seconds the JVM spent in garbage collection during the run. | Final value of `GCT` from `jstat -gc`. |
+| **Young GC count** | Number of minor (young-generation) GC events. | Final value of `YGC` from `jstat -gc`. |
+| **Full GC count** | Number of full GC events. More than a few per run indicates memory pressure. | Final value of `FGC` from `jstat -gc`. |
 
 ---
 
