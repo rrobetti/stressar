@@ -79,7 +79,9 @@ public class OlapWorkload extends Workload {
 
     @Override
     public void execute() throws SQLException {
-        int idx = queryIndex.getAndIncrement() % QUERIES.length;
+        // Mask the sign bit before the modulo so the index stays non-negative even
+        // after the AtomicInteger wraps around Integer.MAX_VALUE.
+        int idx = (queryIndex.getAndIncrement() & Integer.MAX_VALUE) % QUERIES.length;
         String sql = QUERIES[idx];
 
         try (Connection conn = connectionProvider.getConnection();

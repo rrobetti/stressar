@@ -18,6 +18,10 @@ import java.util.List;
  * passed to {@link Connection#prepareStatement(String)} and returns an empty
  * {@link ResultSet} for every query.
  * <p>
+ * Package-private by design: shared across {@link OlapWorkloadTest} and
+ * {@link HtapWorkloadTest} within this test package without leaking into
+ * production code.
+ * <p>
  * Write queries ({@code executeUpdate}) return 1.
  * {@code INSERT … RETURNING} queries (used by ReadWriteWorkload) also return an
  * empty ResultSet, so tests that exercise write paths must configure
