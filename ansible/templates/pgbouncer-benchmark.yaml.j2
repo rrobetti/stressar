@@ -28,6 +28,7 @@ workload:
   warmupSeconds: {{ bench_warmup_seconds }}
   durationSeconds: {{ bench_duration_seconds }}
   cooldownSeconds: {{ bench_cooldown_seconds }}
+  olapPercent: {{ bench_olap_percent | default(0.10) }}
 
 numAccounts: {{ bench_num_accounts }}
 numItems:    {{ bench_num_items }}

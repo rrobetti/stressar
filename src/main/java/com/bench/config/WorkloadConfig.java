@@ -18,6 +18,7 @@ public class WorkloadConfig {
     private double queryAPercent = 0.30;  // For W1
     private double writePercent = 0.20;   // For mixed workloads
     private double slowQueryPercent = 0.01; // For W3
+    private double olapPercent = 0.10;    // For W5_HTAP: fraction of ops routed to OLAP
     
     // Parameter distributions
     private boolean useZipf = false;
@@ -28,7 +29,9 @@ public class WorkloadConfig {
         W2_READ_WRITE,
         W2_MIXED,
         W2_WRITE_ONLY,
-        W3_SLOW_QUERY
+        W3_SLOW_QUERY,
+        W4_OLAP,
+        W5_HTAP
     }
 
     public WorkloadType getType() {
@@ -125,6 +128,14 @@ public class WorkloadConfig {
 
     public void setSlowQueryPercent(double slowQueryPercent) {
         this.slowQueryPercent = slowQueryPercent;
+    }
+
+    public double getOlapPercent() {
+        return olapPercent;
+    }
+
+    public void setOlapPercent(double olapPercent) {
+        this.olapPercent = olapPercent;
     }
 
     public boolean isUseZipf() {

@@ -1,0 +1,57 @@
+# W4 OLAP Workload Configuration
+# Pure analytical workload — 5 heavy queries in round-robin order.
+#
+# All queries force full-table scans or large range scans with aggregation,
+# joins, or window functions, generating real DB planner/executor CPU.
+#
+# Query mix (round-robin, equal weight):
+#   Q1 — Daily revenue: full scan + GROUP BY on orders
+#   Q2 — Top customers: hash join accounts × orders, sort
+#   Q3 — Item performance: full scan of order_lines (largest table), aggregate
+#   Q4 — Order status distribution: STDDEV forces full aggregation
+#   Q5 — Account running totals: window function over entire orders table
+#
+# Target RPS is intentionally low (20–50) because each query can take
+# 100 ms – several seconds depending on data volume.  Higher RPS will stress
+# the pool exhaustion behaviour, which is also useful to measure.
+#
+# Run with:
+#   bench run --config w4-olap.yaml --output results/w4/
+
+database:
+  jdbcUrl: "jdbc:postgresql://localhost:5432/benchdb"
+  username: "benchuser"
+  password: "benchpass"
+
+connectionMode: HIKARI_DIRECT
+poolSize: 50  # Larger pool to keep analytical queries in flight concurrently
+
+workload:
+  type: W4_OLAP
+  openLoop: true
+  targetRps: 30  # Low RPS — each query is CPU-heavy
+
+  # Phase durations
+  warmupSeconds: 120
+  durationSeconds: 600
+  cooldownSeconds: 60
+
+  # Parameter distribution (not used by OLAP queries — kept for consistency)
+  useZipf: false
+  seed: 42
+
+# Data generation (must match init-db settings)
+numAccounts: 10000
+numItems: 5000
+numOrders: 50000
+
+# Metrics
+metricsIntervalSeconds: 1
+
+# Output
+outputDir: "results"
+
+# SLO thresholds — much more relaxed than OLTP due to query weight
+sweepIncrementPercent: 10.0
+sloP95Ms: 10000   # 10 s p95 is acceptable for analytical queries
+errorRateThreshold: 0.001
