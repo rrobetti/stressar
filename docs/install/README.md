@@ -6,7 +6,7 @@ Step-by-step instructions for every software component required to run Stressar.
 
 | Tool / component | Version used / required |
 |---|---|
-| OJP Server + OJP JDBC Driver | **0.4.14-beta** |
+| OJP Server + OJP JDBC Driver | **0.4.16-beta** |
 | Java (benchmark tool / control / loadgen) | **11+** (recommended LTS: 21) |
 | Java (OJP Server nodes) | **24+** |
 | Gradle (via wrapper) | **8.8** pinned in `gradle/wrapper/gradle-wrapper.properties` |
