@@ -283,18 +283,18 @@ Code Review: No issues found
 ./gradlew installDist
 
 # Initialize database
-./build/install/ojp-performance-tester/bin/bench init-db \
+./build/install/stressar/bin/bench init-db \
   --jdbc-url jdbc:postgresql://localhost:5432/benchdb \
   --username benchuser \
   --password benchpass
 
 # Run capacity sweep
-./build/install/ojp-performance-tester/bin/bench sweep \
+./build/install/stressar/bin/bench sweep \
   --config examples/w1-read-only.yaml \
   --output results/sweep1
 
 # Analyze results
-./build/install/ojp-performance-tester/bin/bench aggregate \
+./build/install/stressar/bin/bench aggregate \
   --input-dir results/raw \
   --output-dir results
 ```
