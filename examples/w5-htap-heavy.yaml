@@ -1,0 +1,60 @@
+# W5 HTAP Workload — Heavy Analytics (60% OLTP / 40% OLAP)
+# Simulates a BI tool or reporting service running frequent analytical queries
+# in parallel with normal application traffic.
+#
+# 60% of ops are W2_MIXED (OLTP: point reads + transactional writes)
+# 40% of ops are W4_OLAP  (5 analytical queries, round-robin)
+#
+# At this split the database spends a significant portion of its CPU on
+# analytical work while still serving OLTP transactions.  This is the key
+# scenario for evaluating whether a connection pool strategy can prevent
+# long-running analytical connections from starving out OLTP latency.
+#
+# Run with:
+#   bench run --config w5-htap-heavy.yaml --output results/w5-heavy/
+
+database:
+  jdbcUrl: "jdbc:postgresql://localhost:5432/benchdb"
+  username: "benchuser"
+  password: "benchpass"
+
+connectionMode: HIKARI_DIRECT
+poolSize: 50  # Larger pool to absorb both OLAP hold-time and OLTP bursts
+
+workload:
+  type: W5_HTAP
+  openLoop: true
+  targetRps: 150  # Lower total RPS — OLAP ops are much heavier per request
+
+  # Phase durations
+  warmupSeconds: 300
+  durationSeconds: 600
+  cooldownSeconds: 120
+
+  # HTAP split
+  olapPercent: 0.40   # 40% OLAP, 60% OLTP
+
+  # OLTP mix parameters (for the MixedWorkload component)
+  queryAPercent: 0.30  # 30% point reads on accounts
+  writePercent: 0.20   # 20% write transactions
+
+  # Parameter distribution
+  useZipf: false
+  zipfAlpha: 1.1
+  seed: 42
+
+# Data generation (must match init-db settings)
+numAccounts: 10000
+numItems: 5000
+numOrders: 50000
+
+# Metrics
+metricsIntervalSeconds: 1
+
+# Output
+outputDir: "results"
+
+# SLO thresholds — relaxed to account for heavy analytical load
+sweepIncrementPercent: 10.0
+sloP95Ms: 500
+errorRateThreshold: 0.001

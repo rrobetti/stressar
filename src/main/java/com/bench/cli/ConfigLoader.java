@@ -156,6 +156,7 @@ public class ConfigLoader {
         WorkloadConfig wlConfig = new WorkloadConfig();
         applyWorkloadTypeAndRates(wlData, wlConfig);
         applyWorkloadTiming(wlData, wlConfig);
+        applyWorkloadMixPercents(wlData, wlConfig);
         applyWorkloadSeed(wlData, wlConfig);
         applyWorkloadZipf(wlData, wlConfig);
         return wlConfig;
@@ -185,6 +186,21 @@ public class ConfigLoader {
         }
         if (wlData.containsKey("cooldownSeconds")) {
             wlConfig.setCooldownSeconds((Integer) wlData.get("cooldownSeconds"));
+        }
+    }
+
+    private static void applyWorkloadMixPercents(Map<String, Object> wlData, WorkloadConfig wlConfig) {
+        if (wlData.containsKey("queryAPercent")) {
+            wlConfig.setQueryAPercent(yamlDouble(wlData.get("queryAPercent")));
+        }
+        if (wlData.containsKey("writePercent")) {
+            wlConfig.setWritePercent(yamlDouble(wlData.get("writePercent")));
+        }
+        if (wlData.containsKey("slowQueryPercent")) {
+            wlConfig.setSlowQueryPercent(yamlDouble(wlData.get("slowQueryPercent")));
+        }
+        if (wlData.containsKey("olapPercent")) {
+            wlConfig.setOlapPercent(yamlDouble(wlData.get("olapPercent")));
         }
     }
 

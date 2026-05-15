@@ -1,0 +1,59 @@
+# W5 HTAP Workload — Light Analytics (90% OLTP / 10% OLAP)
+# Simulates an application with a live dashboard refreshing every few seconds.
+#
+# 90% of ops are W2_MIXED (OLTP: point reads + transactional writes)
+# 10% of ops are W4_OLAP  (5 analytical queries, round-robin)
+#
+# This is the most common production HTAP pattern: a live dashboard or reporting
+# service runs analytical queries in parallel with normal user traffic.  The
+# connection pool must serve both latency-sensitive OLTP and long-running OLAP
+# connections simultaneously.
+#
+# Run with:
+#   bench run --config w5-htap-light.yaml --output results/w5-light/
+
+database:
+  jdbcUrl: "jdbc:postgresql://localhost:5432/benchdb"
+  username: "benchuser"
+  password: "benchpass"
+
+connectionMode: HIKARI_DIRECT
+poolSize: 30
+
+workload:
+  type: W5_HTAP
+  openLoop: true
+  targetRps: 300
+
+  # Phase durations
+  warmupSeconds: 300
+  durationSeconds: 600
+  cooldownSeconds: 120
+
+  # HTAP split
+  olapPercent: 0.10   # 10% OLAP, 90% OLTP
+
+  # OLTP mix parameters (for the MixedWorkload component)
+  queryAPercent: 0.30  # 30% point reads on accounts
+  writePercent: 0.20   # 20% write transactions
+
+  # Parameter distribution
+  useZipf: false
+  zipfAlpha: 1.1
+  seed: 42
+
+# Data generation (must match init-db settings)
+numAccounts: 10000
+numItems: 5000
+numOrders: 50000
+
+# Metrics
+metricsIntervalSeconds: 1
+
+# Output
+outputDir: "results"
+
+# SLO thresholds — tighter than pure OLAP because OLTP dominates
+sweepIncrementPercent: 15.0
+sloP95Ms: 200
+errorRateThreshold: 0.001

@@ -45,6 +45,17 @@ public class WorkloadFactory {
                     numAccounts, numItems, useZipf, zipfAlpha,
                     workloadConfig.getSlowQueryPercent());
                     
+            case W4_OLAP:
+                return new OlapWorkload(connectionProvider, seed,
+                    numAccounts, numItems, useZipf, zipfAlpha);
+                    
+            case W5_HTAP:
+                return new HtapWorkload(connectionProvider, seed,
+                    numAccounts, numItems, useZipf, zipfAlpha,
+                    workloadConfig.getQueryAPercent(),
+                    workloadConfig.getWritePercent(),
+                    workloadConfig.getOlapPercent());
+                    
             default:
                 throw new IllegalArgumentException("Unknown workload type: " + type);
         }
