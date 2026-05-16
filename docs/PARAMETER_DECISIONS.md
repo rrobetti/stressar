@@ -361,10 +361,9 @@ correct summary statistic.
 **Value:** `sloP95Ms: 150` — the capacity sweep declares a load level unsustainable when the median
 p95 latency across five runs exceeds 150 ms.
 
-**Reason:** HTAP mixes short OLTP calls with heavier analytical calls. Under a 90/10 W5 mix, a
-strict 50 ms p95 threshold becomes too OLTP-centric and prematurely classifies healthy mixed-load
-operation as "unsustainable". 150 ms preserves sensitivity to queueing regressions while accounting
-for legitimate analytical tail latency.
+**Reason:** HTAP mixes short OLTP calls with heavier analytical calls. Under a 90/10 W5 mix,
+`sloP95Ms: 150` is set to remain strict enough to detect queueing regressions while still allowing
+normal analytical tail latency in healthy mixed-load operation.
 
 At the baseline load of 640 RPS and mixed OLTP/OLAP service times, p95 should remain below 150 ms
 for healthy runs. The threshold becomes binding as queueing and contention emerge, which is the
