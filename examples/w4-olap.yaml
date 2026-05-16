@@ -1,19 +1,18 @@
 # W4 OLAP Workload Configuration
-# Pure analytical workload — 5 heavy queries in round-robin order.
+# Pure analytical workload — 5 index-aware heavy queries in round-robin order.
 #
-# All queries force full-table scans or large range scans with aggregation,
-# joins, or window functions, generating real DB planner/executor CPU.
+# Queries focus on recent time windows so they remain realistic for production
+# systems (which typically rely on indexes), while still doing meaningful
+# aggregation, joins, and window work.
 #
 # Query mix (round-robin, equal weight):
-#   Q1 — Daily revenue: full scan + GROUP BY on orders
-#   Q2 — Top customers: hash join accounts × orders, sort
-#   Q3 — Item performance: full scan of order_lines (largest table), aggregate
-#   Q4 — Order status distribution: STDDEV forces full aggregation
-#   Q5 — Account running totals: window function over entire orders table
+#   Q1 — Daily revenue over recent history
+#   Q2 — Top customers from recent orders
+#   Q3 — Item performance for recent orders
+#   Q4 — Order status distribution over recent history
+#   Q5 — Account running totals on recent orders
 #
-# Target RPS is intentionally low (20–50) because each query can take
-# 100 ms – several seconds depending on data volume.  Higher RPS will stress
-# the pool exhaustion behaviour, which is also useful to measure.
+# Target RPS stays moderate because analytical queries still carry real weight.
 #
 # Run with:
 #   bench run --config w4-olap.yaml --output results/w4/
@@ -29,7 +28,7 @@ poolSize: 50  # Larger pool to keep analytical queries in flight concurrently
 workload:
   type: W4_OLAP
   openLoop: true
-  targetRps: 30  # Low RPS — each query is CPU-heavy
+  targetRps: 50  # Moderate RPS — analytical but tuned to allow more concurrency
 
   # Phase durations
   warmupSeconds: 120
