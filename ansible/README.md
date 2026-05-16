@@ -346,6 +346,7 @@ Predefined full-hardware production profiles are available under `ansible/vars/`
 - `prod-hikari.yml` (SUT-A): 16 replicas, budget 300, max per replica 19
 - `prod-ojp.yml` (SUT-B): 16 replicas, OJP budget 48
 - `prod-ojp-sqs.yml` (SUT-B variant): OJP profile with slow query segregation enabled
+- `prod-htap.yml` (workload profile): W5_HTAP workload mix (20% OLAP / 80% OLTP)
 - `prod-pgbouncer.yml` (SUT-C): 16 replicas, pgBouncer pool 16 per proxy node, local bench pool 20
 
 ### Recommended: run the full production comparison with one script
@@ -435,7 +436,7 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_ojp.y
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml
 ```
 
-Important: always pass a production profile (`prod-hikari.yml`, `prod-ojp.yml`, `prod-ojp-sqs.yml`, `prod-pgbouncer.yml`) to avoid inheriting non-production defaults.
+Important: always pass a production profile (`prod-hikari.yml`, `prod-ojp.yml`, `prod-ojp-sqs.yml`, `prod-htap.yml`, `prod-pgbouncer.yml`) to avoid inheriting non-production defaults.
 
 ---
 
@@ -634,6 +635,8 @@ ansible/
 │   ├── dryrun-pgbouncer.yml           # Minimal-hardware overrides for pgBouncer (SUT-C) dry run
 │   ├── prod-hikari.yml                # Full-hardware production profile for HikariCP Direct (SUT-A)
 │   ├── prod-ojp.yml                   # Full-hardware production profile for OJP (SUT-B)
+│   ├── prod-ojp-sqs.yml               # Full-hardware production profile for OJP with slow-query segregation
+│   ├── prod-htap.yml                  # Full-hardware W5_HTAP workload profile
 │   └── prod-pgbouncer.yml             # Full-hardware production profile for pgBouncer (SUT-C)
 ├── templates/
 │   ├── hikari-benchmark.yaml.j2       # Parameterised bench config template for HikariCP Direct (SUT-A)
