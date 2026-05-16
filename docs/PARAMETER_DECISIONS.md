@@ -237,42 +237,41 @@ close to 19 and well within the same order of magnitude.
 
 ---
 
-## 7. Aggregate Baseline Load — 1,000 RPS
+## 7. Aggregate Baseline Load — 640 RPS (W5_HTAP)
 
-**Value:** The starting load for all scenarios is 1,000 RPS in aggregate across all 16 clients.
+**Value:** The starting load for production comparison is 640 RPS in aggregate across all 16 clients
+using W5_HTAP (90% OLTP / 10% OLAP).
 
 **Reason (Little's Law analysis):**
 
-At 1,000 TPS with a mean query time of 4 ms:
+At 640 TPS with a representative HTAP mean query time around 8 ms:
 
 ```
-L_active = λ × W = 1,000 × 0.004 = 4 connections actively executing queries
+L_active = λ × W = 640 × 0.008 = 5.12 connections actively executing queries
 ```
 
-With 300 direct connections available (SUT-A), only 4 (1.3 %) are busy at any instant. For the
-proxy SUTs (SUT-B, SUT-C), which use 48 backend connections, 4 out of 48 (8.3 %) are active —
+With 300 direct connections available (SUT-A), only ~5 (1.7 %) are busy at any instant. For the
+proxy SUTs (SUT-B, SUT-C), which use 48 backend connections, ~5 out of 48 (~10.7 %) are active —
 still comfortably below saturation. This is deliberately well below saturation: at the baseline
 load, each proxy operates with ample headroom, so any latency differences between SUTs reflect
 pure proxy-protocol overhead (serialisation, queueing, gRPC framing) rather than connection queue
 depth. The capacity sweep (Test A) then finds each SUT's true maximum, starting from this
 established low-load baseline.
 
-1,000 is also a round, easily communicated number that fits into a common mental model of
-"thousands of requests per second" for database-backed services.
+640 keeps HTAP analytically meaningful while avoiding unrealistically aggressive per-replica
+arrival rates for a mixed transactional/analytical workload.
 
 ---
 
-## 8. Per-Client Target — 63 RPS
+## 8. Per-Client Target — 40 RPS
 
-**Value:** Each of the 16 client replicas is configured with `targetRps: 63`.
+**Value:** Each of the 16 client replicas is configured with `targetRps: 40`.
 
-**Reason:** 1,000 ÷ 16 = 62.5, rounded up to 63. This gives an aggregate of 16 × 63 = 1,008 RPS,
-within 0.8 % of the 1,000 RPS target — a negligible difference.
+**Reason:** 640 ÷ 16 = 40 exactly. This gives a clean aggregate of 16 × 40 = 640 RPS.
 
-63 RPS per replica is a very modest load. A typical Java web service backend handles hundreds of
-requests per second per instance. The low per-replica RPS is deliberate: it keeps the client-tier
-CPU comfortably below 30 % utilisation, ensuring that the load generators are not the bottleneck
-and that latency measurements reflect the database/proxy tier.
+40 RPS per replica avoids over-driving HTAP runs where requests include a non-trivial analytical
+fraction. This keeps the generated load representative of mixed production traffic while preserving
+enough headroom for the sweep to observe the knee of each SUT.
 
 ---
 
@@ -357,24 +356,23 @@ correct summary statistic.
 
 ---
 
-## 13. SLO Threshold — p95 < 50 ms
+## 13. SLO Threshold — p95 < 150 ms (W5_HTAP)
 
-**Value:** `sloP95Ms: 50` — the capacity sweep declares a load level unsustainable when the median
-p95 latency across five runs exceeds 50 ms.
+**Value:** `sloP95Ms: 150` — the capacity sweep declares a load level unsustainable when the median
+p95 latency across five runs exceeds 150 ms.
 
-**Reason:** 50 ms at the 95th percentile is a standard latency SLO for interactive OLTP
-applications. It is used by Google's Site Reliability Engineering book [5] as an example SLO for
-database-backed services, and it appears in multiple published connection-pooling studies as the
-threshold above which user-facing latency becomes perceptible.
+**Reason:** HTAP mixes short OLTP calls with heavier analytical calls. Under a 90/10 W5 mix, a
+strict 50 ms p95 threshold becomes too OLTP-centric and prematurely classifies healthy mixed-load
+operation as "unsustainable". 150 ms preserves sensitivity to queueing regressions while accounting
+for legitimate analytical tail latency.
 
-At the baseline load of 1,000 RPS and 3–5 ms average query time, p95 is expected to be well below
-50 ms for all SUTs. The SLO therefore only becomes binding as the capacity sweep approaches
-saturation, which is its intended purpose: it identifies the load level at which the system
-transitions from comfortable to stressed.
+At the baseline load of 640 RPS and mixed OLTP/OLAP service times, p95 should remain below 150 ms
+for healthy runs. The threshold becomes binding as queueing and contention emerge, which is the
+intended purpose for MST detection in hybrid workloads.
 
-**Trade-off:** A tighter SLO (e.g., 20 ms) would find a lower MST and would more closely model
-latency-sensitive applications. A looser SLO (e.g., 200 ms) would find a higher MST but would
-allow excessive queueing. 50 ms is a reasonable middle ground for a comparative study.
+**Trade-off:** A tighter SLO (e.g., 75 ms) favors OLTP-only sensitivity; a looser SLO (e.g., 300
+ms) risks masking queue buildup. 150 ms is a pragmatic middle ground for this HTAP-focused
+comparison.
 
 ---
 

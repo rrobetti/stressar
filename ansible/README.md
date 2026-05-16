@@ -321,9 +321,9 @@ Key differences between the three dry-run profiles:
 | `bench_num_accounts` | 10 000 | 10 000 | 10 000 | 1 000 000 |
 | `bench_num_orders` | 100 000 | 100 000 | 100 000 | 10 000 000 |
 | `bench_replica_count` | 2 | 2 | 2 | 16 |
-| `bench_target_rps` | 50 | 50 | 50 | 500 |
+| `bench_target_rps` | 50 | 50 | 50 | 40 |
 | `bench_duration_seconds` | 60 | 60 | 60 | 1800 |
-| `bench_slo_p95_ms` | 50 ms | 50 ms | 50 ms | 50 ms |
+| `bench_slo_p95_ms` | 50 ms | 50 ms | 50 ms | 150 ms |
 | `bench_db_connection_budget` | 20 | 6 | 18 (3×6) | 18 |
 | `bench_hikari_max_pool_size_per_replica` | 10 | — | — | 19 |
 | `pgbouncer_pool_size` | — | — | 6 | 6 |
@@ -346,7 +346,7 @@ Predefined full-hardware production profiles are available under `ansible/vars/`
 - `prod-hikari.yml` (SUT-A): 16 replicas, budget 300, max per replica 19
 - `prod-ojp.yml` (SUT-B): 16 replicas, OJP budget 48
 - `prod-ojp-sqs.yml` (SUT-B variant): OJP profile with slow query segregation enabled
-- `prod-htap.yml` (workload profile): W5_HTAP workload mix (20% OLAP / 80% OLTP)
+- `prod-htap.yml` (workload profile): W5_HTAP workload mix (10% OLAP / 90% OLTP)
 - `prod-pgbouncer.yml` (SUT-C): 16 replicas, pgBouncer pool 16 per proxy node, local bench pool 20
 
 ### Recommended: run the full production comparison with one script
@@ -474,20 +474,20 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_hikar
   -e bench_db_connection_budget=300         \
   -e bench_replica_count=16                 \
   -e bench_hikari_max_pool_size_per_replica=19 \
-  -e bench_target_rps=500                   \
+  -e bench_target_rps=40                    \
   -e bench_duration_seconds=300
 
 # OJP
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_ojp.yml \
   -e run_name=ojp-tuning-1      \
-  -e bench_target_rps=1000      \
+  -e bench_target_rps=40        \
   -e bench_duration_seconds=600 \
   -e bench_replica_count=8
 
 # pgBouncer
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_pgbouncer.yml \
   -e run_name=pgbouncer-tuning-1 \
-  -e bench_target_rps=1000       \
+  -e bench_target_rps=40         \
   -e bench_duration_seconds=600  \
   -e bench_replica_count=8       \
   -e pgbouncer_pool_size=4

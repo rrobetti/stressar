@@ -6,25 +6,27 @@ A benchmark tool to stress test JDBC-based solutions, including but not limited 
 
 ## Test Results Summary
 
-All tests are executed with **no TLS** (plaintext on all network legs inside a trusted benchmark network) and **16 independent client JVM processes** (8 on each of two load-generator machines). The backend connection budget differs by SUT: **300 direct connections** for HikariCP (≈19 per replica) and **48 proxy backend connections** for OJP and PgBouncer (16 per proxy node). Two test protocols are run for each of the three systems under test (SUTs).
+All tests are executed with **no TLS** (plaintext on all network legs inside a trusted benchmark network) and **16 independent client JVM processes** (8 on each of two load-generator machines). The backend connection budget differs by SUT: **300 direct connections** for HikariCP (≈19 per replica) and **48 proxy backend connections** for OJP and PgBouncer (16 per proxy node).  
+The primary workload for production comparison is **W5_HTAP** with **90% OLTP (W2_MIXED)** + **10% OLAP (W4_OLAP)** (`olapPercent: 0.10`), chosen as a representative general-purpose application mix.
 
 See [Simplified Test List](#simplified-test-list) below for a plain-language description of what is run.
 See [BENCHMARKING_GUIDE.md](docs/BENCHMARKING_GUIDE.md) for the full protocol.
 
 ### Test A — Capacity Sweep (Increasing Load)
 
-| SUT                                    | Clients | Starting RPS    | p50 (ms) | p95 (ms) | p99 (ms) | Max Sustainable Throughput (RPS) | Error Rate |
-|----------------------------------------|---------|-----------------|----------|----------|----------|----------------------------------|------------|
-| HikariCP Direct (disciplined baseline) | 16      | 16 × 63 ≈ 1,000 | TBD      | TBD      | TBD      | TBD                              | TBD        |
-| OJP — 3 nodes, client-side LB          | 16      | 16 × 63 ≈ 1,000 | TBD      | TBD      | TBD      | TBD                              | TBD        || PgBouncer — 3 nodes + HAProxy          | 16      | 16 × 63 ≈ 1,000 | TBD | TBD | TBD | TBD | TBD |
+| SUT                                    | Workload | Clients | Starting RPS | p50 (ms) | p95 (ms) | p99 (ms) | Max Sustainable Throughput (RPS) | Error Rate |
+|----------------------------------------|----------|---------|--------------|----------|----------|----------|----------------------------------|------------|
+| HikariCP Direct (disciplined baseline) | W5_HTAP (90/10) | 16 | 16 × 40 = 640 | TBD | TBD | TBD | TBD | TBD |
+| OJP — 3 nodes, client-side LB          | W5_HTAP (90/10) | 16 | 16 × 40 = 640 | TBD | TBD | TBD | TBD | TBD |
+| PgBouncer — 3 nodes + HAProxy          | W5_HTAP (90/10) | 16 | 16 × 40 = 640 | TBD | TBD | TBD | TBD | TBD |
 
 ### Test B — Overload & Recovery (130 % of Max Sustainable Throughput)
 
-| SUT                                    | Overload Level | Peak p99 (ms) | Error Rate During Overload | Recovery Time (s) |
-|----------------------------------------|----------------|---------------|----------------------------|-------------------|
-| HikariCP Direct (disciplined baseline) | 130 % MST      | TBD           | TBD                        | TBD               |
-| OJP — 3 nodes, client-side LB          | 130 % MST      | TBD           | TBD                        | TBD               |
-| PgBouncer — 3 nodes + HAProxy          | 130 % MST      | TBD           | TBD                        | TBD               |
+| SUT                                    | Workload | Overload Level | Peak p99 (ms) | Error Rate During Overload | Recovery Time (s) |
+|----------------------------------------|----------|----------------|---------------|----------------------------|-------------------|
+| HikariCP Direct (disciplined baseline) | W5_HTAP (90/10) | 130 % MST | TBD | TBD | TBD |
+| OJP — 3 nodes, client-side LB          | W5_HTAP (90/10) | 130 % MST | TBD | TBD | TBD |
+| PgBouncer — 3 nodes + HAProxy          | W5_HTAP (90/10) | 130 % MST | TBD | TBD | TBD |
 
 ---
 
@@ -36,7 +38,7 @@ Two tests are run, each against three different systems under test (SUTs):
 
 | #          | What we run                                                                                                                                                                                   | Why                                                                               |
 |------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------|
-| **Test A** | Gradually increase the request rate in 15 % steps until the system can no longer keep up (p95 latency > 50 ms or error rate > 0.1 %). Record the maximum sustainable throughput for each SUT. | Finds each system's breaking point and compares throughput capacity.              |
+| **Test A** | Gradually increase the request rate in 15 % steps until the system can no longer keep up (p95 latency > 150 ms or error rate > 0.1 %). Record the maximum sustainable throughput for each SUT. | Finds each system's breaking point and compares throughput capacity under representative HTAP load. |
 | **Test B** | Push each system to 130 % of its maximum throughput for 5 minutes, then drop back to 70 % and measure how long it takes to recover.                                                           | Reveals queue management, back-pressure behaviour, and resilience under overload. |
 
 The three systems under test (run in this order):
@@ -52,7 +54,7 @@ The three systems under test (run in this order):
 ## Features
 
 - **Multiple SUT Modes**: HIKARI_DISCIPLINED, OJP, PGBOUNCER
-- **Workload Types**: Read-only (W1), Read-Write (W2), Mixed, Slow Query (W3)
+- **Workload Types**: Read-only (W1), Read-Write (W2), Mixed, Slow Query (W3), OLAP (W4), HTAP (W5)
 - **Load Modes**: Open-loop (rate-based) and closed-loop (concurrency-based)
 - **Plaintext networking**: No TLS on any leg — TLS overhead is excluded as a variable
 - **Metrics**: Per-second timeseries, HDR histograms, system resource monitoring

@@ -28,7 +28,7 @@
 #
 # Optional overrides:
 #   -e run_name=ojp-run-1          # subdirectory under results/
-#   -e bench_target_rps=500
+#   -e bench_target_rps=40
 #   -e bench_duration_seconds=300
 #   -e bench_replica_count=4
 
