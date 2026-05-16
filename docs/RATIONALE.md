@@ -162,6 +162,25 @@ This harness is designed to fill all of them.
 
 ---
 
+## Appendix A. HTAP Default Profile Rationale (W5, 90% OLTP / 10% OLAP)
+
+The default production-comparison workload is W5_HTAP with `olapPercent: 0.10`. This is intended
+to represent common production systems where transactional traffic dominates, while a smaller but
+continuous analytical/reporting stream still competes for shared database and pool resources.
+
+Two benchmark-control values were aligned to this mixed profile:
+
+- **Per-replica load:** `targetRps: 40` (16 replicas → 640 RPS aggregate), avoiding unrealistic
+  HTAP overdrive from very high per-replica rates.
+- **Capacity-sweep SLO:** `sloP95Ms: 150`, replacing an OLTP-centric threshold so that legitimate
+  analytical tail latency is tolerated while queueing regressions are still detected.
+
+These defaults are not universal truths; they are a reproducible baseline for generalist HTAP
+comparison. Moving the workload mix toward OLTP or OLAP should change both the load target and SLO
+threshold accordingly.
+
+---
+
 *Document version: 1.0 — February 2026*
 
 ---

@@ -1,20 +1,20 @@
 # ansible/vars/prod-htap.yml
 #
 # Production profile for W5_HTAP — hybrid OLAP/OLTP workload.
-# 80% of ops are W2_MIXED (OLTP); 20% are W4_OLAP (5 analytical queries).
+# 90% of ops are W2_MIXED (OLTP); 10% are W4_OLAP (5 analytical queries).
 #
 # Intended for comparing how different connection pool strategies handle
 # mixed analytical + transactional load on the same connection pool.
 
 bench_workload_type: "W5_HTAP"
-bench_olap_percent:  0.20
+bench_olap_percent:  0.10
 
 bench_replica_count:     16
-bench_target_rps:        200
+bench_target_rps:        40
 bench_warmup_seconds:    300
 bench_duration_seconds:  1800
 bench_cooldown_seconds:  120
-bench_slo_p95_ms:        500
+bench_slo_p95_ms:        150
 
 bench_db_connection_budget: 48
 benchmark_profile_name: "htap-prod"

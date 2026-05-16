@@ -12,53 +12,67 @@ import java.util.concurrent.atomic.AtomicInteger;
  * W4: Pure OLAP workload.
  * <p>
  * Cycles through 5 analytical queries in round-robin order so every query shape
- * is exercised evenly even at low concurrency.  All queries are designed to force
- * full-table scans or large range scans with aggregation/join/window work,
- * generating real planner and executor CPU rather than hitting index buffer cache.
+ * is exercised evenly even at low concurrency.  Queries stay computationally
+ * meaningful (aggregation/join/window work) but include realistic time windows so
+ * production-style indexes are used and concurrency remains practical.
  * <p>
- * Recommended targetRps: 20–50 (each query can take 100 ms – several seconds
- * depending on data volume).
+ * Recommended targetRps: 30–80 (query latency still depends on data volume and
+ * sizing, but avoids pathological full-table behavior).
  */
 public class OlapWorkload extends Workload {
 
-    // Q1: daily revenue — full table scan + group-by sort on orders
+    // Q1: daily revenue over recent history — range scan on orders(created_at)
     static final String DAILY_REVENUE =
         "SELECT DATE_TRUNC('day', created_at), COUNT(*), SUM(total_cents) " +
         "FROM orders " +
+        "WHERE created_at >= NOW() - INTERVAL '180 days' " +
         "GROUP BY 1 " +
         "ORDER BY 1";
 
-    // Q2: top customers — hash join between accounts and orders, sort
+    // Q2: top customers over recent activity — filtered aggregate + join + sort
     static final String TOP_CUSTOMERS =
-        "SELECT a.account_id, a.username, COUNT(o.order_id), SUM(o.total_cents) " +
-        "FROM accounts a " +
-        "JOIN orders o ON a.account_id = o.account_id " +
+        "WITH recent_orders AS ( " +
+        "  SELECT account_id, total_cents " +
+        "  FROM orders " +
+        "  WHERE created_at >= NOW() - INTERVAL '90 days' " +
+        ") " +
+        "SELECT a.account_id, a.username, COUNT(*), SUM(ro.total_cents) " +
+        "FROM recent_orders ro " +
+        "JOIN accounts a ON a.account_id = ro.account_id " +
         "GROUP BY 1, 2 " +
         "ORDER BY 4 DESC " +
         "LIMIT 100";
 
-    // Q3: item performance — full scan of order_lines (largest table), aggregation
+    // Q3: item performance for recent orders — range-filtered join to order_lines
     static final String ITEM_PERFORMANCE =
+        "WITH recent_orders AS ( " +
+        "  SELECT order_id " +
+        "  FROM orders " +
+        "  WHERE created_at >= NOW() - INTERVAL '90 days' " +
+        ") " +
         "SELECT i.item_id, i.name, SUM(ol.qty) AS units_sold, " +
         "       SUM(ol.qty * ol.price_cents) AS revenue " +
-        "FROM items i " +
-        "JOIN order_lines ol ON i.item_id = ol.item_id " +
+        "FROM recent_orders ro " +
+        "JOIN order_lines ol ON ol.order_id = ro.order_id " +
+        "JOIN items i ON i.item_id = ol.item_id " +
         "GROUP BY 1, 2 " +
         "ORDER BY 4 DESC " +
         "LIMIT 50";
 
-    // Q4: order status distribution — STDDEV forces full aggregation over orders
+    // Q4: order status distribution over recent history — filtered aggregate
     static final String ORDER_STATUS_DISTRIBUTION =
         "SELECT status, COUNT(*), SUM(total_cents), AVG(total_cents), STDDEV(total_cents) " +
         "FROM orders " +
+        "WHERE created_at >= NOW() - INTERVAL '180 days' " +
         "GROUP BY status " +
         "ORDER BY status";
 
-    // Q5: account running totals — window function forces sort/partition of all orders
+    // Q5: account running totals on recent slice — still exercises window/sort
     static final String ACCOUNT_RUNNING_TOTALS =
         "SELECT order_id, account_id, total_cents, " +
         "       SUM(total_cents) OVER (PARTITION BY account_id ORDER BY created_at) AS running_total " +
         "FROM orders " +
+        "WHERE created_at >= NOW() - INTERVAL '30 days' " +
         "ORDER BY account_id, created_at " +
         "LIMIT 1000";
 
