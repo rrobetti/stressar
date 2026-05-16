@@ -38,7 +38,7 @@
   # knows to re-run: ansible-playbook setup.yml --tags ojp
   hosts: ojp
   gather_facts: false
-  vars:
+  vars: &ojp_benchmark_vars
     expected_slow_query_segregation_enabled: >-
       {{ (ojp_server_slow_query_segregation_enabled | default(false) | bool) | ternary('true', 'false') }}
 
@@ -71,7 +71,9 @@
     - name: Assert ojp-server slow query segregation mode matches benchmark profile
       ansible.builtin.assert:
         that:
-          - "'-Dojp.server.slowQuerySegregation.enabled={{ expected_slow_query_segregation_enabled }}' in ojp_execstart_out.stdout"
+          - >-
+            ojp_execstart_out.stdout
+            | regex_search('(^|\\s)-Dojp\\.server\\.slowQuerySegregation\\.enabled=' ~ expected_slow_query_segregation_enabled ~ '(\\s|$)')
         fail_msg: >-
           ojp-server slow query segregation mode on {{ inventory_hostname }} does not match
           expected {{ expected_slow_query_segregation_enabled }}.
@@ -85,8 +87,7 @@
   gather_facts: false
 
   vars:
-    expected_slow_query_segregation_enabled: >-
-      {{ (ojp_server_slow_query_segregation_enabled | default(false) | bool) | ternary('true', 'false') }}
+    <<: *ojp_benchmark_vars
     run_name:   "{{ benchmark_profile_name | default('ojp-prod') }}-{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
     db_host:    "{{ hostvars[groups['db'][0]]['ansible_host'] }}"
     # Build the list of OJP_IP:PORT strings from the ojp inventory group.
