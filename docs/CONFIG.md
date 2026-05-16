@@ -236,6 +236,8 @@ Type of workload to execute.
 - `W2_MIXED`: Mixed read/write workload (configurable ratios)
 - `W2_WRITE_ONLY`: Write-only variant
 - `W3_SLOW_QUERY`: Mixed workload with slow queries
+- `W4_OLAP`: OLAP-only workload (5 analytical queries, round-robin)
+- `W5_HTAP`: Hybrid transactional/analytical workload (mix of W2_MIXED and W4_OLAP)
 
 **Examples:**
 
@@ -287,6 +289,31 @@ workload:
 - 99%: Fast queries (indexed lookups)
 
 **Use Case:** Testing tail latency behavior under mixed fast/slow workload.
+
+#### W4_OLAP
+```yaml
+workload:
+  type: W4_OLAP
+```
+
+**Mix:**
+- 100%: Analytical OLAP queries
+- Queries are executed round-robin across 5 heavy SQL statements
+
+**Use Case:** Measuring analytical-query behavior and connection-pool handling under expensive read workloads.
+
+#### W5_HTAP
+```yaml
+workload:
+  type: W5_HTAP
+  olapPercent: 0.10  # 10% OLAP, 90% OLTP mixed traffic
+```
+
+**Mix:**
+- `olapPercent`: W4_OLAP analytical traffic
+- `1 - olapPercent`: W2_MIXED OLTP traffic
+
+**Use Case:** Measuring hybrid transactional + analytical behavior on shared pool/budget resources.
 
 ---
 
@@ -567,6 +594,28 @@ LEFT JOIN orders o ON o.account_id = a.id
 GROUP BY a.id
 ORDER BY total_spent DESC
 LIMIT 100;
+```
+
+---
+
+#### `workload.olapPercent` (double, default: 0.10)
+
+Percentage of requests routed to OLAP queries when using HTAP workload.
+
+**Used by:** W5_HTAP
+
+**Range:** 0.0 to 1.0
+
+**Examples:**
+```yaml
+# Mostly OLTP
+olapPercent: 0.10
+
+# Balanced HTAP
+olapPercent: 0.50
+
+# Mostly OLAP
+olapPercent: 0.80
 ```
 
 ---

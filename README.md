@@ -150,7 +150,7 @@ Comprehensive documentation is available in the `docs/` directory:
   - Measurement scope (what the latency clock covers)
   - Collection pipeline (two-histogram design for per-interval vs. cumulative)
   - Full metric catalogue: latency, throughput, errors, open-loop correctness, OJP-specific, system
-  - Workload SQL (W1, W2, W3)
+  - Workload SQL (W1–W5)
   - Multi-replica aggregation methodology
 
 - **[RESULTS_FORMAT.md](docs/RESULTS_FORMAT.md)** - Data schemas and formats
@@ -167,7 +167,11 @@ The `examples/` directory contains ready-to-use configuration files:
 - `ta-ojp.yaml` — Capacity Sweep / Overload: 16-replica OJP (client-side LB)
 - `ta-pgbouncer.yaml` — Capacity Sweep / Overload: 16-replica PgBouncer via HAProxy
 - `w1-read-only.yaml` — Read-only workload
+- `w2-open-loop-500rps.yaml` — Open-loop mixed workload (500 RPS target)
 - `w3-slow-query.yaml` — Slow query workload
+- `w4-olap.yaml` — OLAP-only analytical workload
+- `w5-htap-light.yaml` — HTAP workload (10% OLAP / 90% OLTP)
+- `w5-htap-heavy.yaml` — HTAP workload (40% OLAP / 60% OLTP)
 
 ## Requirements
 
