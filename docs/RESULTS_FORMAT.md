@@ -151,10 +151,7 @@ Aggregate statistics for the entire benchmark run.
     "mean": number                      // Mean latency (ms)
   },
   "errorsByType": {
-    "timeout": number,                  // Connection/query timeouts
-    "sql_exception": number,            // SQL errors (deadlock, constraint violation, etc.)
-    "connection_error": number,         // Connection acquisition failures
-    "unknown": number                   // Uncategorized errors
+    "<ExceptionClassSimpleName>": number // Count grouped by Java exception class type
   },
   "appCpuMedian": number,               // Median application CPU usage (%)
   "appRssMedian": number,               // Median application RSS memory (MB)
@@ -195,10 +192,9 @@ Aggregate statistics for the entire benchmark run.
     "mean": 4.52
   },
   "errorsByType": {
-    "timeout": 5,
-    "sql_exception": 2,
-    "connection_error": 0,
-    "unknown": 3
+    "SQLTimeoutException": 5,
+    "PSQLException": 2,
+    "IllegalStateException": 3
   },
   "appCpuMedian": 45.2,
   "appRssMedian": 512,
@@ -240,10 +236,8 @@ All values in milliseconds, calculated from HDR histogram over entire run:
 - **`mean`**: Arithmetic mean latency
 
 #### Error Breakdown (`errorsByType`)
-- **`timeout`**: Connection acquisition or query timeouts
-- **`sql_exception`**: SQL errors (deadlock, constraint violation, etc.)
-- **`connection_error`**: Failed to acquire connection from pool
-- **`unknown`**: Uncategorized errors
+- Keys are Java exception class simple names (for example `SQLTimeoutException`, `PSQLException`, `IllegalStateException`)
+- Counts are grouped by exception class type only (messages do not create separate groups)
 
 #### System Metrics
 - **`appCpuMedian`**: Median CPU usage of application process (%)
@@ -445,10 +439,7 @@ Combined metrics from all replica instances.
     },
     "totalErrors": number,                // Sum across all replicas
     "errorsByType": {
-      "timeout": number,
-      "sql_exception": number,
-      "connection_error": number,
-      "unknown": number
+      "<ExceptionClassSimpleName>": number
     }
   },
   "perInstanceMetrics": [
@@ -489,10 +480,9 @@ Combined metrics from all replica instances.
     },
     "totalErrors": 192,
     "errorsByType": {
-      "timeout": 128,
-      "sql_exception": 42,
-      "connection_error": 8,
-      "unknown": 14
+      "SQLTimeoutException": 128,
+      "PSQLException": 42,
+      "IllegalStateException": 22
     }
   },
   "perInstanceMetrics": [
