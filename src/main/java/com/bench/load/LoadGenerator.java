@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public abstract class LoadGenerator {
     protected static final Logger logger = LoggerFactory.getLogger(LoadGenerator.class);
 
-    /** Number of initial SQL/timeout errors to log at WARN before switching to DEBUG. */
+    /** Number of initial errors per exception type to log at WARN before switching to DEBUG. */
     private static final long WARN_ERROR_LIMIT = 3;
 
     protected final Workload workload;
@@ -23,9 +23,9 @@ public abstract class LoadGenerator {
     protected final AtomicBoolean running = new AtomicBoolean(false);
     protected final AtomicBoolean stopping = new AtomicBoolean(false);
 
-    // Counters used to suppress repetitive WARN logging after the first few errors
-    private final AtomicLong sqlErrorWarnCount = new AtomicLong(0);
-    private final AtomicLong timeoutWarnCount = new AtomicLong(0);
+    // Counter used to suppress repetitive WARN logging after the first few errors
+    private final java.util.concurrent.ConcurrentHashMap<String, AtomicLong> errorWarnCounts =
+        new java.util.concurrent.ConcurrentHashMap<>();
     
     public LoadGenerator(Workload workload, MetricsCollector metrics, MetricsCollector intervalMetrics) {
         this.workload = workload;
@@ -58,30 +58,22 @@ public abstract class LoadGenerator {
             metrics.recordSuccess(latencyNanos);
             intervalMetrics.recordSuccess(latencyNanos);
             
-        } catch (java.sql.SQLTimeoutException e) {
-            metrics.recordError("timeout", e.getMessage());
-            intervalMetrics.recordError("timeout", e.getMessage());
-            long n = timeoutWarnCount.incrementAndGet();
-            if (n <= WARN_ERROR_LIMIT) {
-                logger.warn("Request timeout (occurrence {}): {}", n, e.getMessage());
-            } else {
-                logger.debug("Request timeout: {}", e.getMessage());
-            }
-            
-        } catch (java.sql.SQLException e) {
-            metrics.recordError("sql_exception", e.getMessage());
-            intervalMetrics.recordError("sql_exception", e.getMessage());
-            long n = sqlErrorWarnCount.incrementAndGet();
-            if (n <= WARN_ERROR_LIMIT) {
-                logger.warn("SQL exception (occurrence {}): {}", n, e.getMessage());
-            } else {
-                logger.debug("SQL exception: {}", e.getMessage());
-            }
-            
         } catch (Exception e) {
-            metrics.recordError("other");
-            intervalMetrics.recordError("other");
-            logger.error("Unexpected error executing workload", e);
+            String errorType = e.getClass().getSimpleName();
+            if (errorType == null || errorType.isBlank()) {
+                errorType = e.getClass().getName();
+            }
+
+            metrics.recordError(errorType, e.getMessage());
+            intervalMetrics.recordError(errorType, e.getMessage());
+
+            long n = errorWarnCounts.computeIfAbsent(errorType, ignored -> new AtomicLong(0))
+                .incrementAndGet();
+            if (n <= WARN_ERROR_LIMIT) {
+                logger.warn("Workload exception type={} (occurrence {}): {}", errorType, n, e.getMessage(), e);
+            } else {
+                logger.debug("Workload exception type={}: {}", errorType, e.getMessage(), e);
+            }
         }
     }
     

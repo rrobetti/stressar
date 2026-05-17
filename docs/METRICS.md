@@ -160,7 +160,7 @@ attemptedRps                    — mean attempted RPS over the measurement wind
 achievedThroughputRps           — mean completed RPS over the measurement window
 errorRate                       — failedRequests / (completedRequests + failedRequests)
 latencyMs.{p50,p95,p99,p999,max,mean}  — cumulative histogram percentiles (all requests)
-errorsByType.{timeout, sql_exception, other}  — error breakdown
+errorsByType.{<ExceptionClassSimpleName>: count, ...}  — error breakdown
 appCpuMedian                    — median application CPU % (optional)
 appRssMedian                    — median resident set size in MB (optional)
 gcPauseMsTotal                  — total JVM GC pause time in ms (optional)
@@ -248,13 +248,11 @@ completely saturated system; normal operating range is well below 1 second.
 
 Errors are classified by the Java exception type caught in `LoadGenerator.executeWorkload()`:
 
-| Key | Exception | Meaning |
-|-----|-----------|---------|
-| `timeout` | `SQLTimeoutException` | Connection or query exceeded the configured timeout |
-| `sql_exception` | `SQLException` (non-timeout) | DB error: constraint violation, deadlock, connection refused |
-| `other` | Any other `Exception` | Unexpected JVM error |
+| Key | Meaning |
+|-----|---------|
+| `<ExceptionClassSimpleName>` | Java exception class simple name (for example `SQLTimeoutException`, `PSQLException`, `IllegalStateException`) |
 
-Each key appears in `summary.json` under `errorsByType`.
+All exceptions are grouped and counted by exception class type only (not by message). Each key appears in `summary.json` under `errorsByType`.
 
 ---
 
