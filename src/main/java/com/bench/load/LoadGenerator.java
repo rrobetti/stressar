@@ -5,6 +5,7 @@ import com.bench.workloads.Workload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -24,8 +25,7 @@ public abstract class LoadGenerator {
     protected final AtomicBoolean stopping = new AtomicBoolean(false);
 
     // Counter used to suppress repetitive WARN logging after the first few errors
-    private final java.util.concurrent.ConcurrentHashMap<String, AtomicLong> errorWarnCounts =
-        new java.util.concurrent.ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, AtomicLong> errorWarnCounts = new ConcurrentHashMap<>();
     
     public LoadGenerator(Workload workload, MetricsCollector metrics, MetricsCollector intervalMetrics) {
         this.workload = workload;
@@ -60,20 +60,21 @@ public abstract class LoadGenerator {
             
         } catch (Exception e) {
             String errorType = e.getClass().getSimpleName();
-            if (errorType.isBlank()) {
+            if (errorType.isEmpty()) {
                 errorType = e.getClass().getName();
             }
+            String errorMessage = (e.getMessage() != null) ? e.getMessage() : e.toString();
 
-            metrics.recordError(errorType, e.getMessage());
-            intervalMetrics.recordError(errorType, e.getMessage());
+            metrics.recordError(errorType, errorMessage);
+            intervalMetrics.recordError(errorType, errorMessage);
 
             long n = errorWarnCounts.computeIfAbsent(errorType, ignored -> new AtomicLong(0))
                 .incrementAndGet();
             if (n <= WARN_ERROR_LIMIT) {
-                logger.warn("Workload exception type={} (occurrence {}): {}", errorType, n, e.getMessage());
+                logger.warn("Workload exception type={} (occurrence {}): {}", errorType, n, errorMessage);
                 logger.debug("Workload exception stack trace type={} (occurrence {})", errorType, n, e);
             } else {
-                logger.debug("Workload exception type={}: {}", errorType, e.getMessage());
+                logger.debug("Workload exception type={}: {}", errorType, errorMessage);
             }
         }
     }
