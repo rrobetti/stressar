@@ -60,10 +60,11 @@ public abstract class LoadGenerator {
             
         } catch (Exception e) {
             String errorType = e.getClass().getSimpleName();
+            // Anonymous/local classes can have empty simple names; fall back to FQCN.
             if (errorType.isEmpty()) {
                 errorType = e.getClass().getName();
             }
-            String errorMessage = (e.getMessage() != null) ? e.getMessage() : e.toString();
+            String errorMessage = (e.getMessage() != null) ? e.getMessage() : "";
 
             metrics.recordError(errorType, errorMessage);
             intervalMetrics.recordError(errorType, errorMessage);
