@@ -60,7 +60,7 @@ public abstract class LoadGenerator {
             
         } catch (Exception e) {
             String errorType = e.getClass().getSimpleName();
-            if (errorType == null || errorType.isBlank()) {
+            if (errorType.isBlank()) {
                 errorType = e.getClass().getName();
             }
 
@@ -70,9 +70,10 @@ public abstract class LoadGenerator {
             long n = errorWarnCounts.computeIfAbsent(errorType, ignored -> new AtomicLong(0))
                 .incrementAndGet();
             if (n <= WARN_ERROR_LIMIT) {
-                logger.warn("Workload exception type={} (occurrence {}): {}", errorType, n, e.getMessage(), e);
+                logger.warn("Workload exception type={} (occurrence {}): {}", errorType, n, e.getMessage());
+                logger.debug("Workload exception stack trace type={} (occurrence {})", errorType, n, e);
             } else {
-                logger.debug("Workload exception type={}: {}", errorType, e.getMessage(), e);
+                logger.debug("Workload exception type={}: {}", errorType, e.getMessage());
             }
         }
     }
