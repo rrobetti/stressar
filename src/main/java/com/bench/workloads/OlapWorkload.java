@@ -78,7 +78,7 @@ public class OlapWorkload extends Workload {
 
     // Q6: account email-domain scan query requested for OLAP mix
     static final String ACCOUNT_EMAIL_COM =
-        "SELECT * FROM accounts WHERE email LIKE '%.com'";
+        "SELECT * FROM accounts WHERE email LIKE '%@%.com'";
 
     static final String[] QUERIES = {
         DAILY_REVENUE,
