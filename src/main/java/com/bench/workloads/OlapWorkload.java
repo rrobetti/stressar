@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * W4: Pure OLAP workload.
  * <p>
- * Cycles through 5 analytical queries in round-robin order so every query shape
+ * Cycles through 6 analytical queries in round-robin order so every query shape
  * is exercised evenly even at low concurrency.  Queries stay computationally
  * meaningful (aggregation/join/window work) but include realistic time windows so
  * production-style indexes are used and concurrency remains practical.
@@ -76,12 +76,17 @@ public class OlapWorkload extends Workload {
         "ORDER BY account_id, created_at " +
         "LIMIT 1000";
 
+    // Q6: account email-domain scan query requested for OLAP mix
+    static final String ACCOUNT_EMAIL_COM =
+        "SELECT * FROM accounts WHERE email LIKE '%.com'";
+
     static final String[] QUERIES = {
         DAILY_REVENUE,
         TOP_CUSTOMERS,
         ITEM_PERFORMANCE,
         ORDER_STATUS_DISTRIBUTION,
-        ACCOUNT_RUNNING_TOTALS
+        ACCOUNT_RUNNING_TOTALS,
+        ACCOUNT_EMAIL_COM
     };
 
     private final AtomicInteger queryIndex = new AtomicInteger(0);
@@ -108,6 +113,7 @@ public class OlapWorkload extends Workload {
                 case 2: consumeItemPerformance(rs); break;
                 case 3: consumeOrderStatusDistribution(rs); break;
                 case 4: consumeAccountRunningTotals(rs); break;
+                case 5: consumeAccountEmailCom(rs); break;
                 default: while (rs.next()) { /* drain */ }
             }
         }
@@ -155,6 +161,12 @@ public class OlapWorkload extends Workload {
             rs.getLong("account_id");
             rs.getLong("total_cents");
             rs.getLong("running_total");
+        }
+    }
+
+    private void consumeAccountEmailCom(ResultSet rs) throws SQLException {
+        while (rs.next()) {
+            // drain
         }
     }
 
