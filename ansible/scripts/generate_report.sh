@@ -565,7 +565,7 @@ done
 if [[ -n "${proc_rows}" ]]; then
   proc_section=$'\n## Process Resource Utilization\n\n'
   proc_section+='> `service_cpu` is service-process-tree CPU normalised to a single core (100% = 1 CPU fully busy).'$'\n'
-  proc_section+='> `host_cpu` is host-level CPU busy% from `/proc/stat` (cloud-comparable scope).'$'\n'
+  proc_section+='> `host_cpu` is host-level busy in core-percent from `/proc/stat` (100% = 1 CPU; max ~= NCPU×100, cloud-comparable).'$'\n'
   if [[ -n "${steady_state_start_iso}" && -n "${steady_state_end_iso}" ]]; then
     proc_section+="> Stats below are restricted to steady-state window: ${steady_state_start_iso} → ${steady_state_end_iso}."$'\n'
   fi

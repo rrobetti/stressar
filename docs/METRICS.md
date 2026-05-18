@@ -353,7 +353,7 @@ To avoid scope confusion, CPU metrics are reported in three explicit scopes:
 
 - `bench_jvm_cpu` — in-process bench JVM CPU (`appCpuMedian` from `summary.json`).
 - `service_cpu` — CPU for the sampled service process tree (`cpu_pct` from `*_proc_metrics.csv`).
-- `host_cpu` — host-level CPU busy (`host_cpu_pct` from `*_proc_metrics.csv`, `/proc/stat`).
+- `host_cpu` — host-level CPU busy in core-percent (`host_cpu_pct` from `*_proc_metrics.csv`, `/proc/stat`; 100% = 1 CPU, max ~= NCPU×100).
 
 For proxy tiers, `aligned_peak` is computed as `max_t(sum cpu_pct at timestamp t)` across nodes.
 The report also shows `legacy_peak_sum` (sum of each node peak) for backward comparability.
