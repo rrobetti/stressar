@@ -56,12 +56,13 @@ trap cleanup EXIT
 # ── CSV header ────────────────────────────────────────────────────────────────
 # Columns:
 #   timestamp   — ISO 8601 UTC sample time
-#   pid         — service MainPID (root of sampled process tree)
-#   cpu_pct     — CPU % since last sample (user+sys, normalised to 1 CPU = 100%)
-#   rss_mb      — Resident Set Size in MiB  (/proc/<pid>/status VmRSS)
-#   vsz_mb      — Virtual memory size in MiB (/proc/<pid>/status VmSize)
+#   pid            — service MainPID (root of sampled process tree)
+#   cpu_pct        — service-tree CPU % since last sample (user+sys, normalised to 1 CPU = 100%)
+#   host_cpu_pct   — host-level CPU busy % since last sample (from /proc/stat)
+#   rss_mb         — Resident Set Size in MiB  (/proc/<pid>/status VmRSS)
+#   vsz_mb         — Virtual memory size in MiB (/proc/<pid>/status VmSize)
 
-printf 'timestamp,pid,cpu_pct,rss_mb,vsz_mb\n' > "${OUTPUT}"
+printf 'timestamp,pid,cpu_pct,host_cpu_pct,rss_mb,vsz_mb\n' > "${OUTPUT}"
 
 # ── Clock tick rate (usually 100 Hz on Linux) ─────────────────────────────────
 
@@ -78,6 +79,19 @@ read_kb_status_field() {
   local pid="${1}"
   local field="${2}"
   awk -v f="${field}" '$1 == f ":" {print $2}' "/proc/${pid}/status" 2>/dev/null || echo 0
+}
+
+read_host_cpu_totals() {
+  # /proc/stat "cpu" line fields:
+  # user nice system idle iowait irq softirq steal guest guest_nice
+  # Busy = total - idle_all where idle_all = idle + iowait.
+  awk '/^cpu /{
+      user=$2; nice=$3; sys=$4; idle=$5; iowait=$6; irq=$7; softirq=$8; steal=$9;
+      idle_all=idle+iowait;
+      total=user+nice+sys+idle+iowait+irq+softirq+steal;
+      printf "%s %s\n", total, idle_all;
+      exit
+    }' /proc/stat 2>/dev/null || echo "0 0"
 }
 
 collect_service_tree_pids() {
@@ -109,6 +123,7 @@ collect_service_tree_pids() {
 
 declare -A prev_jiffies_by_pid=()
 prev_ts=$(date +%s%N)   # nanoseconds since epoch
+read -r prev_host_total prev_host_idle < <(read_host_cpu_totals)
 
 while true; do
   sleep 1
@@ -148,6 +163,7 @@ while true; do
   done
 
   cur_ts=$(date +%s%N)
+  read -r cur_host_total cur_host_idle < <(read_host_cpu_totals)
 
   # Elapsed wall-clock time in seconds (float via awk)
   elapsed_s=$(awk "BEGIN {printf \"%.6f\", (${cur_ts} - ${prev_ts}) / 1e9}")
@@ -160,14 +176,25 @@ while true; do
         printf \"0.00\"
     }")
 
+  host_delta_total=$(( cur_host_total - prev_host_total ))
+  host_delta_idle=$(( cur_host_idle - prev_host_idle ))
+  host_cpu_pct=$(awk "BEGIN {
+      if (${host_delta_total} > 0)
+        printf \"%.2f\", (1 - (${host_delta_idle} / ${host_delta_total})) * 100;
+      else
+        printf \"0.00\"
+    }")
+
   # RSS and VSZ from /proc/<pid>/status summed across all tree PIDs (kB → MiB)
   rss_mb=$(awk "BEGIN {printf \"%.2f\", ${rss_kb_total:-0} / 1024}")
   vsz_mb=$(awk "BEGIN {printf \"%.2f\", ${vsz_kb_total:-0} / 1024}")
 
   TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  printf '%s,%s,%s,%s,%s\n' \
-    "${TS}" "${SVC_PID}" "${cpu_pct}" "${rss_mb}" "${vsz_mb}" \
+  printf '%s,%s,%s,%s,%s,%s\n' \
+    "${TS}" "${SVC_PID}" "${cpu_pct}" "${host_cpu_pct}" "${rss_mb}" "${vsz_mb}" \
     >> "${OUTPUT}"
 
   prev_ts="${cur_ts}"
+  prev_host_total="${cur_host_total}"
+  prev_host_idle="${cur_host_idle}"
 done

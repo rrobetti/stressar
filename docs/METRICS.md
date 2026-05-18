@@ -347,6 +347,21 @@ Source: `SystemMetricsCollector.java`, wired into `BenchmarkRunner.java`.
 
 ---
 
+### CPU metric scopes used in `report.md`
+
+To avoid scope confusion, CPU metrics are reported in three explicit scopes:
+
+- `bench_jvm_cpu` — in-process bench JVM CPU (`appCpuMedian` from `summary.json`).
+- `service_cpu` — CPU for the sampled service process tree (`cpu_pct` from `*_proc_metrics.csv`).
+- `host_cpu` — host-level CPU busy (`host_cpu_pct` from `*_proc_metrics.csv`, `/proc/stat`).
+
+For proxy tiers, `aligned_peak` is computed as `max_t(sum cpu_pct at timestamp t)` across nodes.
+The report also shows `legacy_peak_sum` (sum of each node peak) for backward comparability.
+
+All side-car derived CPU/RSS metrics are restricted to the benchmark steady-state window.
+
+---
+
 ### OJP proxy node — JVM heap vs OS RSS
 
 > ⚠️ **Critical distinction for OJP:** Java acquires memory from the OS and
