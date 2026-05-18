@@ -53,7 +53,8 @@ OJP is intentionally not placed behind HAProxy for topology symmetry. Client-sid
 failover are part of the OJP JDBC driver model.
 
 All results must report both configured and observed backend PostgreSQL connections. Proxy-tier
-resource usage must be summed across all required components for each topology:
+resource usage is computed as a time-aligned sum across required components for each topology
+(`max_t(sum cpu_pct)` for aligned peak; report also includes legacy non-time-aligned peak-sum):
 
 - OJP proxy tier = OJP-1 + OJP-2 + OJP-3
 - PgBouncer proxy tier = HAProxy + PgBouncer-1 + PgBouncer-2 + PgBouncer-3
