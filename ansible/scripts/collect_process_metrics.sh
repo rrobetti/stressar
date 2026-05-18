@@ -185,7 +185,7 @@ while true; do
   host_delta_idle=$(( cur_host_idle - prev_host_idle ))
   host_cpu_pct=$(awk "BEGIN {
       if (${host_delta_total} > 0 && ${HOST_CPU_COUNT} > 0)
-        printf \"%.2f\", (1 - (${host_delta_idle} / ${host_delta_total})) * ${HOST_CPU_COUNT} * 100;
+        printf \"%.2f\", (1 - (${host_delta_idle} / ${host_delta_total})) * 100 * ${HOST_CPU_COUNT};
       else
         printf \"0.00\"
     }")
