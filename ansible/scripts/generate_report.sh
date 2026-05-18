@@ -63,6 +63,88 @@ jq_field() {
   jq -r "${field} // \"N/A\"" "${file}"
 }
 
+csv_col_idx() {
+  local csv="$1" col_name="$2"
+  awk -F',' -v want="${col_name}" 'NR==1{for(i=1;i<=NF;i++) if($i==want){print i; exit}}' "${csv}"
+}
+
+csv_values_stream() {
+  local csv="$1" col_idx="$2" start_iso="$3" end_iso="$4"
+  awk -F',' -v c="${col_idx}" -v s="${start_iso}" -v e="${end_iso}" '
+    NR>1 && c>0 {
+      ts=$1
+      if ((s=="" || ts>=s) && (e=="" || ts<=e) && $c+0>=0) print $c+0
+    }
+  ' "${csv}"
+}
+
+stats_from_sorted_stream() {
+  awk '
+    {a[++n]=$1; sum+=$1; if(n==1 || $1>max) max=$1}
+    END{
+      if(n==0){print "N/A|N/A|N/A|N/A|N/A|0"; exit}
+      p50i=int(0.50*n + 0.999999); if(p50i<1)p50i=1; if(p50i>n)p50i=n
+      p95i=int(0.95*n + 0.999999); if(p95i<1)p95i=1; if(p95i>n)p95i=n
+      p99i=int(0.99*n + 0.999999); if(p99i<1)p99i=1; if(p99i>n)p99i=n
+      printf "%.1f|%.1f|%.1f|%.1f|%.1f|%d\n", sum/n, a[p50i], a[p95i], a[p99i], max, n
+    }
+  '
+}
+
+csv_column_stats() {
+  local csv="$1" col_name="$2" start_iso="$3" end_iso="$4"
+  local col_idx
+  col_idx="$(csv_col_idx "${csv}" "${col_name}")"
+  if [[ -z "${col_idx}" ]]; then
+    echo "N/A|N/A|N/A|N/A|N/A|0"
+    return
+  fi
+  csv_values_stream "${csv}" "${col_idx}" "${start_iso}" "${end_iso}" | sort -n | stats_from_sorted_stream
+}
+
+aligned_sum_stats() {
+  local col_name="$1" start_iso="$2" end_iso="$3"
+  shift 3
+  local files=("$@")
+  local contributing_files=0
+  local line_stream=""
+  local csv col_idx
+
+  for csv in "${files[@]}"; do
+    col_idx="$(csv_col_idx "${csv}" "${col_name}")"
+    if [[ -z "${col_idx}" ]]; then
+      continue
+    fi
+    (( contributing_files += 1 ))
+    line_stream+=$'\n'
+    line_stream+="$(awk -F',' -v c="${col_idx}" -v s="${start_iso}" -v e="${end_iso}" '
+      NR>1 {
+        ts=$1
+        if ((s=="" || ts>=s) && (e=="" || ts<=e) && $c+0>=0) print ts "|" ($c+0)
+      }
+    ' "${csv}")"
+  done
+
+  if [[ ${contributing_files} -eq 0 ]]; then
+    echo "N/A|N/A|N/A|N/A|N/A|0|0"
+    return
+  fi
+
+  local summed_series
+  summed_series="$(
+    printf '%s\n' "${line_stream}" \
+      | awk -F'|' 'NF==2{sum[$1]+=$2} END{for (ts in sum) print sum[ts]}' \
+      | sort -n
+  )"
+
+  if [[ -z "${summed_series}" ]]; then
+    echo "N/A|N/A|N/A|N/A|N/A|0|${contributing_files}"
+    return
+  fi
+
+  echo "${summed_series}" | stats_from_sorted_stream | awk -v n="${contributing_files}" -F'|' '{print $0 "|" n}'
+}
+
 # ── Aggregate bench-client metrics across all instances ──────────────────────
 
 total_achieved_rps=0
@@ -93,6 +175,17 @@ agg_p99=$(avg "${total_p99}"  "${instance_count}")
 agg_p999=$(avg "${total_p999}" "${instance_count}")
 agg_error_rate=$(avg "${total_error_rate}" "${instance_count}")
 total_agg_rps=$(awk "BEGIN {printf \"%.2f\", ${total_achieved_rps}}")
+
+first="${SUMMARY_FILES[0]}"
+run_ts=$(jq_field "${first}" ".runInfo.timestamp")
+run_duration=$(jq_field "${first}" ".runInfo.durationSeconds")
+steady_state_start_iso=""
+steady_state_end_iso=""
+if [[ "${run_ts}" != "N/A" && "${run_duration}" =~ ^[0-9]+$ ]]; then
+  if steady_state_start_iso="$(date -u -d "${run_ts}" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null)"; then
+    steady_state_end_iso="$(date -u -d "${run_ts} + ${run_duration} seconds" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || true)"
+  fi
+fi
 
 # ── Aggregate in-process system metrics from summary.json (bench JVM) ─────────
 # These are populated by SystemMetricsCollector running inside each bench JVM.
@@ -134,6 +227,9 @@ if [[ ${#JVM_CSV_FILES[@]} -gt 0 ]]; then
   jvm_section+=$'\n## OJP Proxy — JVM Heap and GC Metrics\n\n'
   jvm_section+='> **Note:** Heap values are from `jstat -gc` (actual in-use JVM heap).'$'\n'
   jvm_section+='> OS RSS is **not** used here because the JVM does not return memory to the OS after GC.'$'\n\n'
+  if [[ -n "${steady_state_start_iso}" && -n "${steady_state_end_iso}" ]]; then
+    jvm_section+="> Stats are restricted to steady-state window: ${steady_state_start_iso} → ${steady_state_end_iso}."$'\n\n'
+  fi
   jvm_section+='| Proxy host | Heap used — median (MB) | Heap committed — median (MB) | Total GC time (s) | Young GC count | Full GC count |'$'\n'
   jvm_section+='|------------|------------------------|------------------------------|-------------------|----------------|---------------|'$'\n'
 
@@ -141,7 +237,9 @@ if [[ ${#JVM_CSV_FILES[@]} -gt 0 ]]; then
     host=$(basename "${csv}" _jvm_metrics.csv)
 
     # Median of heap_used_mb (col 2) — skip header, sort numerically, take middle
-    heap_used_med=$(awk -F',' 'NR>1 && $2+0>0 {print $2+0}' "${csv}" \
+    heap_used_med=$(awk -F',' -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+        NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) && $2+0>0 {print $2+0}
+      ' "${csv}" \
       | sort -n \
       | awk '{a[NR]=$0} END{
           if (NR==0) {printf "N/A"}
@@ -150,7 +248,9 @@ if [[ ${#JVM_CSV_FILES[@]} -gt 0 ]]; then
         }')
 
     # Median of heap_committed_mb (col 3)
-    heap_comm_med=$(awk -F',' 'NR>1 && $3+0>0 {print $3+0}' "${csv}" \
+    heap_comm_med=$(awk -F',' -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+        NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) && $3+0>0 {print $3+0}
+      ' "${csv}" \
       | sort -n \
       | awk '{a[NR]=$0} END{
           if (NR==0) {printf "N/A"}
@@ -158,10 +258,34 @@ if [[ ${#JVM_CSV_FILES[@]} -gt 0 ]]; then
           else {printf "%.1f", (a[NR/2]+a[NR/2+1])/2.0}
         }')
 
-    # Final (last) row values for GC counters
-    gct_s=$(awk -F',' 'NR>1 {gct=$8} END{printf "%.3f", gct+0}' "${csv}")
-    ygc=$(awk  -F',' 'NR>1 {ygc=$4} END{printf "%d",    ygc+0}' "${csv}")
-    fgc=$(awk  -F',' 'NR>1 {fgc=$6} END{printf "%d",    fgc+0}' "${csv}")
+    # Window deltas for cumulative GC counters
+    gct_s=$(awk -F',' -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+      NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) {
+        if (!seen) {first=$8+0; seen=1}
+        last=$8+0
+      }
+      END{
+        if (seen) printf "%.3f", (last-first);
+        else printf "0.000"
+      }' "${csv}")
+    ygc=$(awk  -F',' -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+      NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) {
+        if (!seen) {first=$4+0; seen=1}
+        last=$4+0
+      }
+      END{
+        if (seen) printf "%d", (last-first);
+        else printf "0"
+      }' "${csv}")
+    fgc=$(awk  -F',' -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+      NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) {
+        if (!seen) {first=$6+0; seen=1}
+        last=$6+0
+      }
+      END{
+        if (seen) printf "%d", (last-first);
+        else printf "0"
+      }' "${csv}")
 
     [[ -z "${heap_used_med}" ]] && heap_used_med="N/A"
     [[ -z "${heap_comm_med}" ]] && heap_comm_med="N/A"
@@ -220,44 +344,64 @@ if [[ -f "${PG_CSV}" ]]; then
   pg_ckpt_ms="N/A"
 
   if [[ -n "${pg_col_numbackends}" ]]; then
-    pg_numbackends_med=$(awk -F',' -v c="${pg_col_numbackends}" 'NR>1 && $c+0>=0 {print $c+0}' "${PG_CSV}" \
+    pg_numbackends_med=$(awk -F',' -v c="${pg_col_numbackends}" -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+      NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) && $c+0>=0 {print $c+0}
+    ' "${PG_CSV}" \
       | sort -n \
       | awk '{a[NR]=$0} END{
           if (NR==0) {printf "N/A"}
           else if (NR%2==1) {printf "%d", a[int((NR+1)/2)]}
           else {printf "%d", (a[NR/2]+a[NR/2+1])/2.0}
         }')
-    observed_max_postgres_backends=$(awk -F',' -v c="${pg_col_numbackends}" 'NR>1{if($c+0>max) max=$c+0} END{printf "%d", max+0}' "${PG_CSV}")
-    observed_avg_postgres_backends=$(awk -F',' -v c="${pg_col_numbackends}" 'NR>1{sum+=$c+0; n++} END{if(n>0) printf "%.2f", sum/n; else printf "N/A"}' "${PG_CSV}")
+    observed_max_postgres_backends=$(awk -F',' -v c="${pg_col_numbackends}" -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+      NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) {if($c+0>max) max=$c+0}
+      END{printf "%d", max+0}
+    ' "${PG_CSV}")
+    observed_avg_postgres_backends=$(awk -F',' -v c="${pg_col_numbackends}" -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+      NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) {sum+=$c+0; n++}
+      END{if(n>0) printf "%.2f", sum/n; else printf "N/A"}
+    ' "${PG_CSV}")
     observed_median_postgres_backends="${pg_numbackends_med}"
   fi
 
   if [[ -n "${pg_col_active_backends}" ]]; then
-    pg_active_backends_med=$(awk -F',' -v c="${pg_col_active_backends}" 'NR>1 && $c+0>=0 {print $c+0}' "${PG_CSV}" \
+    pg_active_backends_med=$(awk -F',' -v c="${pg_col_active_backends}" -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+      NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) && $c+0>=0 {print $c+0}
+    ' "${PG_CSV}" \
       | sort -n \
       | awk '{a[NR]=$0} END{
           if (NR==0) {printf "N/A"}
           else if (NR%2==1) {printf "%d", a[int((NR+1)/2)]}
           else {printf "%d", (a[NR/2]+a[NR/2+1])/2.0}
         }')
-    observed_max_active_postgres_backends=$(awk -F',' -v c="${pg_col_active_backends}" 'NR>1{if($c+0>max) max=$c+0} END{printf "%d", max+0}' "${PG_CSV}")
+    observed_max_active_postgres_backends=$(awk -F',' -v c="${pg_col_active_backends}" -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+      NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) {if($c+0>max) max=$c+0}
+      END{printf "%d", max+0}
+    ' "${PG_CSV}")
     observed_median_active_postgres_backends="${pg_active_backends_med}"
   fi
 
   if [[ -n "${pg_col_idle_backends}" ]]; then
-    pg_idle_backends_med=$(awk -F',' -v c="${pg_col_idle_backends}" 'NR>1 && $c+0>=0 {print $c+0}' "${PG_CSV}" \
+    pg_idle_backends_med=$(awk -F',' -v c="${pg_col_idle_backends}" -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+      NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) && $c+0>=0 {print $c+0}
+    ' "${PG_CSV}" \
       | sort -n \
       | awk '{a[NR]=$0} END{
           if (NR==0) {printf "N/A"}
           else if (NR%2==1) {printf "%d", a[int((NR+1)/2)]}
           else {printf "%d", (a[NR/2]+a[NR/2+1])/2.0}
         }')
-    observed_max_idle_postgres_backends=$(awk -F',' -v c="${pg_col_idle_backends}" 'NR>1{if($c+0>max) max=$c+0} END{printf "%d", max+0}' "${PG_CSV}")
+    observed_max_idle_postgres_backends=$(awk -F',' -v c="${pg_col_idle_backends}" -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+      NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) {if($c+0>max) max=$c+0}
+      END{printf "%d", max+0}
+    ' "${PG_CSV}")
     observed_median_idle_postgres_backends="${pg_idle_backends_med}"
   fi
 
   if [[ -n "${pg_col_cache_hit_pct}" ]]; then
-    pg_cache_hit_med=$(awk -F',' -v c="${pg_col_cache_hit_pct}" 'NR>1 && $c+0>0 {print $c+0}' "${PG_CSV}" \
+    pg_cache_hit_med=$(awk -F',' -v c="${pg_col_cache_hit_pct}" -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+      NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) && $c+0>0 {print $c+0}
+    ' "${PG_CSV}" \
       | sort -n \
       | awk '{a[NR]=$0} END{
           if (NR==0) {printf "N/A"}
@@ -266,13 +410,34 @@ if [[ -f "${PG_CSV}" ]]; then
         }')
   fi
 
-  [[ -n "${pg_col_xact_commit}" ]] && pg_xact_commit=$(awk -F',' -v c="${pg_col_xact_commit}" 'NR>1{v=$c} END{printf "%d", v+0}' "${PG_CSV}")
-  [[ -n "${pg_col_xact_rollback}" ]] && pg_xact_rb=$(awk -F',' -v c="${pg_col_xact_rollback}" 'NR>1{v=$c} END{printf "%d", v+0}' "${PG_CSV}")
-  [[ -n "${pg_col_temp_bytes}" ]] && pg_temp_bytes=$(awk -F',' -v c="${pg_col_temp_bytes}" 'NR>1{v=$c} END{printf "%d", v+0}' "${PG_CSV}")
-  [[ -n "${pg_col_deadlocks}" ]] && pg_deadlocks=$(awk -F',' -v c="${pg_col_deadlocks}" 'NR>1{v=$c} END{printf "%d", v+0}' "${PG_CSV}")
-  [[ -n "${pg_col_lock_waits}" ]] && pg_lock_waits_max=$(awk -F',' -v c="${pg_col_lock_waits}" 'NR>1{if($c+0>max) max=$c+0} END{printf "%d", max+0}' "${PG_CSV}")
-  [[ -n "${pg_col_buffers_checkpoint}" ]] && pg_ckpt_bufs=$(awk -F',' -v c="${pg_col_buffers_checkpoint}" 'NR>1{v=$c} END{printf "%d", v+0}' "${PG_CSV}")
-  [[ -n "${pg_col_checkpoint_write_ms}" ]] && pg_ckpt_ms=$(awk -F',' -v c="${pg_col_checkpoint_write_ms}" 'NR>1{v=$c} END{printf "%.0f", v+0}' "${PG_CSV}")
+  [[ -n "${pg_col_xact_commit}" ]] && pg_xact_commit=$(awk -F',' -v c="${pg_col_xact_commit}" -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+    NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) {if(!seen){first=$c+0; seen=1} last=$c+0}
+    END{if(seen) printf "%d", (last-first); else printf "N/A"}
+  ' "${PG_CSV}")
+  [[ -n "${pg_col_xact_rollback}" ]] && pg_xact_rb=$(awk -F',' -v c="${pg_col_xact_rollback}" -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+    NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) {if(!seen){first=$c+0; seen=1} last=$c+0}
+    END{if(seen) printf "%d", (last-first); else printf "N/A"}
+  ' "${PG_CSV}")
+  [[ -n "${pg_col_temp_bytes}" ]] && pg_temp_bytes=$(awk -F',' -v c="${pg_col_temp_bytes}" -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+    NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) {if(!seen){first=$c+0; seen=1} last=$c+0}
+    END{if(seen) printf "%d", (last-first); else printf "N/A"}
+  ' "${PG_CSV}")
+  [[ -n "${pg_col_deadlocks}" ]] && pg_deadlocks=$(awk -F',' -v c="${pg_col_deadlocks}" -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+    NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) {if(!seen){first=$c+0; seen=1} last=$c+0}
+    END{if(seen) printf "%d", (last-first); else printf "N/A"}
+  ' "${PG_CSV}")
+  [[ -n "${pg_col_lock_waits}" ]] && pg_lock_waits_max=$(awk -F',' -v c="${pg_col_lock_waits}" -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+    NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) {if($c+0>max) max=$c+0}
+    END{printf "%d", max+0}
+  ' "${PG_CSV}")
+  [[ -n "${pg_col_buffers_checkpoint}" ]] && pg_ckpt_bufs=$(awk -F',' -v c="${pg_col_buffers_checkpoint}" -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+    NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) {if(!seen){first=$c+0; seen=1} last=$c+0}
+    END{if(seen) printf "%d", (last-first); else printf "N/A"}
+  ' "${PG_CSV}")
+  [[ -n "${pg_col_checkpoint_write_ms}" ]] && pg_ckpt_ms=$(awk -F',' -v c="${pg_col_checkpoint_write_ms}" -v s="${steady_state_start_iso}" -v e="${steady_state_end_iso}" '
+    NR>1 && (s=="" || $1>=s) && (e=="" || $1<=e) {if(!seen){first=$c+0; seen=1} last=$c+0}
+    END{if(seen) printf "%.0f", (last-first); else printf "N/A"}
+  ' "${PG_CSV}")
 
   [[ -z "${pg_numbackends_med}" ]] && pg_numbackends_med="N/A"
   [[ -z "${pg_active_backends_med}" ]] && pg_active_backends_med="N/A"
@@ -280,6 +445,9 @@ if [[ -f "${PG_CSV}" ]]; then
   [[ -z "${pg_cache_hit_med}"   ]] && pg_cache_hit_med="N/A"
 
   pg_section=$'\n## PostgreSQL — Database Statistics\n\n'
+  if [[ -n "${steady_state_start_iso}" && -n "${steady_state_end_iso}" ]]; then
+    pg_section+="> Stats are restricted to steady-state window: ${steady_state_start_iso} → ${steady_state_end_iso}."$'\n\n'
+  fi
   pg_section+='| Metric | Value | Notes |'$'\n'
   pg_section+='|--------|-------|-------|'$'\n'
   pg_section+="| PostgreSQL backends (median, \`numbackends\`) | ${pg_numbackends_med} | Total backend connections from \`pg_stat_database\` |"$'\n'
@@ -301,7 +469,7 @@ fi
 #       (OJP or pgBouncer, depending on the SUT)
 #   RESULTS_DIR/node_metrics/db/<host>_proc_metrics.csv   — PostgreSQL
 #   RESULTS_DIR/node_metrics/lb/<host>_proc_metrics.csv   — HAProxy (SUT-C only)
-# Columns: timestamp,pid,cpu_pct,rss_mb,vsz_mb
+# Columns: timestamp,pid,cpu_pct,host_cpu_pct,rss_mb,vsz_mb
 
 proc_section=""
 proc_rows=""
@@ -317,6 +485,13 @@ proxy_avg_cpu_count=0
 proxy_avg_rss_count=0
 lb_avg_cpu_count=0
 lb_avg_rss_count=0
+proxy_files_count=0
+lb_files_count=0
+db_files_count=0
+missing_host_cpu_column_files=0
+declare -a proxy_csv_files=()
+declare -a lb_csv_files=()
+declare -a db_csv_files=()
 
 for subdir in proxy db lb; do
   mapfile -t PROC_CSV_FILES < <(find "${NODE_METRICS_DIR}/${subdir}" \
@@ -324,93 +499,145 @@ for subdir in proxy db lb; do
 
   for csv in "${PROC_CSV_FILES[@]}"; do
     case "${subdir}" in
+      proxy) (( proxy_files_count += 1 )); proxy_csv_files+=("${csv}") ;;
+      db)    (( db_files_count += 1 ));    db_csv_files+=("${csv}") ;;
+      lb)    (( lb_files_count += 1 ));    lb_csv_files+=("${csv}") ;;
+    esac
+
+    case "${subdir}" in
       proxy) component="Proxy (OJP / pgBouncer)" ;;
       db)    component="PostgreSQL" ;;
       lb)    component="HAProxy" ;;
     esac
     host=$(basename "${csv}" _proc_metrics.csv)
 
-    # Peak and average CPU%
-    peak_cpu=$(awk -F',' 'NR>1 && $3+0>0 {if($3+0>max) max=$3+0} END{printf "%.1f", max+0}' "${csv}")
-    avg_cpu=$(awk -F',' 'NR>1 && $3+0>0 {sum+=$3+0; n++} END{
-        if (n>0) printf "%.1f", sum/n; else printf "N/A"}' "${csv}")
+    # Service CPU stats (%): avg, p50, p95, p99, peak
+    service_cpu_stats="$(csv_column_stats "${csv}" "cpu_pct" "${steady_state_start_iso}" "${steady_state_end_iso}")"
+    IFS='|' read -r avg_cpu p50_cpu p95_cpu p99_cpu peak_cpu _ <<< "${service_cpu_stats}"
 
-    # Peak and average RSS (MiB)
-    peak_rss=$(awk -F',' 'NR>1 && $4+0>0 {if($4+0>max) max=$4+0} END{printf "%.1f", max+0}' "${csv}")
-    avg_rss=$(awk -F',' 'NR>1 && $4+0>0 {sum+=$4+0; n++} END{
-        if (n>0) printf "%.1f", sum/n; else printf "N/A"}' "${csv}")
+    # Host CPU stats (%): avg, p50, p95, p99, peak (N/A for backward-compat CSVs)
+    if [[ -z "$(csv_col_idx "${csv}" "host_cpu_pct")" ]]; then
+      (( missing_host_cpu_column_files += 1 ))
+    fi
+    host_cpu_stats="$(csv_column_stats "${csv}" "host_cpu_pct" "${steady_state_start_iso}" "${steady_state_end_iso}")"
+    IFS='|' read -r avg_host_cpu p50_host_cpu p95_host_cpu p99_host_cpu peak_host_cpu _ <<< "${host_cpu_stats}"
 
-    proc_rows+="| ${component} | ${host} | ${avg_cpu} | ${peak_cpu} | ${avg_rss} | ${peak_rss} |"$'\n'
+    # RSS stats (MiB): avg, peak
+    rss_stats="$(csv_column_stats "${csv}" "rss_mb" "${steady_state_start_iso}" "${steady_state_end_iso}")"
+    IFS='|' read -r avg_rss _ _ _ peak_rss _ <<< "${rss_stats}"
+
+    proc_rows+="| ${component} | ${host} | ${avg_cpu} | ${p50_cpu} | ${p95_cpu} | ${p99_cpu} | ${peak_cpu} | ${avg_host_cpu} | ${p50_host_cpu} | ${p95_host_cpu} | ${p99_host_cpu} | ${peak_host_cpu} | ${avg_rss} | ${peak_rss} |"$'\n'
 
     if [[ "${subdir}" == "proxy" ]]; then
       if [[ "${avg_cpu}" != "N/A" ]]; then
         proxy_avg_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_avg_cpu_sum} + ${avg_cpu}}")
         (( ++proxy_avg_cpu_count ))
       fi
-      proxy_peak_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_peak_cpu_sum} + ${peak_cpu}}")
+      if [[ "${peak_cpu}" != "N/A" ]]; then
+        proxy_peak_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_peak_cpu_sum} + ${peak_cpu}}")
+      fi
       if [[ "${avg_rss}" != "N/A" ]]; then
         proxy_avg_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_avg_rss_sum} + ${avg_rss}}")
         (( ++proxy_avg_rss_count ))
       fi
-      proxy_peak_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_peak_rss_sum} + ${peak_rss}}")
+      if [[ "${peak_rss}" != "N/A" ]]; then
+        proxy_peak_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_peak_rss_sum} + ${peak_rss}}")
+      fi
     elif [[ "${subdir}" == "lb" ]]; then
       if [[ "${avg_cpu}" != "N/A" ]]; then
         lb_avg_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_avg_cpu_sum} + ${avg_cpu}}")
         (( ++lb_avg_cpu_count ))
       fi
-      lb_peak_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_peak_cpu_sum} + ${peak_cpu}}")
+      if [[ "${peak_cpu}" != "N/A" ]]; then
+        lb_peak_cpu_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_peak_cpu_sum} + ${peak_cpu}}")
+      fi
       if [[ "${avg_rss}" != "N/A" ]]; then
         lb_avg_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_avg_rss_sum} + ${avg_rss}}")
         (( ++lb_avg_rss_count ))
       fi
-      lb_peak_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_peak_rss_sum} + ${peak_rss}}")
+      if [[ "${peak_rss}" != "N/A" ]]; then
+        lb_peak_rss_sum=$(awk "BEGIN {printf \"%.2f\", ${lb_peak_rss_sum} + ${peak_rss}}")
+      fi
     fi
   done
 done
 
 if [[ -n "${proc_rows}" ]]; then
   proc_section=$'\n## Process Resource Utilization\n\n'
-  proc_section+='> CPU% is normalised to a single core (100% = 1 CPU fully busy).'$'\n'
+  proc_section+='> `service_cpu` is service-process-tree CPU normalised to a single core (100% = 1 CPU fully busy).'$'\n'
+  proc_section+='> `host_cpu` is host-level CPU busy% from `/proc/stat` (cloud-comparable scope).'$'\n'
+  if [[ -n "${steady_state_start_iso}" && -n "${steady_state_end_iso}" ]]; then
+    proc_section+="> Stats below are restricted to steady-state window: ${steady_state_start_iso} → ${steady_state_end_iso}."$'\n'
+  fi
   proc_section+='> Memory values are Resident Set Size (RSS) — physical RAM in use.'$'\n\n'
-  proc_section+='| Component | Node | Avg CPU (%) | Peak CPU (%) | Avg RSS (MiB) | Peak RSS (MiB) |'$'\n'
-  proc_section+='|-----------|------|-------------|--------------|---------------|----------------|'$'\n'
+  proc_section+='| Component | Node | service_cpu avg (%) | service_cpu p50 (%) | service_cpu p95 (%) | service_cpu p99 (%) | service_cpu peak (%) | host_cpu avg (%) | host_cpu p50 (%) | host_cpu p95 (%) | host_cpu p99 (%) | host_cpu peak (%) | Avg RSS (MiB) | Peak RSS (MiB) |'$'\n'
+  proc_section+='|-----------|------|---------------------|---------------------|---------------------|---------------------|----------------------|------------------|------------------|------------------|------------------|-------------------|---------------|----------------|'$'\n'
   proc_section+="${proc_rows}"
 fi
+
+# Tier-level aligned CPU (sum by timestamp across nodes/components).
+proxy_service_aligned_stats="$(aligned_sum_stats "cpu_pct" "${steady_state_start_iso}" "${steady_state_end_iso}" "${proxy_csv_files[@]}")"
+IFS='|' read -r proxy_service_avg proxy_service_p50 proxy_service_p95 proxy_service_p99 proxy_service_peak proxy_service_samples proxy_service_nodes <<< "${proxy_service_aligned_stats}"
+proxy_host_aligned_stats="$(aligned_sum_stats "host_cpu_pct" "${steady_state_start_iso}" "${steady_state_end_iso}" "${proxy_csv_files[@]}")"
+IFS='|' read -r proxy_host_avg proxy_host_p50 proxy_host_p95 proxy_host_p99 proxy_host_peak _ _ <<< "${proxy_host_aligned_stats}"
+
+lb_service_aligned_stats="$(aligned_sum_stats "cpu_pct" "${steady_state_start_iso}" "${steady_state_end_iso}" "${lb_csv_files[@]}")"
+IFS='|' read -r lb_service_avg lb_service_p50 lb_service_p95 lb_service_p99 lb_service_peak lb_service_samples lb_service_nodes <<< "${lb_service_aligned_stats}"
+lb_host_aligned_stats="$(aligned_sum_stats "host_cpu_pct" "${steady_state_start_iso}" "${steady_state_end_iso}" "${lb_csv_files[@]}")"
+IFS='|' read -r lb_host_avg lb_host_p50 lb_host_p95 lb_host_p99 lb_host_peak _ _ <<< "${lb_host_aligned_stats}"
+
+declare -a proxy_tier_csv_files=("${proxy_csv_files[@]}" "${lb_csv_files[@]}")
+proxy_tier_service_aligned_stats="$(aligned_sum_stats "cpu_pct" "${steady_state_start_iso}" "${steady_state_end_iso}" "${proxy_tier_csv_files[@]}")"
+IFS='|' read -r proxy_tier_service_avg proxy_tier_service_p50 proxy_tier_service_p95 proxy_tier_service_p99 proxy_tier_service_peak proxy_tier_service_samples proxy_tier_service_nodes <<< "${proxy_tier_service_aligned_stats}"
+proxy_tier_host_aligned_stats="$(aligned_sum_stats "host_cpu_pct" "${steady_state_start_iso}" "${steady_state_end_iso}" "${proxy_tier_csv_files[@]}")"
+IFS='|' read -r proxy_tier_host_avg proxy_tier_host_p50 proxy_tier_host_p95 proxy_tier_host_p99 proxy_tier_host_peak _ _ <<< "${proxy_tier_host_aligned_stats}"
 
 
 p95_pass=$(awk "BEGIN {print (${agg_p95} < ${SLO_P95_LIMIT}) ? \"✅ PASS\" : \"❌ FAIL\"}")
 error_pass=$(awk "BEGIN {print (${agg_error_rate} < ${SLO_ERROR_LIMIT}) ? \"✅ PASS\" : \"❌ FAIL\"}")
 
-if [[ ${proxy_avg_cpu_count} -gt 0 ]]; then
-  ojp_proxy_tier_avg_cpu="${proxy_avg_cpu_sum}"
-else
-  ojp_proxy_tier_avg_cpu="N/A"
-fi
-ojp_proxy_tier_peak_cpu="${proxy_peak_cpu_sum}"
+ojp_proxy_tier_avg_cpu="${proxy_service_avg}"
+ojp_proxy_tier_peak_cpu="${proxy_service_peak}"
+ojp_proxy_tier_p50_cpu="${proxy_service_p50}"
+ojp_proxy_tier_p95_cpu="${proxy_service_p95}"
+ojp_proxy_tier_p99_cpu="${proxy_service_p99}"
+ojp_proxy_tier_peak_cpu_legacy_sum="${proxy_peak_cpu_sum}"
+ojp_proxy_tier_avg_host_cpu="${proxy_host_avg}"
+ojp_proxy_tier_peak_host_cpu="${proxy_host_peak}"
 if [[ ${proxy_avg_rss_count} -gt 0 ]]; then
   ojp_proxy_tier_avg_rss="${proxy_avg_rss_sum}"
 else
   ojp_proxy_tier_avg_rss="N/A"
 fi
 ojp_proxy_tier_peak_rss="${proxy_peak_rss_sum}"
-proxy_avg_cpu_display="${proxy_avg_cpu_sum}"
+proxy_avg_cpu_display="${proxy_service_avg}"
+proxy_p50_cpu_display="${proxy_service_p50}"
+proxy_p95_cpu_display="${proxy_service_p95}"
+proxy_p99_cpu_display="${proxy_service_p99}"
+proxy_peak_cpu_display="${proxy_service_peak}"
 proxy_avg_rss_display="${proxy_avg_rss_sum}"
-lb_avg_cpu_display="${lb_avg_cpu_sum}"
+lb_avg_cpu_display="${lb_service_avg}"
+lb_p50_cpu_display="${lb_service_p50}"
+lb_p95_cpu_display="${lb_service_p95}"
+lb_p99_cpu_display="${lb_service_p99}"
+lb_peak_cpu_display="${lb_service_peak}"
 lb_avg_rss_display="${lb_avg_rss_sum}"
-if [[ ${proxy_avg_cpu_count} -eq 0 ]]; then proxy_avg_cpu_display="N/A"; fi
+if [[ ${proxy_avg_cpu_count} -eq 0 ]]; then proxy_avg_cpu_display="N/A"; proxy_p50_cpu_display="N/A"; proxy_p95_cpu_display="N/A"; proxy_p99_cpu_display="N/A"; proxy_peak_cpu_display="N/A"; fi
 if [[ ${proxy_avg_rss_count} -eq 0 ]]; then proxy_avg_rss_display="N/A"; fi
-if [[ ${lb_avg_cpu_count} -eq 0 ]]; then lb_avg_cpu_display="N/A"; fi
+if [[ ${lb_avg_cpu_count} -eq 0 ]]; then lb_avg_cpu_display="N/A"; lb_p50_cpu_display="N/A"; lb_p95_cpu_display="N/A"; lb_p99_cpu_display="N/A"; lb_peak_cpu_display="N/A"; fi
 if [[ ${lb_avg_rss_count} -eq 0 ]]; then lb_avg_rss_display="N/A"; fi
 if [[ ${proxy_avg_cpu_count} -eq 0 && ${lb_avg_cpu_count} -eq 0 ]]; then
   pgb_proxy_tier_avg_cpu="N/A"
 else
-  proxy_avg_cpu_for_total="${proxy_avg_cpu_sum}"
-  lb_avg_cpu_for_total="${lb_avg_cpu_sum}"
-  if [[ ${proxy_avg_cpu_count} -eq 0 ]]; then proxy_avg_cpu_for_total=0; fi
-  if [[ ${lb_avg_cpu_count} -eq 0 ]]; then lb_avg_cpu_for_total=0; fi
-  pgb_proxy_tier_avg_cpu=$(awk "BEGIN {printf \"%.2f\", ${proxy_avg_cpu_for_total} + ${lb_avg_cpu_for_total}}")
+  pgb_proxy_tier_avg_cpu="${proxy_tier_service_avg}"
 fi
-pgb_proxy_tier_peak_cpu=$(awk "BEGIN {printf \"%.2f\", ${proxy_peak_cpu_sum} + ${lb_peak_cpu_sum}}")
+pgb_proxy_tier_p50_cpu="${proxy_tier_service_p50}"
+pgb_proxy_tier_p95_cpu="${proxy_tier_service_p95}"
+pgb_proxy_tier_p99_cpu="${proxy_tier_service_p99}"
+pgb_proxy_tier_peak_cpu="${proxy_tier_service_peak}"
+pgb_proxy_tier_peak_cpu_legacy_sum=$(awk "BEGIN {printf \"%.2f\", ${proxy_peak_cpu_sum} + ${lb_peak_cpu_sum}}")
+pgb_proxy_tier_avg_host_cpu="${proxy_tier_host_avg}"
+pgb_proxy_tier_peak_host_cpu="${proxy_tier_host_peak}"
 if [[ ${proxy_avg_rss_count} -eq 0 && ${lb_avg_rss_count} -eq 0 ]]; then
   pgb_proxy_tier_avg_rss="N/A"
 else
@@ -453,6 +680,43 @@ if [[ -f "${RUN_METADATA_FILE}" ]]; then
   metadata_ojp_servers=$(jq_field "${RUN_METADATA_FILE}" ".ojp_servers")
   metadata_ojp_real_db_per_server=$(jq_field "${RUN_METADATA_FILE}" ".real_db_connections_per_ojp_server")
   configured_db_connection_budget=$(jq_field "${RUN_METADATA_FILE}" ".configured_db_connection_budget")
+fi
+
+metrics_completeness_section=""
+declare -a metrics_warnings=()
+expected_proxy_files="N/A"
+expected_lb_files="N/A"
+expected_db_files=1
+
+if [[ "${run_sut}" == "OJP" && "${metadata_ojp_servers}" =~ ^[0-9]+$ ]]; then
+  expected_proxy_files="${metadata_ojp_servers}"
+elif [[ "${run_sut}" == "PGBOUNCER" && "${metadata_pgbouncer_nodes}" =~ ^[0-9]+$ ]]; then
+  expected_proxy_files="${metadata_pgbouncer_nodes}"
+fi
+
+if [[ "${run_sut}" == "PGBOUNCER" && "${metadata_haproxy_nodes}" =~ ^[0-9]+$ ]]; then
+  expected_lb_files="${metadata_haproxy_nodes}"
+fi
+
+if [[ "${expected_proxy_files}" =~ ^[0-9]+$ && "${proxy_files_count}" -ne "${expected_proxy_files}" ]]; then
+  metrics_warnings+=("proxy process metric files mismatch: expected ${expected_proxy_files}, found ${proxy_files_count}")
+fi
+if [[ "${expected_lb_files}" =~ ^[0-9]+$ && "${lb_files_count}" -ne "${expected_lb_files}" ]]; then
+  metrics_warnings+=("load-balancer process metric files mismatch: expected ${expected_lb_files}, found ${lb_files_count}")
+fi
+if [[ "${db_files_count}" -ne "${expected_db_files}" ]]; then
+  metrics_warnings+=("db process metric files mismatch: expected ${expected_db_files}, found ${db_files_count}")
+fi
+if [[ "${missing_host_cpu_column_files}" -gt 0 ]]; then
+  metrics_warnings+=("${missing_host_cpu_column_files} process metric file(s) missing host_cpu_pct column (likely older collector output)")
+fi
+
+if [[ ${#metrics_warnings[@]} -gt 0 ]]; then
+  metrics_completeness_section+=$'\n## ⚠️ Metrics Completeness Warnings\n\n'
+  metrics_completeness_section+="> These warnings indicate potentially incomplete or non-comparable CPU metrics."$'\n\n'
+  for w in "${metrics_warnings[@]}"; do
+    metrics_completeness_section+="- ${w}"$'\n'
+  done
 fi
 
 # ── Write report ──────────────────────────────────────────────────────────────
@@ -511,25 +775,29 @@ cat <<HEADER
 | Configured client pool size (per replica) | ${configured_pool_size} |
 | OJP servers | ${metadata_ojp_servers} |
 | Real DB connections per OJP server | ${metadata_ojp_real_db_per_server} |
-| OJP proxy-tier CPU (avg / peak, summed) | ${ojp_proxy_tier_avg_cpu}% / ${ojp_proxy_tier_peak_cpu}% |
+| OJP proxy-tier service_cpu (avg / p50 / p95 / p99 / aligned_peak) | ${ojp_proxy_tier_avg_cpu}% / ${ojp_proxy_tier_p50_cpu}% / ${ojp_proxy_tier_p95_cpu}% / ${ojp_proxy_tier_p99_cpu}% / ${ojp_proxy_tier_peak_cpu}% |
+| OJP proxy-tier host_cpu (avg / peak) | ${ojp_proxy_tier_avg_host_cpu}% / ${ojp_proxy_tier_peak_host_cpu}% |
+| OJP proxy-tier service_cpu legacy_peak_sum (non-time-aligned) | ${ojp_proxy_tier_peak_cpu_legacy_sum}% |
 | OJP proxy-tier RSS (avg / peak, summed) | ${ojp_proxy_tier_avg_rss} MiB / ${ojp_proxy_tier_peak_rss} MiB |
 | PgBouncer nodes | ${metadata_pgbouncer_nodes} |
 | PgBouncer server pool size per node | ${metadata_pgbouncer_pool_size} |
 | pgbouncer_reserve_pool_size | ${metadata_pgbouncer_reserve_pool_size} |
 | PgBouncer local HikariCP pool size per replica | ${metadata_pgbouncer_local_pool_size} |
 | HAProxy nodes | ${metadata_haproxy_nodes} |
-| PgBouncer tier CPU (avg / peak, summed) | ${proxy_avg_cpu_display}% / ${proxy_peak_cpu_sum}% |
+| PgBouncer tier service_cpu (avg / p50 / p95 / p99 / aligned_peak) | ${proxy_avg_cpu_display}% / ${proxy_p50_cpu_display}% / ${proxy_p95_cpu_display}% / ${proxy_p99_cpu_display}% / ${proxy_peak_cpu_display}% |
 | PgBouncer tier RSS (avg / peak, summed) | ${proxy_avg_rss_display} MiB / ${proxy_peak_rss_sum} MiB |
-| HAProxy CPU (avg / peak, summed) | ${lb_avg_cpu_display}% / ${lb_peak_cpu_sum}% |
+| HAProxy service_cpu (avg / p50 / p95 / p99 / aligned_peak) | ${lb_avg_cpu_display}% / ${lb_p50_cpu_display}% / ${lb_p95_cpu_display}% / ${lb_p99_cpu_display}% / ${lb_peak_cpu_display}% |
 | HAProxy RSS (avg / peak, summed) | ${lb_avg_rss_display} MiB / ${lb_peak_rss_sum} MiB |
-| Total PgBouncer proxy-tier CPU (avg / peak) | ${pgb_proxy_tier_avg_cpu}% / ${pgb_proxy_tier_peak_cpu}% |
+| Total PgBouncer proxy-tier service_cpu (avg / p50 / p95 / p99 / aligned_peak) | ${pgb_proxy_tier_avg_cpu}% / ${pgb_proxy_tier_p50_cpu}% / ${pgb_proxy_tier_p95_cpu}% / ${pgb_proxy_tier_p99_cpu}% / ${pgb_proxy_tier_peak_cpu}% |
+| Total PgBouncer proxy-tier host_cpu (avg / peak) | ${pgb_proxy_tier_avg_host_cpu}% / ${pgb_proxy_tier_peak_host_cpu}% |
+| Total PgBouncer proxy-tier service_cpu legacy_peak_sum (non-time-aligned) | ${pgb_proxy_tier_peak_cpu_legacy_sum}% |
 | Total PgBouncer proxy-tier RSS (avg / peak) | ${pgb_proxy_tier_avg_rss} MiB / ${pgb_proxy_tier_peak_rss} MiB |
 
 ## Bench JVM System Metrics (in-process, median across instances)
 
 | Metric | Value | Source |
 |--------|-------|--------|
-| **Bench JVM CPU (median)** | ${agg_app_cpu} | \`OperatingSystemMXBean.getProcessCpuLoad()\` |
+| **bench_jvm_cpu (median)** | ${agg_app_cpu} | \`OperatingSystemMXBean.getProcessCpuLoad()\` (in-process) |
 | **Bench JVM GC pause total** | ${agg_gc_ms} ms | \`GarbageCollectorMXBean.getCollectionTime()\` |
 
 ---
@@ -585,6 +853,9 @@ fi
 # Process resource utilization (present when process metrics CSVs were fetched)
 if [[ -n "${proc_section}" ]]; then
   printf '%s' "---${proc_section}"
+fi
+if [[ -n "${metrics_completeness_section}" ]]; then
+  printf '%s' "---${metrics_completeness_section}"
 fi
 
 cat <<FOOTER
