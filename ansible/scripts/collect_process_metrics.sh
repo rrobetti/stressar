@@ -69,7 +69,7 @@ printf 'timestamp,pid,cpu_pct,host_cpu_pct,rss_mb,vsz_mb\n' > "${OUTPUT}"
 
 CLK_TCK=$(getconf CLK_TCK 2>/dev/null || echo 100)
 HOST_CPU_COUNT=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 1)
-if ! [[ "${HOST_CPU_COUNT}" =~ ^[0-9]+$ ]] || [[ "${HOST_CPU_COUNT}" -le 0 ]]; then
+if ! [[ "${HOST_CPU_COUNT}" =~ ^[1-9][0-9]*$ ]]; then
   echo "WARN: unable to detect online CPU count; defaulting host_cpu_pct scaling to 1 CPU." >&2
   HOST_CPU_COUNT=1
 fi
@@ -185,7 +185,7 @@ while true; do
   host_delta_total=$(( cur_host_total - prev_host_total ))
   host_delta_idle=$(( cur_host_idle - prev_host_idle ))
   host_cpu_pct=$(awk "BEGIN {
-      if (${host_delta_total} > 0 && ${HOST_CPU_COUNT} > 0)
+      if (${host_delta_total} > 0)
         printf \"%.2f\", (1 - (${host_delta_idle} / ${host_delta_total})) * 100 * ${HOST_CPU_COUNT};
       else
         printf \"0.00\"
