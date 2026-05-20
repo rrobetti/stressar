@@ -1,12 +1,12 @@
 # Stressar
 
-A benchmark tool to stress test JDBC-based solutions, including but not limited to connection pooling (HikariCP) and proxied solutions (OJP, PgBouncer). Stressar enables rigorous, reproducible comparison of PostgreSQL connection strategies from a standard JDBC client perspective. It can also be expanded to test other database vendors.
+A stress-testing tool for JDBC workloads. Stressar helps you run reproducible load, capacity, and overload tests across direct JDBC connections, poolers, and proxy topologies while keeping the same client harness, workload model, and metrics pipeline. The repository ships with PostgreSQL-focused reference scenarios today, but the tool is designed to exercise diverse JDBC workloads across different databases and deployment patterns.
 
 ---
 
 ## Test Results Summary
 
-All tests are executed with **no TLS** (plaintext on all network legs inside a trusted benchmark network) and **16 independent client JVM processes** (8 on each of two load-generator machines). The backend connection budget differs by SUT: **300 direct connections** for HikariCP (≈19 per replica) and **48 proxy backend connections** for OJP and PgBouncer (16 per proxy node). Two test protocols are run for each of the three systems under test (SUTs).
+The bundled reference suite is executed with **no TLS** (plaintext on all network legs inside a trusted benchmark network) and **16 independent client JVM processes** (8 on each of two load-generator machines). The current PostgreSQL reference scenarios use different backend connection budgets by SUT: **300 direct connections** for HikariCP (≈19 per replica) and **48 proxy backend connections** for OJP and PgBouncer (16 per proxy node). Two test protocols are run for each of the three bundled systems under test (SUTs).
 
 See [Simplified Test List](#simplified-test-list) below for a plain-language description of what is run.
 See [BENCHMARKING_GUIDE.md](docs/BENCHMARKING_GUIDE.md) for the full protocol.
@@ -32,14 +32,14 @@ See [BENCHMARKING_GUIDE.md](docs/BENCHMARKING_GUIDE.md) for the full protocol.
 
 > Full specs, topology diagrams, and exact commands are in [BENCHMARKING_GUIDE.md](docs/BENCHMARKING_GUIDE.md).
 
-Two tests are run, each against three different systems under test (SUTs):
+The bundled benchmark suite runs two tests against three reference systems under test (SUTs):
 
 | #          | What we run                                                                                                                                                                                   | Why                                                                               |
 |------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------|
 | **Test A** | Gradually increase the request rate in 15 % steps until the system can no longer keep up (p95 latency > 50 ms or error rate > 0.1 %). Record the maximum sustainable throughput for each SUT. | Finds each system's breaking point and compares throughput capacity.              |
 | **Test B** | Push each system to 130 % of its maximum throughput for 5 minutes, then drop back to 70 % and measure how long it takes to recover.                                                           | Reveals queue management, back-pressure behaviour, and resilience under overload. |
 
-The three systems under test (run in this order):
+The three bundled reference systems under test (run in this order):
 
 1. **HikariCP Direct (baseline)** — 16 independent Java processes each holding a small HikariCP pool, connecting directly to PostgreSQL (plaintext). No proxy. This is the upper-bound baseline.
 2. **OJP (3 nodes)** — The same 16 Java processes connect to 3 OJP server nodes via the OJP JDBC driver (built-in client-side load balancing). All traffic is plaintext gRPC over HTTP/2.
@@ -51,8 +51,8 @@ The three systems under test (run in this order):
 
 ## Features
 
-- **Multiple SUT Modes**: HIKARI_DISCIPLINED, OJP, PGBOUNCER
-- **Workload Types**: Read-only (W1), Read-Write (W2), Mixed, Slow Query (W3)
+- **Multiple JDBC topologies**: HIKARI_DISCIPLINED, OJP, PGBOUNCER
+- **Workload Types**: Read-only (W1), Read-Write (W2), Mixed, Slow Query (W3), OLAP (W4), HTAP (W5)
 - **Load Modes**: Open-loop (rate-based) and closed-loop (concurrency-based)
 - **Plaintext networking**: No TLS on any leg — TLS overhead is excluded as a variable
 - **Metrics**: Per-second timeseries, HDR histograms, system resource monitoring
@@ -97,15 +97,15 @@ build/install/stressar/bin/bench run \
 
 Comprehensive documentation is available in the `docs/` directory:
 
-- **[DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** - Single control-node deployment guide (pre-provisioned machines, SSH-based setup, OJP 0.4.16-beta)
+- **[DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** - Single control-node deployment guide for one supported proxy topology reference setup
 
-- **[ansible/README.md](ansible/README.md)** - Ansible automation (install software, run tests, collect results, generate report)
-  - `setup.yml` — one command to install PostgreSQL, OJP Server, and build the bench tool
+- **[ansible/README.md](ansible/README.md)** - Ansible automation for bundled JDBC benchmark scenarios (install software, run tests, collect results, generate report)
+  - `setup.yml` — one command to install PostgreSQL, optional proxy components, and build the bench tool
   - `run_benchmarks_ojp.yml` — parallel bench replicas + automatic Markdown report
   - `teardown.yml` — stop services and reset DB statistics
   - `scripts/generate_report.sh` — standalone `jq`-based report generator
 
-- **[install/README.md](docs/install/README.md)** - Installation guides index
+- **[install/README.md](docs/install/README.md)** - Installation guides index for common JDBC benchmark components
   - [Java](docs/install/JAVA.md) — JVM runtime (required)
   - [Gradle](docs/install/GRADLE.md) — build tool (wrapper included)
   - [PostgreSQL](docs/install/POSTGRESQL.md) — database (required)
@@ -114,16 +114,16 @@ Comprehensive documentation is available in the `docs/` directory:
   - [OJP](docs/install/OJP.md) — Open J Proxy (OJP scenario)
 
 - **[RATIONALE.md](docs/RATIONALE.md)** - Why this tool was built
-  - Absence of JDBC-client benchmarks for PgBouncer
+  - Need for a JDBC-native stress-testing harness
   - Limitations of closed-loop load generation
-  - Reproducibility requirements for scientific publication
+  - Reproducibility requirements for comparative benchmark studies
 
 - **[PARAMETER_DECISIONS.md](docs/PARAMETER_DECISIONS.md)** - Explainability: why every numeric constant was chosen
   - Why 16 client JVM processes (and why 8 per machine)
   - Why 300 direct backend connections (19 per replica) vs 48 proxy backend connections (16 per proxy node), and 63 RPS per client
   - Why specific timing windows, SLO thresholds, dataset sizes, and infrastructure settings
 
-- **[BENCHMARKING_GUIDE.md](docs/BENCHMARKING_GUIDE.md)** - Step-by-step benchmarking protocol
+- **[BENCHMARKING_GUIDE.md](docs/BENCHMARKING_GUIDE.md)** - Step-by-step benchmarking protocol for the bundled reference scenarios
   - Deployment topology and hardware specifications
   - Software installation and configuration (PostgreSQL, PgBouncer, OJP)
   - No-TLS network design rationale
@@ -132,7 +132,7 @@ Comprehensive documentation is available in the `docs/` directory:
   - Expected outcomes stated as falsifiable hypotheses
   - Analysis and reporting procedures
 
-- **[ADDING_NEW_TESTS.md](docs/ADDING_NEW_TESTS.md)** - What is required to add a new benchmark scenario (for example ProxySQL + MySQL) and compare it with existing OJP runs
+- **[ADDING_NEW_TESTS.md](docs/ADDING_NEW_TESTS.md)** - What is required to add a new benchmark scenario (for example ProxySQL + MySQL) and compare it with the existing reference scenarios
 
 - **[RUNBOOK.md](docs/RUNBOOK.md)** - Complete operational guide with exact commands
   - PostgreSQL setup and configuration

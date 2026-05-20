@@ -1,7 +1,7 @@
 # Stressar - Project Summary
 
 ## Overview
-A complete, production-ready database benchmark harness for PostgreSQL that enables rigorous, reproducible comparison of connection pooling strategies.
+A production-ready JDBC workload stress-testing harness that enables rigorous, reproducible comparison of connection-management strategies, workload mixes, and deployment topologies.
 
 ## Implementation Statistics
 
