@@ -1,8 +1,8 @@
 # Metrics Reference — What Is Measured and How
 
-This document describes every metric the OJP Performance Benchmark Tool collects,
-the mechanism used to collect it, the output file it appears in, and how to
-interpret it.
+This document describes every metric Stressar collects, the mechanism used to
+collect it, the output file it appears in, and how to interpret it across JDBC
+workload stress tests.
 
 ---
 
