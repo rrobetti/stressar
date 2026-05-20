@@ -1,12 +1,12 @@
-# OJP and PgBouncer Benchmarking Guide
+# Reference Benchmarking Guide for JDBC Workloads
 
 ## Purpose
 
-This document provides a complete, step-by-step protocol for benchmarking OJP (Open J Proxy)
-and PgBouncer using Stressar. It specifies the deployment topology,
-hardware requirements, software configuration, workload definitions, load levels, acceptance
-criteria, and analysis procedures required to produce data suitable for publication in a
-peer-reviewed venue.
+This document provides a complete, step-by-step protocol for running reproducible JDBC workload
+stress tests with Stressar. It specifies deployment topology, hardware requirements, software
+configuration, workload definitions, load levels, acceptance criteria, and analysis procedures for
+the bundled PostgreSQL reference scenarios. The same workflow can be adapted to other
+JDBC-capable databases and middleware topologies.
 
 All instructions are prescriptive. Deviations from the specified configuration must be documented
 in the experimental report along with a justification.
@@ -36,8 +36,8 @@ in the experimental report along with a justification.
 
 ## Benchmark Philosophy: Production Topology, Not Equal Knobs
 
-This benchmark compares realistic production topologies rather than artificially identical network
-paths or identical client-side settings.
+This reference benchmark compares realistic production JDBC topologies rather than artificially
+identical network paths or identical client-side settings.
 
 - **HikariCP direct baseline (`hikari-prod`)** models a common elastic microservice architecture:
   each replica owns a local JDBC pool, so total possible PostgreSQL connections grow as replicas
@@ -48,6 +48,9 @@ paths or identical client-side settings.
 - **PgBouncer (`pgbouncer-prod`)** models a common Java deployment: applications keep local HikariCP
   pools, PgBouncer consolidates backend PostgreSQL connections, and HAProxy handles multi-node
   PgBouncer load balancing/HA.
+
+These three scenarios are the current bundled reference topologies. Additional JDBC-capable
+databases, drivers, and proxy layers can be added using the same workload and measurement model.
 
 OJP is intentionally not placed behind HAProxy for topology symmetry. Client-side balancing and
 failover are part of the OJP JDBC driver model.

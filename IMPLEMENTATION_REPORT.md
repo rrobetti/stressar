@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Successfully implemented a complete, production-ready database benchmark harness for PostgreSQL connection pooling comparison. The tool delivers all specified requirements with comprehensive documentation, tests, and example configurations.
+Successfully implemented a complete, production-ready JDBC workload stress-testing harness. The tool delivers comprehensive documentation, tests, and example configurations for comparing connection-management strategies and workload behaviors.
 
 ## Deliverables
 

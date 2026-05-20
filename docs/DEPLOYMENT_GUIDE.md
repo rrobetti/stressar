@@ -1,7 +1,7 @@
 # Single Control-Node Deployment Guide
 
-Step-by-step instructions for deploying and running the OJP Performance Benchmark from a
-**single control node** (your laptop) against pre-provisioned remote machines.
+Step-by-step instructions for deploying and running one supported Stressar proxy-topology
+benchmark from a **single control node** (your laptop) against pre-provisioned remote machines.
 
 ## Assumptions
 
@@ -65,7 +65,7 @@ graph TD
 | Topology | Where bench runs | Hardware scale | Purpose |
 |---|---|---|---|
 | [BENCHMARKING_GUIDE.md](BENCHMARKING_GUIDE.md) **Full run** | 2 dedicated load-generator machines (LG-1 + LG-2) | Production hardware for each node | Publishable benchmark results |
-| **This guide** (Single control-node) | Your laptop | **Production-spec** proxy + DB machines | Functional validation and OJP scenario testing without dedicated LG machines |
+| **This guide** (Single control-node) | Your laptop | **Production-spec** proxy + DB machines | Functional validation of the bundled OJP reference topology without dedicated LG machines |
 | [Ansible dry-run](../ansible/README.md#dry-run-on-minimal-hardware) | Ansible control node (localhost) | 1 vCPU / 1 GB per machine | Validate the Ansible automation itself before paying for larger hardware |
 
 > **This guide assumes production-spec remote machines** (proxy nodes with ≥4 GB RAM,

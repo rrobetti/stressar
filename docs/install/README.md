@@ -1,8 +1,8 @@
 # Installation Guides
 
-Step-by-step instructions for every software component required to run Stressar.
+Step-by-step instructions for the software components commonly used to run Stressar JDBC workload benchmarks.
 
-## Version reference (tools used in this project)
+## Version reference (tools used in the bundled reference scenarios)
 
 | Tool / component | Version used / required |
 |---|---|
@@ -18,7 +18,7 @@ For Ansible-specific tooling versions (for automation runs), see [ansible/README
 
 ---
 
-| Component | Required for | Guide |
+| Component | Common use case | Guide |
 |---|---|---|
 | [Java](JAVA.md) | All scenarios — JVM runtime for the benchmark tool | [JAVA.md](JAVA.md) |
 | [Gradle](GRADLE.md) | All scenarios — build tool (wrapper included in repo) | [GRADLE.md](GRADLE.md) |
@@ -30,11 +30,11 @@ For Ansible-specific tooling versions (for automation runs), see [ansible/README
 
 ## Quick start
 
-For a minimal local setup (T1 baseline scenario) you only need Java, Gradle, and PostgreSQL:
+For a minimal local JDBC benchmark setup you only need Java, Gradle, and PostgreSQL:
 
 1. [Install Java](JAVA.md)
 2. Clone the repository and run `./gradlew installDist` (Gradle wrapper downloads Gradle automatically — see [GRADLE.md](GRADLE.md))
 3. [Install PostgreSQL](POSTGRESQL.md)
 4. Follow [RUNBOOK.md](../RUNBOOK.md) for database initialisation and benchmark commands.
 
-For the full multi-scenario setup see [BENCHMARKING_GUIDE.md](../BENCHMARKING_GUIDE.md).
+For the full bundled reference suite, including proxy and pooler topologies, see [BENCHMARKING_GUIDE.md](../BENCHMARKING_GUIDE.md).

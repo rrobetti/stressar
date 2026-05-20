@@ -3,10 +3,11 @@
 ## Abstract
 
 This document states the technical reasons that motivated the construction of a purpose-built
-benchmark harness for comparing PostgreSQL connection-pooling strategies, with particular emphasis
-on PgBouncer accessed via a standard JDBC client. It explains why existing general-purpose tools
-are insufficient for this comparison, and why the specific design choices made in this harness are
-necessary to produce results that are valid for publication in a peer-reviewed venue.
+stress-testing harness for JDBC workloads. Stressar's initial reference scenarios focus on
+PostgreSQL connection-management topologies, but the same design is meant to support broader JDBC
+performance studies across different databases, drivers, and middleware layers. It explains why
+existing general-purpose tools are insufficient for these comparisons and why the specific design
+choices made in this harness are necessary to produce reproducible, decision-useful results.
 
 ---
 
@@ -135,10 +136,11 @@ a setup detail and do not vary pool size, pool mode, or the number of applicatio
  realistic production connection-management topologies (direct HikariCP, OJP centralized pooling,
  PgBouncer+HAProxy) compare under the same workload and hardware constraints?*
 
-This tool is specifically designed to answer that question by comparing production deployment
+Stressar is specifically designed to answer that question by comparing production deployment
 patterns rather than artificially identical client-side knobs, and by measuring throughput, p95
 latency, error rate, observed backend connections, and proxy-tier resource usage at each load
-level.
+level. The same benchmark harness can then be extended to other JDBC-oriented comparisons without
+changing the core load-generation model.
 
 ---
 
@@ -156,9 +158,10 @@ The tool was constructed because:
 | Reproducible, seedable data | Partial in YCSB | Not for PostgreSQL connection-pooling studies |
 | JDBC prepared-statement interactions with PgBouncer | None | Requires JDBC client |
 
-The combination of these gaps makes it impossible to draw scientifically defensible conclusions
-about PgBouncer's fitness for Java-based applications using existing public benchmarking tools.
-This harness is designed to fill all of them.
+The combination of these gaps makes it difficult to draw scientifically defensible conclusions
+about JDBC connection-management choices using existing public benchmarking tools. Stressar is
+designed to fill that gap with a reusable harness for diverse JDBC workloads, while the current
+repository contents provide PostgreSQL-focused reference scenarios.
 
 ---
 
