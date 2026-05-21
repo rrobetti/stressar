@@ -1,8 +1,8 @@
 # Metrics Reference — What Is Measured and How
 
-This document describes every metric the OJP Performance Benchmark Tool collects,
-the mechanism used to collect it, the output file it appears in, and how to
-interpret it.
+This document describes every metric Stressar collects, the mechanism used to
+collect it, the output file it appears in, and how to interpret it across JDBC
+workload stress tests.
 
 ---
 
@@ -157,9 +157,12 @@ Key fields:
 ```
 runInfo                         — run context (SUT, workload, instance ID, …)
 attemptedRps                    — mean attempted RPS over the measurement window
-achievedThroughputRps           — mean completed RPS over the measurement window
+achievedThroughputRps           — backward-compatible alias of successfulThroughputRps
+successfulThroughputRps         — mean successful RPS over the measurement window
+errorThroughputRps              — mean failed-request RPS over the measurement window
+totalThroughputRps              — mean total completed RPS (successful + failed)
 errorRate                       — failedRequests / (completedRequests + failedRequests)
-latencyMs.{p50,p95,p99,p999,max,mean}  — cumulative histogram percentiles (all requests)
+latencyMs.{p50,p95,p99,p999,max,mean,meanSuccessful,meanFailed,meanTotal}  — cumulative latency stats
 errorsByType.{<ExceptionClassSimpleName>: count, ...}  — error breakdown
 appCpuMedian                    — median application CPU % (optional)
 appRssMedian                    — median resident set size in MB (optional)
@@ -223,7 +226,10 @@ Source: `LatencyRecorder.exportToLog()`, `HistogramAggregator.java`.
 | **p99** | 99 % of requests finish faster. Indicates tail behaviour. | `HdrHistogram.getValueAtPercentile(99.0)` |
 | **p99.9** | 99.9 % of requests finish faster. Captures extreme outliers. | `HdrHistogram.getValueAtPercentile(99.9)` |
 | **max** | Worst single latency observed. | `HdrHistogram.getMaxValue()` |
-| **mean** | Arithmetic mean. Less useful than percentiles but included for completeness. | `HdrHistogram.getMean()` |
+| **meanSuccessful** | Arithmetic mean for successful requests only. | `HdrHistogram.getMean()` |
+| **meanFailed** | Arithmetic mean for failed requests only. | `sum(failedLatencyNanos) / failedRequests` |
+| **meanTotal** | Arithmetic mean across successful + failed requests. | `(sum(successLatencyNanos)+sum(failedLatencyNanos)) / totalRequests` |
+| **mean** | Backward-compatible alias for `meanTotal`. | same as `meanTotal` |
 
 All latency values are reported in **milliseconds** in the output files. The
 histogram stores values internally in **microseconds** for precision.
@@ -239,7 +245,10 @@ completely saturated system; normal operating range is well below 1 second.
 | Metric | Description |
 |--------|-------------|
 | `attempted_rps` | Rate at which the dispatcher submitted operations to the worker pool. For open-loop runs this equals `targetRps` under normal conditions; it drops when the dispatcher itself is CPU-limited. |
-| `achieved_rps` | Rate at which operations actually completed (success or error). Under saturation, this decouples from `attempted_rps`. The gap between them measures back-pressure. |
+| `successfulThroughputRps` | Successful requests per second. |
+| `errorThroughputRps` | Failed requests per second. |
+| `totalThroughputRps` | Completed requests per second (`successfulThroughputRps + errorThroughputRps`). |
+| `achievedThroughputRps` | Backward-compatible alias of `successfulThroughputRps`. |
 | `errorRate` | `failedRequests ÷ (completedRequests + failedRequests)`. SLO threshold: < 0.001 (0.1 %). |
 
 ---
