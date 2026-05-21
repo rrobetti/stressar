@@ -343,11 +343,31 @@ workload:
 - Can overload the system if `targetRps` exceeds capacity
 
 **Thread Calculation:**
+
+The worker pool is auto-sized from Little's Law over the connection-acquisition
+timeout (the per-request latency ceiling), so that the dispatcher can absorb
+the worst latency the SUT is permitted to produce without silently queuing
+operations behind a too-small worker pool:
+
 ```
-numThreads = max(4, min(targetRps / 10, 200))
+numThreads = clamp(ceil(targetRps × (connectionTimeoutMs/1000) × 1.10), 4, 2000)
 ```
 
-**Example:** For `targetRps: 500`, uses `50` threads.
+**Example:** For `targetRps: 500` with a 30 s connection timeout, the floor is
+`500 × 30 × 1.10 = 16500`, which is clamped to the safety cap of `2000`. For
+`targetRps: 10` with the same timeout, it is `10 × 30 × 1.10 = 330` threads.
+
+Use `workload.openLoopMaxConcurrency` to override the auto-sizing — this is
+useful for stress probes that deliberately allow very long tails (override
+bypasses the upper cap) or for tightly bounded runs that want to detect even
+small stalls.
+
+```yaml
+workload:
+  openLoop: true
+  targetRps: 500
+  openLoopMaxConcurrency: 4000  # explicit override; bypasses auto cap
+```
 
 #### Closed-Loop Mode
 

@@ -13,6 +13,10 @@ public class WorkloadConfig {
     private int cooldownSeconds = 120;
     private int repeatCount = 5;
     private long seed = 42L;
+
+    // Open-loop worker-pool sizing override. 0 or negative => auto-size from
+    // targetRps × connectionTimeoutMs (Little's Law) in BenchmarkRunner.
+    private int openLoopMaxConcurrency = 0;
     
     // Workload-specific parameters
     private double queryAPercent = 0.30;  // For W1
@@ -152,5 +156,13 @@ public class WorkloadConfig {
 
     public void setZipfAlpha(double zipfAlpha) {
         this.zipfAlpha = zipfAlpha;
+    }
+
+    public int getOpenLoopMaxConcurrency() {
+        return openLoopMaxConcurrency;
+    }
+
+    public void setOpenLoopMaxConcurrency(int openLoopMaxConcurrency) {
+        this.openLoopMaxConcurrency = openLoopMaxConcurrency;
     }
 }

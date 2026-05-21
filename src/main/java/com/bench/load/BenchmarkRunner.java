@@ -71,11 +71,19 @@ public class BenchmarkRunner {
             LoadGenerator loadGen;
             TrueOpenLoopLoadGenerator trueOpenLoop = null;
             if (config.getWorkload().isOpenLoop()) {
+                int connectionTimeoutMs = config.getConnectionTimeout();
+                int override = config.getWorkload().getOpenLoopMaxConcurrency();
+                int numWorkers = TrueOpenLoopLoadGenerator.autoSizeWorkers(
+                        config.getWorkload().getTargetRps(), connectionTimeoutMs, override);
+                long shutdownAwaitMs = (long) connectionTimeoutMs + 5_000L;
                 trueOpenLoop = new TrueOpenLoopLoadGenerator(workload, metrics, intervalMetrics,
-                                                             config.getWorkload().getTargetRps());
+                                                             config.getWorkload().getTargetRps(),
+                                                             numWorkers, shutdownAwaitMs);
                 loadGen = trueOpenLoop;
-                logger.info("Load mode: true open-loop (absolute time-based), target RPS: {}",
-                        config.getWorkload().getTargetRps());
+                logger.info("Load mode: true open-loop (absolute time-based), target RPS: {}, "
+                        + "workers: {} (override: {}, connectionTimeoutMs: {}, shutdownAwaitMs: {})",
+                        config.getWorkload().getTargetRps(), numWorkers,
+                        override > 0 ? override : "auto", connectionTimeoutMs, shutdownAwaitMs);
             } else {
                 loadGen = new ClosedLoopLoadGenerator(workload, metrics, intervalMetrics,
                                                       config.getWorkload().getConcurrency());
