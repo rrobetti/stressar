@@ -31,7 +31,7 @@
 # Production overrides:
 #   -e bench_db_connection_budget=300   # total backend connections (16 × 19 ≈ 304 ≈ 300)
 #   -e bench_replica_count=16           # number of bench JVM replicas
-#   -e bench_target_rps=500             # aggregate target RPS
+#   -e bench_target_rps=40              # per-replica target RPS (16 × 40 = 640 aggregate)
 #   -e bench_duration_seconds=300
 #
 # Optional overrides:

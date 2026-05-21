@@ -26,7 +26,7 @@ public class OlapWorkloadTest {
     }
 
     @Test
-    public void testAllFiveQueriesAreReachedAfterFiveCalls() throws SQLException {
+    public void testAllQueriesAreReachedAfterOneFullCycle() throws SQLException {
         TestConnectionProvider provider = new TestConnectionProvider();
         OlapWorkload workload = new OlapWorkload(provider, SEED, ACCOUNTS, ITEMS, false, 1.1);
 
@@ -36,7 +36,7 @@ public class OlapWorkloadTest {
 
         Set<String> expected = new HashSet<>(Arrays.asList(OlapWorkload.QUERIES));
         Set<String> actual   = new HashSet<>(provider.capturedSql);
-        assertEquals("All 5 OLAP queries must be exercised in one cycle", expected, actual);
+        assertEquals("All OLAP queries must be exercised in one cycle", expected, actual);
     }
 
     @Test
@@ -81,6 +81,6 @@ public class OlapWorkloadTest {
             assertNotNull("QUERIES[" + i + "] must not be null", OlapWorkload.QUERIES[i]);
             assertFalse("QUERIES[" + i + "] must not be blank", OlapWorkload.QUERIES[i].trim().isEmpty());
         }
-        assertEquals("There must be exactly 5 OLAP queries", 5, OlapWorkload.QUERIES.length);
+        assertEquals("There must be exactly 6 OLAP queries", 6, OlapWorkload.QUERIES.length);
     }
 }
