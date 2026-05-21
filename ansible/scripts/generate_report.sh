@@ -148,14 +148,20 @@ aligned_sum_stats() {
 # ── Aggregate bench-client metrics across all instances ──────────────────────
 
 total_achieved_rps=0
+total_attempted_rps=0
 total_p50=0; total_p95=0; total_p99=0; total_p999=0
 total_error_rate=0
 total_total_requests=0
 total_failed_requests=0
+total_open_loop_attempted_ops=0
+total_open_loop_missed_opportunities=0
+total_open_loop_scheduling_delay_ms=0
+open_loop_instance_count=0
 instance_count=0
 
 for f in "${SUMMARY_FILES[@]}"; do
   total_achieved_rps=$(jq -r ".achievedThroughputRps // 0" "${f}" | awk -v acc="${total_achieved_rps}" '{print acc + $1}')
+  total_attempted_rps=$(jq -r ".attemptedRps // 0" "${f}" | awk -v acc="${total_attempted_rps}" '{print acc + $1}')
   total_p50=$(jq -r ".latencyMs.p50  // 0" "${f}" | awk -v acc="${total_p50}"  '{print acc + $1}')
   total_p95=$(jq -r ".latencyMs.p95  // 0" "${f}" | awk -v acc="${total_p95}"  '{print acc + $1}')
   total_p99=$(jq -r ".latencyMs.p99  // 0" "${f}" | awk -v acc="${total_p99}"  '{print acc + $1}')
@@ -163,6 +169,15 @@ for f in "${SUMMARY_FILES[@]}"; do
   total_error_rate=$(jq -r ".errorRate // 0" "${f}" | awk -v acc="${total_error_rate}" '{print acc + $1}')
   total_total_requests=$(jq -r ".totalRequests // 0"  "${f}" | awk -v acc="${total_total_requests}"  '{print acc + $1}')
   total_failed_requests=$(jq -r ".failedRequests // 0" "${f}" | awk -v acc="${total_failed_requests}" '{print acc + $1}')
+  ol_attempted=$(jq -r ".runInfo.openLoopAttemptedOps // empty" "${f}")
+  if [[ -n "${ol_attempted}" ]]; then
+    total_open_loop_attempted_ops=$(awk -v acc="${total_open_loop_attempted_ops}" -v v="${ol_attempted}" 'BEGIN {print acc + v}')
+    ol_missed=$(jq -r ".runInfo.openLoopMissedOpportunities // 0" "${f}")
+    total_open_loop_missed_opportunities=$(awk -v acc="${total_open_loop_missed_opportunities}" -v v="${ol_missed}" 'BEGIN {print acc + v}')
+    ol_delay=$(jq -r ".runInfo.openLoopSchedulingDelayMs // 0" "${f}")
+    total_open_loop_scheduling_delay_ms=$(awk -v acc="${total_open_loop_scheduling_delay_ms}" -v v="${ol_delay}" 'BEGIN {print acc + v}')
+    (( ++open_loop_instance_count ))
+  fi
   (( ++instance_count ))
 done
 
@@ -176,6 +191,43 @@ agg_p999=$(avg "${total_p999}" "${instance_count}")
 agg_error_rate=$(avg "${total_error_rate}" "${instance_count}")
 agg_error_rate_pct=$(awk "BEGIN {printf \"%.2f\", ${agg_error_rate} * 100}")
 total_agg_rps=$(awk "BEGIN {printf \"%.2f\", ${total_achieved_rps}}")
+total_attempted_agg_rps=$(awk "BEGIN {printf \"%.2f\", ${total_attempted_rps}}")
+
+# ── Open-loop sanity metrics (only when at least one instance ran open-loop) ──
+# These prove the open-loop dispatcher actually stayed open: a large gap between
+# attempted and achieved RPS, missed opportunities, or non-trivial scheduling
+# delay all indicate the worker pool was too small for the SUT's latency and the
+# load was effectively closed-loop. See workload.openLoopMaxConcurrency to tune.
+open_loop_section=""
+if (( open_loop_instance_count > 0 )); then
+  ol_attempted_total=$(awk "BEGIN {printf \"%.0f\", ${total_open_loop_attempted_ops}}")
+  ol_missed_total=$(awk "BEGIN {printf \"%.0f\", ${total_open_loop_missed_opportunities}}")
+  ol_delay_total=$(awk "BEGIN {printf \"%.2f\", ${total_open_loop_scheduling_delay_ms}}")
+  ol_throughput_gap_rps=$(awk "BEGIN {printf \"%.2f\", ${total_attempted_rps} - ${total_achieved_rps}}")
+  ol_throughput_gap_pct="N/A"
+  if awk "BEGIN {exit !(${total_attempted_rps} > 0)}"; then
+    ol_throughput_gap_pct=$(awk "BEGIN {printf \"%.2f%%\", (${total_attempted_rps} - ${total_achieved_rps}) / ${total_attempted_rps} * 100}")
+  fi
+  open_loop_section=$(cat <<OL
+
+## Open-Loop Sanity (${open_loop_instance_count}/${instance_count} instance(s))
+
+> A large attempted-vs-achieved gap, non-zero missed opportunities, or high
+> total scheduling delay indicate the open-loop dispatcher backlogged behind a
+> too-small worker pool and the run effectively degraded to closed-loop. Tune
+> via \`workload.openLoopMaxConcurrency\` if auto-sizing is insufficient.
+
+| Metric | Value |
+|--------|-------|
+| **Attempted throughput** | ${total_attempted_agg_rps} RPS (all instances) |
+| **Achieved throughput** | ${total_agg_rps} RPS (all instances) |
+| **Attempted − achieved gap** | ${ol_throughput_gap_rps} RPS (${ol_throughput_gap_pct}) |
+| **Total attempted ops** | ${ol_attempted_total} |
+| **Missed opportunities** | ${ol_missed_total} |
+| **Total scheduling delay** | ${ol_delay_total} ms |
+OL
+)
+fi
 
 first="${SUMMARY_FILES[0]}"
 run_ts=$(jq_field "${first}" ".runInfo.timestamp")
@@ -809,6 +861,7 @@ cat <<HEADER
 |-----|-----------|--------|
 | p95 latency | < ${SLO_P95_LIMIT} ms | ${p95_pass} (${agg_p95} ms) |
 | Error rate | < $(awk "BEGIN {printf \"%.1f%%\", ${SLO_ERROR_LIMIT} * 100}") | ${error_pass} ($(awk "BEGIN {printf \"%.2f%%\", ${agg_error_rate} * 100}")) |
+${open_loop_section}
 
 ---
 
