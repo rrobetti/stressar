@@ -12,14 +12,14 @@ public class MetricsCollectorTest {
 
         collector.recordSuccess(10_000_000L);  // 10ms
         collector.recordSuccess(30_000_000L);  // 30ms
-        collector.recordError("RuntimeException", "boom", 20_000_000L);  // 20ms
+        collector.recordError("RuntimeException", "boom", 50_000_000L);  // 50ms
 
         MetricsSnapshot snapshot = collector.getSnapshot();
 
         assertEquals(2L, snapshot.getCompletedRequests());
         assertEquals(1L, snapshot.getErrors());
         assertEquals(20.0, snapshot.getMean(), 0.5);
-        assertEquals(20.0, snapshot.getMeanFailed(), 0.5);
-        assertEquals(20.0, snapshot.getMeanTotal(), 0.5);
+        assertEquals(50.0, snapshot.getMeanFailed(), 0.5);
+        assertEquals(30.0, snapshot.getMeanTotal(), 0.5);
     }
 }
