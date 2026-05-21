@@ -24,6 +24,7 @@ connectionMode: HIKARI_DISCIPLINED
 dbConnectionBudget:      {{ bench_db_connection_budget }}
 replicas:                {{ bench_replica_count }}
 maxPoolSizePerReplica:   {{ bench_hikari_max_pool_size_per_replica }}
+connectionTimeout:       {{ bench_connection_timeout_ms }}
 
 workload:
   type: {{ bench_workload_type }}

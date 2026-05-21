@@ -131,6 +131,9 @@ public class ConfigLoader {
         if (data.containsKey("poolSize")) {
             config.setPoolSize((Integer) data.get("poolSize"));
         }
+        if (data.containsKey("connectionTimeout")) {
+            config.setConnectionTimeout((Integer) data.get("connectionTimeout"));
+        }
         if (data.containsKey("dbConnectionBudget")) {
             config.setDbConnectionBudget((Integer) data.get("dbConnectionBudget"));
         }
