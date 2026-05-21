@@ -22,6 +22,8 @@ public class MetricsSnapshot {
     private double p999;
     private double max;
     private double mean;
+    private double meanFailed;
+    private double meanTotal;
     
     // Optional system metrics
     private Double appCpuMedian;
@@ -29,13 +31,36 @@ public class MetricsSnapshot {
     private Long gcPauseMsTotal;
     private Integer dbActiveConnectionsMedian;
     private Integer queueDepthMax;
-    
-    public double getAchievedThroughput() {
+
+    private double getElapsedSeconds() {
         if (timestampMs <= startTimeMs) {
             return 0.0;
         }
-        double elapsedSeconds = (timestampMs - startTimeMs) / 1000.0;
+        return (timestampMs - startTimeMs) / 1000.0;
+    }
+    
+    public double getAchievedThroughput() {
+        double elapsedSeconds = getElapsedSeconds();
+        if (elapsedSeconds <= 0.0) {
+            return 0.0;
+        }
         return completedRequests / elapsedSeconds;
+    }
+
+    public double getErrorThroughput() {
+        double elapsedSeconds = getElapsedSeconds();
+        if (elapsedSeconds <= 0.0) {
+            return 0.0;
+        }
+        return errors / elapsedSeconds;
+    }
+
+    public double getTotalThroughput() {
+        double elapsedSeconds = getElapsedSeconds();
+        if (elapsedSeconds <= 0.0) {
+            return 0.0;
+        }
+        return (completedRequests + errors) / elapsedSeconds;
     }
     
     public double getErrorRate() {
@@ -149,6 +174,22 @@ public class MetricsSnapshot {
 
     public void setMean(double mean) {
         this.mean = mean;
+    }
+
+    public double getMeanFailed() {
+        return meanFailed;
+    }
+
+    public void setMeanFailed(double meanFailed) {
+        this.meanFailed = meanFailed;
+    }
+
+    public double getMeanTotal() {
+        return meanTotal;
+    }
+
+    public void setMeanTotal(double meanTotal) {
+        this.meanTotal = meanTotal;
     }
 
     public Double getAppCpuMedian() {

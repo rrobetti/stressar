@@ -33,11 +33,17 @@ public class SummaryWriter {
         summary.runInfo = runInfo;
         
         // Throughput metrics
-        summary.attemptedRps = (double) snapshot.getAttemptedRequests() / 
-            ((snapshot.getTimestampMs() - snapshot.getStartTimeMs()) / 1000.0);
-        summary.achievedThroughputRps = snapshot.getAchievedThroughput();
+        double elapsedSeconds = (snapshot.getTimestampMs() - snapshot.getStartTimeMs()) / 1000.0;
+        summary.attemptedRps = elapsedSeconds > 0.0
+            ? (double) snapshot.getAttemptedRequests() / elapsedSeconds
+            : 0.0;
+        summary.successfulThroughputRps = snapshot.getAchievedThroughput();
+        summary.errorThroughputRps = snapshot.getErrorThroughput();
+        summary.totalThroughputRps = snapshot.getTotalThroughput();
+        summary.achievedThroughputRps = summary.successfulThroughputRps;
         summary.errorRate = snapshot.getErrorRate();
         summary.totalRequests = snapshot.getCompletedRequests() + snapshot.getErrors();
+        summary.successfulRequests = snapshot.getCompletedRequests();
         summary.failedRequests = snapshot.getErrors();
         
         // Latency metrics
@@ -47,7 +53,11 @@ public class SummaryWriter {
         summary.latencyMs.p99 = snapshot.getP99();
         summary.latencyMs.p999 = snapshot.getP999();
         summary.latencyMs.max = snapshot.getMax();
-        summary.latencyMs.mean = snapshot.getMean();
+        summary.latencyMs.meanSuccessful = snapshot.getMean();
+        summary.latencyMs.meanFailed = snapshot.getMeanFailed();
+        summary.latencyMs.meanTotal = snapshot.getMeanTotal();
+        // Backward compatibility: existing consumers may still read latencyMs.mean.
+        summary.latencyMs.mean = summary.latencyMs.meanTotal;
         
         // Error breakdown
         summary.errorsByType = snapshot.getErrorsByType();
@@ -77,8 +87,12 @@ public class SummaryWriter {
         public BenchmarkRunInfo runInfo;
         public double attemptedRps;
         public double achievedThroughputRps;
+        public double successfulThroughputRps;
+        public double errorThroughputRps;
+        public double totalThroughputRps;
         public double errorRate;
         public long totalRequests;
+        public long successfulRequests;
         public long failedRequests;
         public LatencyMetrics latencyMs;
         public Map<String, Long> errorsByType = new HashMap<>();
@@ -99,6 +113,9 @@ public class SummaryWriter {
         public double p999;
         public double max;
         public double mean;
+        public double meanSuccessful;
+        public double meanFailed;
+        public double meanTotal;
     }
     
     public static class BenchmarkRunInfo {
