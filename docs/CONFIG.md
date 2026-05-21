@@ -354,8 +354,9 @@ numThreads = clamp(ceil(targetRps × (connectionTimeoutMs/1000) × 1.10), 4, 200
 ```
 
 **Example:** For `targetRps: 500` with a 30 s connection timeout, the floor is
-`500 × 30 × 1.10 = 16500`, which is clamped to the safety cap of `2000`. For
-`targetRps: 10` with the same timeout, it is `10 × 30 × 1.10 = 330` threads.
+`500 × (30000/1000) × 1.10 = 16500`, which is clamped to the safety cap of
+`2000`. For `targetRps: 10` with the same timeout, it is
+`10 × (30000/1000) × 1.10 = 330` threads.
 
 Use `workload.openLoopMaxConcurrency` to override the auto-sizing — this is
 useful for stress probes that deliberately allow very long tails (override
