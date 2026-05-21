@@ -11,8 +11,8 @@ public class MetricsSnapshotTest {
         MetricsSnapshot snapshot = new MetricsSnapshot();
         snapshot.setStartTimeMs(0);
         snapshot.setTimestampMs(2_000);
-        snapshot.setCompletedRequests(6);
-        snapshot.setErrors(2);
+        snapshot.setCompletedRequests(6); // successful requests
+        snapshot.setErrors(2);            // failed requests
 
         assertEquals(3.0, snapshot.getAchievedThroughput(), 0.0001);
         assertEquals(1.0, snapshot.getErrorThroughput(), 0.0001);
