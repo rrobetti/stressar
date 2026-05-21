@@ -174,6 +174,7 @@ agg_p95=$(avg "${total_p95}"  "${instance_count}")
 agg_p99=$(avg "${total_p99}"  "${instance_count}")
 agg_p999=$(avg "${total_p999}" "${instance_count}")
 agg_error_rate=$(avg "${total_error_rate}" "${instance_count}")
+agg_error_rate_pct=$(awk "BEGIN {printf \"%.2f\", ${agg_error_rate} * 100}")
 total_agg_rps=$(awk "BEGIN {printf \"%.2f\", ${total_achieved_rps}}")
 
 first="${SUMMARY_FILES[0]}"
@@ -749,7 +750,7 @@ cat <<HEADER
 | **p95 latency** | ${agg_p95} ms |
 | **p99 latency** | ${agg_p99} ms |
 | **p999 latency** | ${agg_p999} ms |
-| **Error rate** | ${agg_error_rate} |
+| **Error rate** | ${agg_error_rate_pct}% (${agg_error_rate}) |
 | **Total requests** | ${total_total_requests} |
 | **Failed requests** | ${total_failed_requests} |
 
@@ -807,7 +808,7 @@ cat <<HEADER
 | SLO | Threshold | Result |
 |-----|-----------|--------|
 | p95 latency | < ${SLO_P95_LIMIT} ms | ${p95_pass} (${agg_p95} ms) |
-| Error rate | < $(awk "BEGIN {printf \"%.1f%%\", ${SLO_ERROR_LIMIT} * 100}") | ${error_pass} ($(awk "BEGIN {printf \"%.4f\", ${agg_error_rate}}")) |
+| Error rate | < $(awk "BEGIN {printf \"%.1f%%\", ${SLO_ERROR_LIMIT} * 100}") | ${error_pass} ($(awk "BEGIN {printf \"%.2f%%\", ${agg_error_rate} * 100}")) |
 
 ---
 
@@ -824,6 +825,9 @@ for f in "${SUMMARY_FILES[@]}"; do
   p99=$(jq -r ".latencyMs.p99  // \"N/A\"" "${f}")
   rps=$(jq -r ".achievedThroughputRps // \"N/A\"" "${f}")
   err=$(jq -r ".errorRate // \"N/A\"" "${f}")
+  if [[ "${err}" != "N/A" ]]; then
+    err=$(awk "BEGIN {printf \"%.2f%%\", ${err} * 100}")
+  fi
   cpu=$(jq -r ".appCpuMedian // \"N/A\"" "${f}")
   gc=$(jq -r  ".gcPauseMsTotal // \"N/A\"" "${f}")
   echo "| ${inst} | ${p50} | ${p95} | ${p99} | ${rps} | ${err} | ${cpu} | ${gc} |"
