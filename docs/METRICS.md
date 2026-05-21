@@ -157,7 +157,10 @@ Key fields:
 ```
 runInfo                         — run context (SUT, workload, instance ID, …)
 attemptedRps                    — mean attempted RPS over the measurement window
-achievedThroughputRps           — mean completed RPS over the measurement window
+achievedThroughputRps           — backward-compatible alias of successfulThroughputRps
+successfulThroughputRps         — mean successful RPS over the measurement window
+errorThroughputRps              — mean failed-request RPS over the measurement window
+totalThroughputRps              — mean total completed RPS (successful + failed)
 errorRate                       — failedRequests / (completedRequests + failedRequests)
 latencyMs.{p50,p95,p99,p999,max,mean,meanSuccessful,meanFailed,meanTotal}  — cumulative latency stats
 errorsByType.{<ExceptionClassSimpleName>: count, ...}  — error breakdown
@@ -242,7 +245,10 @@ completely saturated system; normal operating range is well below 1 second.
 | Metric | Description |
 |--------|-------------|
 | `attempted_rps` | Rate at which the dispatcher submitted operations to the worker pool. For open-loop runs this equals `targetRps` under normal conditions; it drops when the dispatcher itself is CPU-limited. |
-| `achieved_rps` | Rate at which operations actually completed (success or error). Under saturation, this decouples from `attempted_rps`. The gap between them measures back-pressure. |
+| `successfulThroughputRps` | Successful requests per second. |
+| `errorThroughputRps` | Failed requests per second. |
+| `totalThroughputRps` | Completed requests per second (`successfulThroughputRps + errorThroughputRps`). |
+| `achievedThroughputRps` | Backward-compatible alias of `successfulThroughputRps`. |
 | `errorRate` | `failedRequests ÷ (completedRequests + failedRequests)`. SLO threshold: < 0.001 (0.1 %). |
 
 ---

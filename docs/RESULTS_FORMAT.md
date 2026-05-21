@@ -140,7 +140,10 @@ Aggregate statistics for the entire benchmark run.
     "durationSeconds": number           // Measurement duration
   },
   "attemptedRps": number,               // Average attempted RPS
-  "achievedThroughputRps": number,      // Average achieved RPS
+  "achievedThroughputRps": number,      // Backward-compatible alias of successfulThroughputRps
+  "successfulThroughputRps": number,    // Average successful RPS
+  "errorThroughputRps": number,         // Average failed-request RPS
+  "totalThroughputRps": number,         // Average total completed RPS
   "errorRate": number,                  // Fraction of failed requests (0.0-1.0)
   "latencyMs": {
     "p50": number,                      // Median latency (ms)
@@ -185,6 +188,9 @@ Aggregate statistics for the entire benchmark run.
   },
   "attemptedRps": 500.0,
   "achievedThroughputRps": 499.85,
+  "successfulThroughputRps": 499.85,
+  "errorThroughputRps": 0.10,
+  "totalThroughputRps": 499.95,
   "errorRate": 0.0002,
   "latencyMs": {
     "p50": 2.18,
@@ -229,7 +235,10 @@ Aggregate statistics for the entire benchmark run.
 
 #### Throughput Metrics
 - **`attemptedRps`**: Average requests/sec attempted (open-loop target)
-- **`achievedThroughputRps`**: Average requests/sec completed successfully
+- **`successfulThroughputRps`**: Average successful requests/sec
+- **`errorThroughputRps`**: Average failed requests/sec
+- **`totalThroughputRps`**: Average total completed requests/sec (`successful + failed`)
+- **`achievedThroughputRps`**: Backward-compatible alias of `successfulThroughputRps`
 - **`errorRate`**: Fraction of requests that failed (0.0 to 1.0)
 
 #### Latency Metrics (`latencyMs`)

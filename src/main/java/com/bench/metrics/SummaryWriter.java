@@ -33,9 +33,14 @@ public class SummaryWriter {
         summary.runInfo = runInfo;
         
         // Throughput metrics
-        summary.attemptedRps = (double) snapshot.getAttemptedRequests() / 
-            ((snapshot.getTimestampMs() - snapshot.getStartTimeMs()) / 1000.0);
-        summary.achievedThroughputRps = snapshot.getAchievedThroughput();
+        double elapsedSeconds = (snapshot.getTimestampMs() - snapshot.getStartTimeMs()) / 1000.0;
+        summary.attemptedRps = elapsedSeconds > 0.0
+            ? (double) snapshot.getAttemptedRequests() / elapsedSeconds
+            : 0.0;
+        summary.successfulThroughputRps = snapshot.getAchievedThroughput();
+        summary.errorThroughputRps = snapshot.getErrorThroughput();
+        summary.totalThroughputRps = snapshot.getTotalThroughput();
+        summary.achievedThroughputRps = summary.successfulThroughputRps;
         summary.errorRate = snapshot.getErrorRate();
         summary.totalRequests = snapshot.getCompletedRequests() + snapshot.getErrors();
         summary.successfulRequests = snapshot.getCompletedRequests();
@@ -51,6 +56,7 @@ public class SummaryWriter {
         summary.latencyMs.meanSuccessful = snapshot.getMean();
         summary.latencyMs.meanFailed = snapshot.getMeanFailed();
         summary.latencyMs.meanTotal = snapshot.getMeanTotal();
+        // Backward compatibility: existing consumers may still read latencyMs.mean.
         summary.latencyMs.mean = summary.latencyMs.meanTotal;
         
         // Error breakdown
@@ -81,6 +87,9 @@ public class SummaryWriter {
         public BenchmarkRunInfo runInfo;
         public double attemptedRps;
         public double achievedThroughputRps;
+        public double successfulThroughputRps;
+        public double errorThroughputRps;
+        public double totalThroughputRps;
         public double errorRate;
         public long totalRequests;
         public long successfulRequests;
