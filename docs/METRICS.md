@@ -159,7 +159,7 @@ runInfo                         — run context (SUT, workload, instance ID, …
 attemptedRps                    — mean attempted RPS over the measurement window
 achievedThroughputRps           — mean completed RPS over the measurement window
 errorRate                       — failedRequests / (completedRequests + failedRequests)
-latencyMs.{p50,p95,p99,p999,max,mean}  — cumulative histogram percentiles (all requests)
+latencyMs.{p50,p95,p99,p999,max,mean,meanSuccessful,meanFailed,meanTotal}  — cumulative latency stats
 errorsByType.{<ExceptionClassSimpleName>: count, ...}  — error breakdown
 appCpuMedian                    — median application CPU % (optional)
 appRssMedian                    — median resident set size in MB (optional)
@@ -223,7 +223,10 @@ Source: `LatencyRecorder.exportToLog()`, `HistogramAggregator.java`.
 | **p99** | 99 % of requests finish faster. Indicates tail behaviour. | `HdrHistogram.getValueAtPercentile(99.0)` |
 | **p99.9** | 99.9 % of requests finish faster. Captures extreme outliers. | `HdrHistogram.getValueAtPercentile(99.9)` |
 | **max** | Worst single latency observed. | `HdrHistogram.getMaxValue()` |
-| **mean** | Arithmetic mean. Less useful than percentiles but included for completeness. | `HdrHistogram.getMean()` |
+| **meanSuccessful** | Arithmetic mean for successful requests only. | `HdrHistogram.getMean()` |
+| **meanFailed** | Arithmetic mean for failed requests only. | `sum(failedLatencyNanos) / failedRequests` |
+| **meanTotal** | Arithmetic mean across successful + failed requests. | `(sum(successLatencyNanos)+sum(failedLatencyNanos)) / totalRequests` |
+| **mean** | Backward-compatible alias for `meanTotal`. | same as `meanTotal` |
 
 All latency values are reported in **milliseconds** in the output files. The
 histogram stores values internally in **microseconds** for precision.

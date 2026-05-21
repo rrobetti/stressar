@@ -59,6 +59,7 @@ public abstract class LoadGenerator {
             intervalMetrics.recordSuccess(latencyNanos);
             
         } catch (Exception e) {
+            long latencyNanos = System.nanoTime() - startNanos;
             String errorType = e.getClass().getSimpleName();
             // Anonymous/local classes can have empty simple names; fall back to FQCN.
             if (errorType.isEmpty()) {
@@ -66,8 +67,8 @@ public abstract class LoadGenerator {
             }
             String errorMessage = (e.getMessage() != null) ? e.getMessage() : "";
 
-            metrics.recordError(errorType, errorMessage);
-            intervalMetrics.recordError(errorType, errorMessage);
+            metrics.recordError(errorType, errorMessage, latencyNanos);
+            intervalMetrics.recordError(errorType, errorMessage, latencyNanos);
 
             long n = errorWarnCounts.computeIfAbsent(errorType, ignored -> new AtomicLong(0))
                 .incrementAndGet();

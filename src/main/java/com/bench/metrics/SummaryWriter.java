@@ -38,6 +38,7 @@ public class SummaryWriter {
         summary.achievedThroughputRps = snapshot.getAchievedThroughput();
         summary.errorRate = snapshot.getErrorRate();
         summary.totalRequests = snapshot.getCompletedRequests() + snapshot.getErrors();
+        summary.successfulRequests = snapshot.getCompletedRequests();
         summary.failedRequests = snapshot.getErrors();
         
         // Latency metrics
@@ -47,7 +48,10 @@ public class SummaryWriter {
         summary.latencyMs.p99 = snapshot.getP99();
         summary.latencyMs.p999 = snapshot.getP999();
         summary.latencyMs.max = snapshot.getMax();
-        summary.latencyMs.mean = snapshot.getMean();
+        summary.latencyMs.meanSuccessful = snapshot.getMean();
+        summary.latencyMs.meanFailed = snapshot.getMeanFailed();
+        summary.latencyMs.meanTotal = snapshot.getMeanTotal();
+        summary.latencyMs.mean = summary.latencyMs.meanTotal;
         
         // Error breakdown
         summary.errorsByType = snapshot.getErrorsByType();
@@ -79,6 +83,7 @@ public class SummaryWriter {
         public double achievedThroughputRps;
         public double errorRate;
         public long totalRequests;
+        public long successfulRequests;
         public long failedRequests;
         public LatencyMetrics latencyMs;
         public Map<String, Long> errorsByType = new HashMap<>();
@@ -99,6 +104,9 @@ public class SummaryWriter {
         public double p999;
         public double max;
         public double mean;
+        public double meanSuccessful;
+        public double meanFailed;
+        public double meanTotal;
     }
     
     public static class BenchmarkRunInfo {

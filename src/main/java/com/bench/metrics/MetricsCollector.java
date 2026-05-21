@@ -14,6 +14,8 @@ public class MetricsCollector {
     private final AtomicLong attemptedRequests;
     private final AtomicLong completedRequests;
     private final AtomicLong errors;
+    private final AtomicLong failedLatencyNanos;
+    private final AtomicLong totalLatencyNanos;
     private final Map<String, AtomicLong> errorsByType;
     /** Captures the first error message seen for each error type, for diagnostics. */
     private final Map<String, String> firstErrorMessageByType;
@@ -25,6 +27,8 @@ public class MetricsCollector {
         this.attemptedRequests = new AtomicLong(0);
         this.completedRequests = new AtomicLong(0);
         this.errors = new AtomicLong(0);
+        this.failedLatencyNanos = new AtomicLong(0);
+        this.totalLatencyNanos = new AtomicLong(0);
         this.errorsByType = new HashMap<>();
         this.firstErrorMessageByType = new ConcurrentHashMap<>();
         this.startTimeMs = System.currentTimeMillis();
@@ -44,6 +48,7 @@ public class MetricsCollector {
     public void recordSuccess(long latencyNanos) {
         completedRequests.incrementAndGet();
         latencyRecorder.recordNanos(latencyNanos);
+        totalLatencyNanos.addAndGet(latencyNanos);
     }
     
     /**
@@ -61,10 +66,24 @@ public class MetricsCollector {
      * @param message   Error message from the exception, or null
      */
     public void recordError(String errorType, String message) {
+        recordError(errorType, message, -1);
+    }
+
+    /**
+     * Record an error with a diagnostic message and optional latency.
+     * @param errorType Type of error (e.g., "timeout", "sql_exception", "rejected")
+     * @param message   Error message from the exception, or null
+     * @param latencyNanos Elapsed request latency in nanoseconds, or -1 if unavailable
+     */
+    public void recordError(String errorType, String message, long latencyNanos) {
         errors.incrementAndGet();
         errorsByType.computeIfAbsent(errorType, k -> new AtomicLong(0)).incrementAndGet();
         if (message != null && !message.isBlank()) {
             firstErrorMessageByType.putIfAbsent(errorType, message);
+        }
+        if (latencyNanos >= 0) {
+            failedLatencyNanos.addAndGet(latencyNanos);
+            totalLatencyNanos.addAndGet(latencyNanos);
         }
     }
     
@@ -97,6 +116,14 @@ public class MetricsCollector {
             snapshot.setMax(latencyRecorder.getMax());
             snapshot.setMean(latencyRecorder.getMean());
         }
+        long errorCount = errors.get();
+        if (errorCount > 0) {
+            snapshot.setMeanFailed((failedLatencyNanos.get() / 1_000_000.0) / errorCount);
+        }
+        long totalCount = completedRequests.get() + errorCount;
+        if (totalCount > 0) {
+            snapshot.setMeanTotal((totalLatencyNanos.get() / 1_000_000.0) / totalCount);
+        }
         
         return snapshot;
     }
@@ -108,6 +135,8 @@ public class MetricsCollector {
         attemptedRequests.set(0);
         completedRequests.set(0);
         errors.set(0);
+        failedLatencyNanos.set(0);
+        totalLatencyNanos.set(0);
         errorsByType.clear();
         firstErrorMessageByType.clear();
         latencyRecorder.reset();

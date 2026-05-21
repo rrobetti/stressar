@@ -22,6 +22,8 @@ public class MetricsSnapshot {
     private double p999;
     private double max;
     private double mean;
+    private double meanFailed;
+    private double meanTotal;
     
     // Optional system metrics
     private Double appCpuMedian;
@@ -149,6 +151,22 @@ public class MetricsSnapshot {
 
     public void setMean(double mean) {
         this.mean = mean;
+    }
+
+    public double getMeanFailed() {
+        return meanFailed;
+    }
+
+    public void setMeanFailed(double meanFailed) {
+        this.meanFailed = meanFailed;
+    }
+
+    public double getMeanTotal() {
+        return meanTotal;
+    }
+
+    public void setMeanTotal(double meanTotal) {
+        this.meanTotal = meanTotal;
     }
 
     public Double getAppCpuMedian() {

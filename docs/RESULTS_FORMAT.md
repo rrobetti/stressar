@@ -148,7 +148,10 @@ Aggregate statistics for the entire benchmark run.
     "p99": number,                      // 99th percentile latency (ms)
     "p999": number,                     // 99.9th percentile latency (ms)
     "max": number,                      // Maximum latency (ms)
-    "mean": number                      // Mean latency (ms)
+    "mean": number,                     // Mean latency across all requests (ms)
+    "meanSuccessful": number,           // Mean latency for successful requests only (ms)
+    "meanFailed": number,               // Mean latency for failed requests only (ms)
+    "meanTotal": number                 // Mean latency across successful+failed requests (ms)
   },
   "errorsByType": {
     "<ExceptionClassSimpleName>": number // Count grouped by Java exception class type
@@ -189,7 +192,10 @@ Aggregate statistics for the entire benchmark run.
     "p99": 16.23,
     "p999": 38.45,
     "max": 78.90,
-    "mean": 4.52
+    "mean": 4.53,
+    "meanSuccessful": 4.52,
+    "meanFailed": 7.10,
+    "meanTotal": 4.53
   },
   "errorsByType": {
     "SQLTimeoutException": 5,
@@ -233,7 +239,10 @@ All values in milliseconds, calculated from HDR histogram over entire run:
 - **`p99`**: 99th percentile (99% of requests faster)
 - **`p999`**: 99.9th percentile (tail latency)
 - **`max`**: Maximum latency observed
-- **`mean`**: Arithmetic mean latency
+- **`meanSuccessful`**: Arithmetic mean latency for successful requests only
+- **`meanFailed`**: Arithmetic mean latency for failed requests only
+- **`meanTotal`**: Arithmetic mean latency across successful + failed requests
+- **`mean`**: Backward-compatible alias for `meanTotal`
 
 #### Error Breakdown (`errorsByType`)
 - Keys are Java exception class simple names (for example `SQLTimeoutException`, `PSQLException`, `IllegalStateException`)
@@ -668,7 +677,10 @@ max = histogram.getMaxValue()
 
 #### Mean
 ```
-mean = histogram.getMean()
+meanSuccessful = histogram.getMean()
+meanFailed = sum(failedLatencyNanos) / failedRequests
+meanTotal = (sum(successLatencyNanos) + sum(failedLatencyNanos)) / totalRequests
+mean = meanTotal
 ```
 
 ### System Metrics
