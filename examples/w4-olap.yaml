@@ -1,5 +1,5 @@
 # W4 OLAP Workload Configuration
-# Pure analytical workload — 5 index-aware heavy queries in round-robin order.
+# Pure analytical workload — 6 index-aware heavy queries in round-robin order.
 #
 # Queries focus on recent time windows so they remain realistic for production
 # systems (which typically rely on indexes), while still doing meaningful
