@@ -805,6 +805,7 @@ cat <<HEADER
 | **Error rate** | ${agg_error_rate_pct}% (${agg_error_rate}) |
 | **Total requests** | ${total_total_requests} |
 | **Failed requests** | ${total_failed_requests} |
+| **Total successful** | $(awk "BEGIN {print ${total_total_requests} - ${total_failed_requests}}") |
 
 ## Connection Budget — Configured and Observed
 
