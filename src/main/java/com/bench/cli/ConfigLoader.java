@@ -178,6 +178,9 @@ public class ConfigLoader {
         if (wlData.containsKey("openLoop")) {
             wlConfig.setOpenLoop((Boolean) wlData.get("openLoop"));
         }
+        if (wlData.containsKey("openLoopMaxConcurrency")) {
+            wlConfig.setOpenLoopMaxConcurrency((Integer) wlData.get("openLoopMaxConcurrency"));
+        }
     }
 
     private static void applyWorkloadTiming(Map<String, Object> wlData, WorkloadConfig wlConfig) {

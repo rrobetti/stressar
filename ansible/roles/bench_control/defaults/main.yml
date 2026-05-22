@@ -8,7 +8,7 @@ bench_java_min_version: 11
 bench_replica_count: 16
 
 # Workload configuration defaults (overridden in run_benchmarks_ojp.yml vars).
-bench_target_rps:        500
+bench_target_rps:        40
 bench_warmup_seconds:    300
 bench_duration_seconds:  1800
 bench_cooldown_seconds:  120

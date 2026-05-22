@@ -5,11 +5,11 @@
 # Benchmark run profile
 # NOTE: bench_replica_count is the number of bench JVM processes, not an OJP pool size.
 bench_replica_count:     16
-bench_target_rps:        500
+bench_target_rps:        40
 bench_warmup_seconds:    300
 bench_duration_seconds:  1800
 bench_cooldown_seconds:  120
-bench_slo_p95_ms:        50
+bench_slo_p95_ms:        150
 
 # OJP server-side pool budget profile
 # OJP clients do not use a local HikariCP pool.

@@ -28,8 +28,8 @@ ojp:
   # minConnections = maxConnections so each node's share is fully pre-warmed.
   minConnections: {{ bench_db_connection_budget | int }}
   connectionTimeoutMs: {{ bench_connection_timeout_ms }}
-  idleTimeoutMs: 600000
-  maxLifetimeMs: 1800000
+  idleTimeoutMs: 30000
+  maxLifetimeMs: 30000
   queueLimit: 200
   slowQueryThresholdMs: 1000
 
