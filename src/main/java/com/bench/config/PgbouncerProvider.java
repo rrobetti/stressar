@@ -53,8 +53,8 @@ public class PgbouncerProvider implements ConnectionProvider {
         config.setMaximumPoolSize(poolSize);
         config.setMinimumIdle(Math.max(1, poolSize / 2));
         config.setConnectionTimeout(connectionTimeoutMs);
-        config.setIdleTimeout(600000);
-        config.setMaxLifetime(1800000);
+        config.setIdleTimeout(30000);
+        config.setMaxLifetime(30000);
         // autoCommit=true (JDBC default): read workloads need no transaction wrapper
         // and write workloads (ReadWriteWorkload) explicitly call setAutoCommit(false)
         // on each connection before use.  Leaving the pool in autoCommit=false causes
