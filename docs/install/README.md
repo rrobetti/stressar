@@ -4,15 +4,15 @@ Step-by-step instructions for the software components commonly used to run Stres
 
 ## Version reference (tools used in the bundled reference scenarios)
 
-| Tool / component | Version used / required |
-|---|---|
-| OJP Server + OJP JDBC Driver | **0.4.16-beta** |
-| Java (benchmark tool / control / loadgen) | **11+** (recommended LTS: 21) |
-| Java (OJP Server nodes) | **24+** |
+| Tool / component | Version used / required                                      |
+|---|--------------------------------------------------------------|
+| OJP Server + OJP JDBC Driver | **0.4.19-beta**                                              |
+| Java (benchmark tool / control / loadgen) | **11+** (recommended LTS: 21)                                |
+| Java (OJP Server nodes) | **24+**                                                      |
 | Gradle (via wrapper) | **8.8** pinned in `gradle/wrapper/gradle-wrapper.properties` |
-| PostgreSQL | **12+** (tested: 14/15/16, recommended: 16) |
-| pgBouncer | **1.21+** |
-| HAProxy | **2.8+** |
+| PostgreSQL | **12+** (tested: 14/15/16, recommended: 16)                  |
+| pgBouncer | **1.21+**                                                    |
+| HAProxy | **2.8+**                                                     |
 
 For Ansible-specific tooling versions (for automation runs), see [ansible/README.md](../../ansible/README.md#prerequisites).
 
