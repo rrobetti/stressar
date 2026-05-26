@@ -215,14 +215,12 @@
             state: present
           delegate_to: "{{ db_inv_host }}"
 
-        - name: Enable pg_stat_statements extension in benchmark database
-          become: true
-          become_user: postgres
-          community.postgresql.postgresql_ext:
-            name: pg_stat_statements
-            db: "{{ db_name }}"
-            state: present
-          delegate_to: "{{ db_inv_host }}"
+        # pg_stat_statements is NOT pre-installed here: the cached dump
+        # (pg_dump -Fc) contains a CREATE EXTENSION statement and pg_restore
+        # will recreate it. Pre-installing would cause "extension already
+        # exists" errors during pg_restore. The extension is loaded via
+        # shared_preload_libraries in postgresql.conf.j2, so CREATE EXTENSION
+        # works from inside the dump.
 
         - name: Ensure benchmark user exists with privileges
           become: true
@@ -247,6 +245,12 @@
             state: present
           delegate_to: "{{ db_inv_host }}"
 
+        # pg_restore runs as the postgres superuser so it can transfer
+        # ownership back to benchuser (which we just (re)created above).
+        # We intentionally preserve dump ownership/privileges so that
+        # restored tables remain owned by benchuser, matching exactly what
+        # `bench init-db` produces — otherwise the benchmark would fail with
+        # permission errors on tables owned by postgres.
         - name: Restore database from snapshot (pg_restore -j)
           become: true
           become_user: postgres
@@ -255,8 +259,7 @@
               - pg_restore
               - "-j"
               - "{{ db_snapshot_pg_restore_jobs | string }}"
-              - "--no-owner"
-              - "--no-privileges"
+              - "--exit-on-error"
               - "-d"
               - "{{ db_name }}"
               - "{{ db_snapshot_path }}"
