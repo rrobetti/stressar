@@ -25,7 +25,6 @@
 #   ansible/scripts/run_production_comparison.sh [inventory_file]
 #   ansible/scripts/run_production_comparison.sh [inventory_file] --tests hikari
 #   ansible/scripts/run_production_comparison.sh [inventory_file] --tests hikari,ojp
-#   ansible/scripts/run_production_comparison.sh [inventory_file] --tests ojp_sqs
 #   ansible/scripts/run_production_comparison.sh [inventory_file] --tests ojp --repeat 5
 #   ansible/scripts/run_production_comparison.sh [inventory_file] --debug
 #   ansible/scripts/run_production_comparison.sh [inventory_file] --debug --log-file /path/to/ansible.log
@@ -42,12 +41,12 @@ REPO_DIR="$(cd "${ANSIBLE_DIR}/.." && pwd)"
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") [inventory_file] [--tests hikari,pgbouncer,ojp,ojp_sqs] [--repeat N] [--debug [--log-file PATH]]
-  $(basename "$0") --inventory <path> [--tests hikari,pgbouncer,ojp,ojp_sqs] [--repeat N] [--debug [--log-file PATH]]
+  $(basename "$0") [inventory_file] [--tests hikari,pgbouncer,ojp] [--repeat N] [--debug [--log-file PATH]]
+  $(basename "$0") --inventory <path> [--tests hikari,pgbouncer,ojp] [--repeat N] [--debug [--log-file PATH]]
 
 Options:
   -i, --inventory PATH   Inventory file (default: ${ANSIBLE_DIR}/inventory.yml)
-      --tests LIST       Comma-separated benchmarks to run: hikari, pgbouncer, ojp, ojp_sqs
+      --tests LIST       Comma-separated benchmarks to run: hikari, pgbouncer, ojp
       --repeat N         Number of times to run the selected benchmark sequence (default: 1)
       --repetitions N    Alias for --repeat
       --debug            Enable Ansible verbose output (-vvv) and capture to a log file.
@@ -57,7 +56,7 @@ Options:
   -h, --help             Show this help
 
 If --tests is omitted, the script runs all benchmarks in the default order:
-  hikari, pgbouncer, ojp, ojp_sqs
+  hikari, pgbouncer, ojp
 
 Debug mode is disabled by default. Pass --debug to enable -vvv verbosity and
 capture ansible-playbook output to a log file.
@@ -68,7 +67,7 @@ INVENTORY_FILE="${ANSIBLE_DIR}/inventory.yml"
 LOG_FILE=""
 DEBUG_MODE=false
 RUN_REPETITIONS=1
-DEFAULT_BENCHMARKS=(hikari pgbouncer ojp ojp_sqs)
+DEFAULT_BENCHMARKS=(hikari pgbouncer ojp)
 BENCHMARKS_TO_RUN=("${DEFAULT_BENCHMARKS[@]}")
 POSITIONAL_INVENTORY_SET=false
 
@@ -150,7 +149,7 @@ for benchmark in "${BENCHMARKS_TO_RUN[@]}"; do
   benchmark="${benchmark//[[:space:]]/}"
 
   case "${benchmark}" in
-    hikari|pgbouncer|ojp|ojp_sqs)
+    hikari|pgbouncer|ojp)
       already_present=false
       for existing in "${NORMALIZED_BENCHMARKS[@]}"; do
         if [[ "${existing}" == "${benchmark}" ]]; then
@@ -187,7 +186,6 @@ RUN_PGBOUNCER_PLAYBOOK="${ANSIBLE_DIR}/playbooks/run_benchmarks_pgbouncer.yml"
 
 PROD_HIKARI_VARS="${ANSIBLE_DIR}/vars/prod-hikari.yml"
 PROD_OJP_VARS="${ANSIBLE_DIR}/vars/prod-ojp.yml"
-PROD_OJP_SQS_VARS="${ANSIBLE_DIR}/vars/prod-ojp-sqs.yml"
 PROD_PGBOUNCER_VARS="${ANSIBLE_DIR}/vars/prod-pgbouncer.yml"
 
 FAILURE_LOGS_DIR="${REPO_DIR}/results/failure-logs"
@@ -389,26 +387,6 @@ run_ojp_sequence() {
     run_playbook "${TEARDOWN_PLAYBOOK}"
 }
 
-run_ojp_sqs_sequence() {
-  run_step \
-    "ojp-sqs-setup" \
-    "Setup OJP environment (slow query segregation enabled)" \
-    "ojp" \
-    run_playbook "${SETUP_PLAYBOOK}" --tags db,ojp,bench,init-db -e @"${PROD_OJP_SQS_VARS}"
-
-  run_step \
-    "ojp-sqs-run" \
-    "Run OJP production benchmark (slow query segregation enabled)" \
-    "ojp" \
-    run_playbook "${RUN_OJP_PLAYBOOK}" -e @"${PROD_OJP_SQS_VARS}"
-
-  run_step \
-    "teardown" \
-    "Teardown all services and reset DB stats" \
-    "" \
-    run_playbook "${TEARDOWN_PLAYBOOK}"
-}
-
 run_step \
   "teardown" \
   "Teardown all services and reset DB stats" \
@@ -431,9 +409,6 @@ for repetition in $(seq 1 "${RUN_REPETITIONS}"); do
         ;;
       ojp)
         run_ojp_sequence
-        ;;
-      ojp_sqs)
-        run_ojp_sqs_sequence
         ;;
     esac
   done

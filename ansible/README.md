@@ -344,8 +344,7 @@ Dry-run rationale for these values:
 Predefined full-hardware production profiles are available under `ansible/vars/`:
 
 - `prod-hikari.yml` (SUT-A): 16 replicas, budget 300, max per replica 19
-- `prod-ojp.yml` (SUT-B): 16 replicas, OJP budget 48
-- `prod-ojp-sqs.yml` (SUT-B variant): OJP profile with slow query segregation enabled; it reuses the same OJP benchmark template and inherits the shared `bench_connection_timeout_ms`
+- `prod-ojp.yml` (SUT-B): 16 replicas, OJP budget 48. Slow query segregation (SQS) is enabled by default on the OJP server (see `ansible/group_vars/ojp.yml`); see `docs/RATIONALE.md` Appendix B for why SQS is on by default for the W5_HTAP comparison profile.
 - `prod-htap.yml` (workload profile): W5_HTAP workload mix (10% OLAP / 90% OLTP)
 - `prod-pgbouncer.yml` (SUT-C): 16 replicas, pgBouncer pool 16 per proxy node, local bench pool 20
 
@@ -357,9 +356,6 @@ ansible/scripts/run_production_comparison.sh ansible/inventory.yml
 
 # Run only OJP
 ansible/scripts/run_production_comparison.sh ansible/inventory.yml --tests ojp
-
-# Run only OJP with slow query segregation enabled
-ansible/scripts/run_production_comparison.sh ansible/inventory.yml --tests ojp_sqs
 
 # Run a subset
 ansible/scripts/run_production_comparison.sh ansible/inventory.yml --tests hikari,ojp
@@ -392,14 +388,11 @@ By default this script executes the full sequence in order:
 5. setup for pgBouncer
 6. run pgBouncer benchmark
 7. teardown everything
-8. setup for OJP
+8. setup for OJP (slow query segregation enabled by default)
 9. run OJP benchmark
 10. teardown everything
-11. setup for OJP with slow query segregation enabled
-12. run OJP benchmark with slow query segregation enabled
-13. teardown everything
 
-Use `--tests` to run only the named benchmarks (`hikari`, `pgbouncer`, `ojp`, `ojp_sqs`). The script still performs the initial teardown first, then preserves the same setup/run/teardown pattern for each selected benchmark.
+Use `--tests` to run only the named benchmarks (`hikari`, `pgbouncer`, `ojp`). The script still performs the initial teardown first, then preserves the same setup/run/teardown pattern for each selected benchmark.
 
 ### Exact manual production steps (equivalent to the script)
 
@@ -421,22 +414,15 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_pgbou
   -e @ansible/vars/prod-pgbouncer.yml
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml
 
-# 3) OJP (SUT-B)
+# 3) OJP (SUT-B) — slow query segregation enabled by default in ansible/group_vars/ojp.yml
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
   --tags db,ojp,bench,init-db -e @ansible/vars/prod-ojp.yml
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_ojp.yml \
   -e @ansible/vars/prod-ojp.yml
 ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml
-
-# 4) OJP with slow query segregation enabled (SUT-B variant)
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
-  --tags db,ojp,bench,init-db -e @ansible/vars/prod-ojp-sqs.yml
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_ojp.yml \
-  -e @ansible/vars/prod-ojp-sqs.yml
-ansible-playbook -i ansible/inventory.yml ansible/playbooks/teardown.yml
 ```
 
-Important: always pass a production profile (`prod-hikari.yml`, `prod-ojp.yml`, `prod-ojp-sqs.yml`, `prod-htap.yml`, `prod-pgbouncer.yml`) to avoid inheriting non-production defaults.
+Important: always pass a production profile (`prod-hikari.yml`, `prod-ojp.yml`, `prod-htap.yml`, `prod-pgbouncer.yml`) to avoid inheriting non-production defaults.
 
 ---
 
@@ -457,7 +443,7 @@ Important notes:
 
 - For OJP, `bench_replica_count` is number of bench JVM replicas; it is **not** OJP pool size.
 - The production OJP benchmark template uses `poolSharing: SHARED`, so all bench replicas share one OJP server-side pool and `bench_replica_count` does not divide the configured budget.
-- Connection-acquisition timeout is shared across benchmark SUTs via `bench_connection_timeout_ms` in `ansible/group_vars/all.yml`; OJP_SQS inherits the same timeout because it uses the same `run_benchmarks_ojp.yml` playbook and `ojp-benchmark.yaml.j2` template as OJP.
+- Connection-acquisition timeout is shared across benchmark SUTs via `bench_connection_timeout_ms` in `ansible/group_vars/all.yml`.
 - For pgBouncer, this repo supports both:
   - **main production profile**: `pgbouncer_local_pool_size: 20`, `pgbouncer_reserve_pool_size: 0`
 
@@ -635,8 +621,7 @@ ansible/
 │   ├── dryrun-ojp.yml                 # Minimal-hardware overrides for OJP (SUT-B) dry run
 │   ├── dryrun-pgbouncer.yml           # Minimal-hardware overrides for pgBouncer (SUT-C) dry run
 │   ├── prod-hikari.yml                # Full-hardware production profile for HikariCP Direct (SUT-A)
-│   ├── prod-ojp.yml                   # Full-hardware production profile for OJP (SUT-B)
-│   ├── prod-ojp-sqs.yml               # Full-hardware production profile for OJP with slow-query segregation
+│   ├── prod-ojp.yml                   # Full-hardware production profile for OJP (SUT-B) with slow query segregation enabled
 │   ├── prod-htap.yml                  # Full-hardware W5_HTAP workload profile
 │   └── prod-pgbouncer.yml             # Full-hardware production profile for pgBouncer (SUT-C)
 ├── templates/

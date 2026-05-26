@@ -1,10 +1,8 @@
 # Adding a New Benchmark Test Scenario
 
-This project already ships four runnable scenario options:
+This project already ships three runnable scenario options:
 - Hikari direct: `ansible/playbooks/run_benchmarks_hikari.yml`
-- OJP: `ansible/playbooks/run_benchmarks_ojp.yml`
-- OJP with slow query segregation (`ojp_sqs`): `ansible/playbooks/run_benchmarks_ojp.yml`
-  with `ansible/vars/prod-ojp-sqs.yml` (or `ansible/scripts/run_production_comparison.sh --tests ojp_sqs`)
+- OJP (slow query segregation enabled by default): `ansible/playbooks/run_benchmarks_ojp.yml`
 - pgBouncer: `ansible/playbooks/run_benchmarks_pgbouncer.yml`
 
 If you want to add a new scenario (for example ProxySQL + MySQL) and compare it to OJP, reuse the same structure.
@@ -54,6 +52,6 @@ If you want to add a new scenario (for example ProxySQL + MySQL) and compare it 
 ## Minimal validation checklist
 
 - New scenario runs end-to-end via its playbook.
-- Existing scenarios (`hikari`, `ojp`, `pgbouncer`, `ojp_sqs`) still work.
+- Existing scenarios (`hikari`, `ojp`, `pgbouncer`) still work.
 - `run_production_comparison.sh --tests ...` accepts and executes the new scenario.
 - Report generation still succeeds (`ansible/scripts/generate_report.sh`).

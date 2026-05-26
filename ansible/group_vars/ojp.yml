@@ -6,7 +6,11 @@ ojp_install_dir:  "/opt/ojp"
 ojp_server_port:  1059
 ojp_log_file:     "/var/log/ojp-server.log"
 ojp_server_virtual_threads_enabled: false
-ojp_server_slow_query_segregation_enabled: false
+# Slow query segregation is enabled by default because the production
+# comparison workload is W5_HTAP (90% OLTP / 10% OLAP) — a mixed OLTP+OLAP
+# profile for which OJP's own documentation recommends SQS. See
+# docs/RATIONALE.md Appendix B for the full rationale.
+ojp_server_slow_query_segregation_enabled: true
 
 # Java version required by OJP Server.
 java_package: "temurin-24-jdk"
