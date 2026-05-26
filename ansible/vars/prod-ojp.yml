@@ -1,6 +1,13 @@
 # ansible/vars/prod-ojp.yml
 #
 # Full-hardware production profile for OJP (SUT-B).
+#
+# Slow query segregation (SQS) is enabled by default on the OJP server tier
+# (see ansible/group_vars/ojp.yml). The production comparison workload is
+# W5_HTAP (90% OLTP / 10% OLAP), and OJP's own documentation recommends
+# enabling SQS for mixed OLTP+OLAP workloads so analytical queries cannot
+# starve transactional ones on the shared server-side connection pool.
+# See docs/RATIONALE.md Appendix B for the full rationale.
 
 # Benchmark run profile
 # NOTE: bench_replica_count is the number of bench JVM processes, not an OJP pool size.

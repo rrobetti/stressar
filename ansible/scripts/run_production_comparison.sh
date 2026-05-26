@@ -25,8 +25,8 @@
 #   ansible/scripts/run_production_comparison.sh [inventory_file]
 #   ansible/scripts/run_production_comparison.sh [inventory_file] --tests hikari
 #   ansible/scripts/run_production_comparison.sh [inventory_file] --tests hikari,ojp
-#   ansible/scripts/run_production_comparison.sh [inventory_file] --tests ojp_sqs
 #   ansible/scripts/run_production_comparison.sh [inventory_file] --tests ojp --repeat 5
+#   ansible/scripts/run_production_comparison.sh [inventory_file] --tests ojp --rps-list 1,5,10,15,20,25,30,35,40
 #   ansible/scripts/run_production_comparison.sh [inventory_file] --debug
 #   ansible/scripts/run_production_comparison.sh [inventory_file] --debug --log-file /path/to/ansible.log
 #
@@ -42,14 +42,19 @@ REPO_DIR="$(cd "${ANSIBLE_DIR}/.." && pwd)"
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") [inventory_file] [--tests hikari,pgbouncer,ojp,ojp_sqs] [--repeat N] [--debug [--log-file PATH]]
-  $(basename "$0") --inventory <path> [--tests hikari,pgbouncer,ojp,ojp_sqs] [--repeat N] [--debug [--log-file PATH]]
+  $(basename "$0") [inventory_file] [--tests hikari,pgbouncer,ojp] [--repeat N] [--rps-list LIST] [--debug [--log-file PATH]]
+  $(basename "$0") --inventory <path> [--tests hikari,pgbouncer,ojp] [--repeat N] [--rps-list LIST] [--debug [--log-file PATH]]
 
 Options:
   -i, --inventory PATH   Inventory file (default: ${ANSIBLE_DIR}/inventory.yml)
-      --tests LIST       Comma-separated benchmarks to run: hikari, pgbouncer, ojp, ojp_sqs
+      --tests LIST       Comma-separated benchmarks to run: hikari, pgbouncer, ojp
       --repeat N         Number of times to run the selected benchmark sequence (default: 1)
       --repetitions N    Alias for --repeat
+      --rps-list LIST    Comma-separated list of per-replica target RPS values to test.
+                         The benchmark sequence is run once per value, overriding
+                         bench_target_rps via ansible -e. Example: 1,5,10,15,20,25,30,35,40.
+                         Default: a single round using the configured bench_target_rps.
+      --rps LIST         Alias for --rps-list
       --debug            Enable Ansible verbose output (-vvv) and capture to a log file.
       --log-file PATH    File to write Ansible debug output to (implies --debug).
                          Defaults to ansible-debug-<timestamp>.log in the current
@@ -57,7 +62,7 @@ Options:
   -h, --help             Show this help
 
 If --tests is omitted, the script runs all benchmarks in the default order:
-  hikari, pgbouncer, ojp, ojp_sqs
+  hikari, pgbouncer, ojp
 
 Debug mode is disabled by default. Pass --debug to enable -vvv verbosity and
 capture ansible-playbook output to a log file.
@@ -68,7 +73,8 @@ INVENTORY_FILE="${ANSIBLE_DIR}/inventory.yml"
 LOG_FILE=""
 DEBUG_MODE=false
 RUN_REPETITIONS=1
-DEFAULT_BENCHMARKS=(hikari pgbouncer ojp ojp_sqs)
+RPS_LIST=()
+DEFAULT_BENCHMARKS=(hikari pgbouncer ojp)
 BENCHMARKS_TO_RUN=("${DEFAULT_BENCHMARKS[@]}")
 POSITIONAL_INVENTORY_SET=false
 
@@ -126,6 +132,34 @@ while [[ $# -gt 0 ]]; do
       RUN_REPETITIONS="$2"
       shift 2
       ;;
+    --rps-list|--rps)
+      if [[ $# -lt 2 ]]; then
+        echo "ERROR: missing value for $1" >&2
+        usage >&2
+        exit 1
+      fi
+      IFS=',' read -r -a _RPS_RAW <<< "$2"
+      RPS_LIST=()
+      for _rps in "${_RPS_RAW[@]}"; do
+        _rps="${_rps//[[:space:]]/}"
+        if [[ -z "${_rps}" ]]; then
+          continue
+        fi
+        if ! [[ "${_rps}" =~ ^[1-9][0-9]*$ ]]; then
+          echo "ERROR: --rps-list values must be positive integers (got: ${_rps})" >&2
+          usage >&2
+          exit 1
+        fi
+        RPS_LIST+=("${_rps}")
+      done
+      if [[ ${#RPS_LIST[@]} -eq 0 ]]; then
+        echo "ERROR: --rps-list must contain at least one positive integer" >&2
+        usage >&2
+        exit 1
+      fi
+      unset _RPS_RAW _rps
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -150,7 +184,7 @@ for benchmark in "${BENCHMARKS_TO_RUN[@]}"; do
   benchmark="${benchmark//[[:space:]]/}"
 
   case "${benchmark}" in
-    hikari|pgbouncer|ojp|ojp_sqs)
+    hikari|pgbouncer|ojp)
       already_present=false
       for existing in "${NORMALIZED_BENCHMARKS[@]}"; do
         if [[ "${existing}" == "${benchmark}" ]]; then
@@ -179,6 +213,14 @@ if [[ ${#NORMALIZED_BENCHMARKS[@]} -eq 0 ]]; then
 fi
 
 BENCHMARKS_TO_RUN=("${NORMALIZED_BENCHMARKS[@]}")
+
+# When --rps-list is not provided, use a single sentinel empty value meaning
+# "do not override bench_target_rps" (the default from group_vars/all.yml and
+# the per-SUT prod-*.yml files is used as-is).
+if [[ ${#RPS_LIST[@]} -eq 0 ]]; then
+  RPS_LIST=("")
+fi
+
 SETUP_PLAYBOOK="${ANSIBLE_DIR}/playbooks/setup.yml"
 TEARDOWN_PLAYBOOK="${ANSIBLE_DIR}/playbooks/teardown.yml"
 RUN_HIKARI_PLAYBOOK="${ANSIBLE_DIR}/playbooks/run_benchmarks_hikari.yml"
@@ -187,7 +229,6 @@ RUN_PGBOUNCER_PLAYBOOK="${ANSIBLE_DIR}/playbooks/run_benchmarks_pgbouncer.yml"
 
 PROD_HIKARI_VARS="${ANSIBLE_DIR}/vars/prod-hikari.yml"
 PROD_OJP_VARS="${ANSIBLE_DIR}/vars/prod-ojp.yml"
-PROD_OJP_SQS_VARS="${ANSIBLE_DIR}/vars/prod-ojp-sqs.yml"
 PROD_PGBOUNCER_VARS="${ANSIBLE_DIR}/vars/prod-pgbouncer.yml"
 
 FAILURE_LOGS_DIR="${REPO_DIR}/results/failure-logs"
@@ -196,8 +237,12 @@ CURRENT_STEP=0
 # Timing tracking: parallel arrays of per-step labels and durations (seconds).
 STEP_TIMING_LABELS=()
 STEP_TIMING_SECONDS=()
-# Per-iteration durations (seconds), one entry per repetition.
+# Per-iteration (repetition) durations (seconds) and human-readable labels.
+ITERATION_TIMING_LABELS=()
 ITERATION_TIMING_SECONDS=()
+# Per-RPS-round durations (seconds) and human-readable labels.
+RPS_ROUND_TIMING_LABELS=()
+RPS_ROUND_TIMING_SECONDS=()
 SCRIPT_START_EPOCH="$(date +%s)"
 
 format_duration() {
@@ -221,7 +266,7 @@ format_duration() {
 # setup, run, and teardown.
 STEPS_PER_BENCHMARK=3
 # +1 accounts for the initial teardown that always runs before any benchmark.
-TOTAL_STEPS=$((1 + (STEPS_PER_BENCHMARK * ${#BENCHMARKS_TO_RUN[@]} * RUN_REPETITIONS)))
+TOTAL_STEPS=$((1 + (STEPS_PER_BENCHMARK * ${#BENCHMARKS_TO_RUN[@]} * RUN_REPETITIONS * ${#RPS_LIST[@]})))
 
 if [[ ! -f "${INVENTORY_FILE}" ]]; then
   echo "ERROR: inventory file not found: ${INVENTORY_FILE}" >&2
@@ -245,6 +290,23 @@ run_playbook() {
     (cd "${REPO_DIR}" && ansible-playbook -vvv -i "${INVENTORY_FILE}" "${playbook}" "$@")
   else
     (cd "${REPO_DIR}" && ansible-playbook -i "${INVENTORY_FILE}" "${playbook}" "$@")
+  fi
+}
+
+# Per-RPS-round override of bench_target_rps. Set by the outer loop below;
+# empty means "do not override".
+CURRENT_RPS=""
+
+# rps_extra_args populates the global RPS_EXTRA_ARGS array with the
+# `-e bench_target_rps=<value>` override arguments (or leaves it empty) for the
+# current RPS round. Use via:
+#   rps_extra_args
+#   run_playbook "${PLAYBOOK}" -e @"${VARS}" "${RPS_EXTRA_ARGS[@]}"
+RPS_EXTRA_ARGS=()
+rps_extra_args() {
+  RPS_EXTRA_ARGS=()
+  if [[ -n "${CURRENT_RPS}" ]]; then
+    RPS_EXTRA_ARGS=(-e "bench_target_rps=${CURRENT_RPS}")
   fi
 }
 
@@ -372,7 +434,7 @@ run_hikari_sequence() {
     "hikari-run" \
     "Run Hikari disciplined production benchmark" \
     "" \
-    run_playbook "${RUN_HIKARI_PLAYBOOK}" -e @"${PROD_HIKARI_VARS}"
+    run_playbook "${RUN_HIKARI_PLAYBOOK}" -e @"${PROD_HIKARI_VARS}" "${RPS_EXTRA_ARGS[@]}"
 
   run_step \
     "teardown" \
@@ -392,7 +454,7 @@ run_pgbouncer_sequence() {
     "pgbouncer-run" \
     "Run pgBouncer production benchmark" \
     "pgbouncer" \
-    run_playbook "${RUN_PGBOUNCER_PLAYBOOK}" -e @"${PROD_PGBOUNCER_VARS}"
+    run_playbook "${RUN_PGBOUNCER_PLAYBOOK}" -e @"${PROD_PGBOUNCER_VARS}" "${RPS_EXTRA_ARGS[@]}"
 
   run_step \
     "teardown" \
@@ -412,27 +474,7 @@ run_ojp_sequence() {
     "ojp-run" \
     "Run OJP production benchmark" \
     "ojp" \
-    run_playbook "${RUN_OJP_PLAYBOOK}" -e @"${PROD_OJP_VARS}"
-
-  run_step \
-    "teardown" \
-    "Teardown all services and reset DB stats" \
-    "" \
-    run_playbook "${TEARDOWN_PLAYBOOK}"
-}
-
-run_ojp_sqs_sequence() {
-  run_step \
-    "ojp-sqs-setup" \
-    "Setup OJP environment (slow query segregation enabled)" \
-    "ojp" \
-    run_playbook "${SETUP_PLAYBOOK}" --tags db,ojp,bench,init-db -e @"${PROD_OJP_SQS_VARS}"
-
-  run_step \
-    "ojp-sqs-run" \
-    "Run OJP production benchmark (slow query segregation enabled)" \
-    "ojp" \
-    run_playbook "${RUN_OJP_PLAYBOOK}" -e @"${PROD_OJP_SQS_VARS}"
+    run_playbook "${RUN_OJP_PLAYBOOK}" -e @"${PROD_OJP_VARS}" "${RPS_EXTRA_ARGS[@]}"
 
   run_step \
     "teardown" \
@@ -447,36 +489,55 @@ run_step \
   "" \
   run_playbook "${TEARDOWN_PLAYBOOK}"
 
-for repetition in $(seq 1 "${RUN_REPETITIONS}"); do
-  if [[ "${RUN_REPETITIONS}" -gt 1 ]]; then
+for rps_index in "${!RPS_LIST[@]}"; do
+  CURRENT_RPS="${RPS_LIST[${rps_index}]}"
+  rps_extra_args
+  if [[ ${#RPS_LIST[@]} -gt 1 || -n "${CURRENT_RPS}" ]]; then
+    rps_label="${CURRENT_RPS:-default}"
     echo ""
-    echo "== Repetition ${repetition}/${RUN_REPETITIONS} =="
+    echo "== RPS round $((rps_index + 1))/${#RPS_LIST[@]}: ${rps_label} RPS/replica =="
   fi
 
-  iteration_start_epoch="$(date +%s)"
+  rps_round_start_epoch="$(date +%s)"
+  rps_round_label="${CURRENT_RPS:-default}"
 
-  for benchmark in "${BENCHMARKS_TO_RUN[@]}"; do
-    case "${benchmark}" in
-      hikari)
-        run_hikari_sequence
-        ;;
-      pgbouncer)
-        run_pgbouncer_sequence
-        ;;
-      ojp)
-        run_ojp_sequence
-        ;;
-      ojp_sqs)
-        run_ojp_sqs_sequence
-        ;;
-    esac
+  for repetition in $(seq 1 "${RUN_REPETITIONS}"); do
+    if [[ "${RUN_REPETITIONS}" -gt 1 ]]; then
+      echo ""
+      echo "== Repetition ${repetition}/${RUN_REPETITIONS} =="
+    fi
+
+    iteration_start_epoch="$(date +%s)"
+
+    for benchmark in "${BENCHMARKS_TO_RUN[@]}"; do
+      case "${benchmark}" in
+        hikari)
+          run_hikari_sequence
+          ;;
+        pgbouncer)
+          run_pgbouncer_sequence
+          ;;
+        ojp)
+          run_ojp_sequence
+          ;;
+      esac
+    done
+
+    iteration_end_epoch="$(date +%s)"
+    iteration_duration=$((iteration_end_epoch - iteration_start_epoch))
+    ITERATION_TIMING_LABELS+=("RPS ${rps_round_label} — Repetition ${repetition}/${RUN_REPETITIONS}")
+    ITERATION_TIMING_SECONDS+=("${iteration_duration}")
+    if [[ "${RUN_REPETITIONS}" -gt 1 ]]; then
+      echo "-- repetition ${repetition}/${RUN_REPETITIONS} duration: $(format_duration "${iteration_duration}")"
+    fi
   done
 
-  iteration_end_epoch="$(date +%s)"
-  iteration_duration=$((iteration_end_epoch - iteration_start_epoch))
-  ITERATION_TIMING_SECONDS+=("${iteration_duration}")
-  if [[ "${RUN_REPETITIONS}" -gt 1 ]]; then
-    echo "-- repetition ${repetition}/${RUN_REPETITIONS} duration: $(format_duration "${iteration_duration}")"
+  rps_round_end_epoch="$(date +%s)"
+  rps_round_duration=$((rps_round_end_epoch - rps_round_start_epoch))
+  RPS_ROUND_TIMING_LABELS+=("RPS round $((rps_index + 1))/${#RPS_LIST[@]}: ${rps_round_label} RPS/replica")
+  RPS_ROUND_TIMING_SECONDS+=("${rps_round_duration}")
+  if [[ ${#RPS_LIST[@]} -gt 1 || -n "${CURRENT_RPS}" ]]; then
+    echo "-- RPS round $((rps_index + 1))/${#RPS_LIST[@]} (${rps_round_label}) duration: $(format_duration "${rps_round_duration}")"
   fi
 done
 
@@ -501,10 +562,19 @@ if [[ ${#ITERATION_TIMING_SECONDS[@]} -gt 0 ]]; then
   echo ""
   echo "Per-iteration durations:"
   for idx in "${!ITERATION_TIMING_SECONDS[@]}"; do
-    printf '  Repetition %d/%d: %s\n' \
-      "$((idx + 1))" \
-      "${RUN_REPETITIONS}" \
+    printf '  %s: %s\n' \
+      "${ITERATION_TIMING_LABELS[$idx]}" \
       "$(format_duration "${ITERATION_TIMING_SECONDS[$idx]}")"
+  done
+fi
+
+if [[ ${#RPS_ROUND_TIMING_SECONDS[@]} -gt 0 ]]; then
+  echo ""
+  echo "Per-RPS-round durations:"
+  for idx in "${!RPS_ROUND_TIMING_SECONDS[@]}"; do
+    printf '  %s: %s\n' \
+      "${RPS_ROUND_TIMING_LABELS[$idx]}" \
+      "$(format_duration "${RPS_ROUND_TIMING_SECONDS[$idx]}")"
   done
 fi
 

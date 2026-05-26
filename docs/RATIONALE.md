@@ -184,6 +184,33 @@ threshold accordingly.
 
 ---
 
+## Appendix B. OJP Slow Query Segregation (SQS) Enabled by Default
+
+The OJP SUT (`ansible/vars/prod-ojp.yml`, `ansible/group_vars/ojp.yml`) is configured with
+slow query segregation enabled (`ojp_server_slow_query_segregation_enabled: true`). There is no
+separate "OJP without SQS" production profile; OJP is always benchmarked with SQS on.
+
+**Rationale.** The default production-comparison workload is W5_HTAP (90% OLTP / 10% OLAP — see
+Appendix A). OJP's own documentation recommends enabling slow query segregation for mixed OLTP +
+OLAP workloads: without segregation, a small number of long-running analytical queries can hold
+backend connections from the shared OJP server-side pool long enough to starve the short OLTP
+queries that share that pool, inflating OLTP tail latency well beyond what the underlying database
+would produce on its own. SQS routes queries identified as slow onto a separate path so that the
+OLTP transactional stream retains predictable access to backend connections.
+
+Because the comparison harness is explicitly designed around the recommended OJP deployment for
+the target workload class, running OJP without SQS would not represent a realistic production
+configuration and would not yield a fair comparison against Hikari Direct (SUT-A) or pgBouncer
+(SUT-C). The previous `ojp_sqs` variant SUT has therefore been removed: the single OJP SUT in
+this repository is the recommended OJP deployment for HTAP, with SQS on.
+
+If a future scenario requires comparing OJP with and without SQS — for example a pure-OLTP
+workload where OJP documentation does not recommend SQS — override
+`ojp_server_slow_query_segregation_enabled: false` on the ansible-playbook command line for that
+specific run; the OJP role and benchmark playbook still honor the variable.
+
+---
+
 *Document version: 1.0 — February 2026*
 
 ---
