@@ -78,13 +78,20 @@ fi
 
 read_jiffies() {
   # Fields 14 (utime) and 15 (stime) in /proc/<pid>/stat are in clock ticks.
-  awk '{print $14+$15}' "/proc/${1}/stat" 2>/dev/null || echo 0
+  # On read failure (e.g. PID exited between enumeration and this read) emit
+  # nothing so the caller can skip this PID for this sample. Returning a
+  # default of 0 here would be treated as a real counter value and produce a
+  # large negative delta against the previous sample's positive count, which
+  # is what caused spurious negative cpu_pct in the metrics CSV.
+  awk '{print $14+$15}' "/proc/${1}/stat" 2>/dev/null
 }
 
 read_kb_status_field() {
   local pid="${1}"
   local field="${2}"
-  awk -v f="${field}" '$1 == f ":" {print $2}' "/proc/${pid}/status" 2>/dev/null || echo 0
+  # Same rationale as read_jiffies: emit nothing on failure so the caller can
+  # decide whether to skip this PID rather than blending in a fake 0.
+  awk -v f="${field}" '$1 == f ":" {print $2}' "/proc/${pid}/status" 2>/dev/null
 }
 
 read_host_cpu_totals() {
@@ -153,14 +160,20 @@ while true; do
 
   for pid in "${svc_pids[@]}"; do
     cur_jiffies=$(read_jiffies "${pid}")
+    # Skip PIDs whose /proc/<pid>/stat could not be read this sample. Using a
+    # fallback of 0 would produce a large negative jiffies delta against the
+    # previous sample, manifesting as bogus negative cpu_pct values.
+    if [[ -z "${cur_jiffies}" ]]; then
+      continue
+    fi
     prev_jiffies="${prev_jiffies_by_pid[${pid}]:-${cur_jiffies}}"
     delta_jiffies=$(( delta_jiffies + cur_jiffies - prev_jiffies ))
     current_jiffies_by_pid["${pid}"]="${cur_jiffies}"
 
     rss_kb=$(read_kb_status_field "${pid}" "VmRSS")
     vsz_kb=$(read_kb_status_field "${pid}" "VmSize")
-    rss_kb_total=$(( rss_kb_total + rss_kb ))
-    vsz_kb_total=$(( vsz_kb_total + vsz_kb ))
+    rss_kb_total=$(( rss_kb_total + ${rss_kb:-0} ))
+    vsz_kb_total=$(( vsz_kb_total + ${vsz_kb:-0} ))
   done
 
   prev_jiffies_by_pid=()
