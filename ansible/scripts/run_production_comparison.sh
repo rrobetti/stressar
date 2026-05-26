@@ -193,6 +193,30 @@ PROD_PGBOUNCER_VARS="${ANSIBLE_DIR}/vars/prod-pgbouncer.yml"
 FAILURE_LOGS_DIR="${REPO_DIR}/results/failure-logs"
 FAILED_STEPS=()
 CURRENT_STEP=0
+# Timing tracking: parallel arrays of per-step labels and durations (seconds).
+STEP_TIMING_LABELS=()
+STEP_TIMING_SECONDS=()
+# Per-iteration durations (seconds), one entry per repetition.
+ITERATION_TIMING_SECONDS=()
+SCRIPT_START_EPOCH="$(date +%s)"
+
+format_duration() {
+  local total_seconds="$1"
+  if ! [[ "${total_seconds}" =~ ^[0-9]+$ ]]; then
+    printf '%s' "${total_seconds}"
+    return
+  fi
+  local hours=$((total_seconds / 3600))
+  local minutes=$(((total_seconds % 3600) / 60))
+  local seconds=$((total_seconds % 60))
+  if [[ ${hours} -gt 0 ]]; then
+    printf '%dh%02dm%02ds (%ds)' "${hours}" "${minutes}" "${seconds}" "${total_seconds}"
+  elif [[ ${minutes} -gt 0 ]]; then
+    printf '%dm%02ds (%ds)' "${minutes}" "${seconds}" "${total_seconds}"
+  else
+    printf '%ds' "${total_seconds}"
+  fi
+}
 # Keep this aligned with the three run_step phases in each benchmark sequence:
 # setup, run, and teardown.
 STEPS_PER_BENCHMARK=3
@@ -326,7 +350,15 @@ run_step() {
   CURRENT_STEP=$((CURRENT_STEP + 1))
   echo "== [${CURRENT_STEP}/${TOTAL_STEPS}] ${step_message} =="
 
+  local step_start_epoch
+  step_start_epoch="$(date +%s)"
   "$@" || collect_failure_logs "step-${CURRENT_STEP}-${step_slug}" "${proxy_type}"
+  local step_end_epoch
+  step_end_epoch="$(date +%s)"
+  local step_duration=$((step_end_epoch - step_start_epoch))
+  STEP_TIMING_LABELS+=("[${CURRENT_STEP}/${TOTAL_STEPS}] ${step_slug} — ${step_message}")
+  STEP_TIMING_SECONDS+=("${step_duration}")
+  echo "-- step '${step_slug}' duration: $(format_duration "${step_duration}")"
 }
 
 run_hikari_sequence() {
@@ -421,6 +453,8 @@ for repetition in $(seq 1 "${RUN_REPETITIONS}"); do
     echo "== Repetition ${repetition}/${RUN_REPETITIONS} =="
   fi
 
+  iteration_start_epoch="$(date +%s)"
+
   for benchmark in "${BENCHMARKS_TO_RUN[@]}"; do
     case "${benchmark}" in
       hikari)
@@ -437,7 +471,46 @@ for repetition in $(seq 1 "${RUN_REPETITIONS}"); do
         ;;
     esac
   done
+
+  iteration_end_epoch="$(date +%s)"
+  iteration_duration=$((iteration_end_epoch - iteration_start_epoch))
+  ITERATION_TIMING_SECONDS+=("${iteration_duration}")
+  if [[ "${RUN_REPETITIONS}" -gt 1 ]]; then
+    echo "-- repetition ${repetition}/${RUN_REPETITIONS} duration: $(format_duration "${iteration_duration}")"
+  fi
 done
+
+# ── Timing report ─────────────────────────────────────────────────────────────
+SCRIPT_END_EPOCH="$(date +%s)"
+TOTAL_DURATION=$((SCRIPT_END_EPOCH - SCRIPT_START_EPOCH))
+
+echo ""
+echo "================ Timing Report ================"
+echo "Per-step durations:"
+if [[ ${#STEP_TIMING_LABELS[@]} -eq 0 ]]; then
+  echo "  (no steps recorded)"
+else
+  for idx in "${!STEP_TIMING_LABELS[@]}"; do
+    printf '  %s: %s\n' \
+      "${STEP_TIMING_LABELS[$idx]}" \
+      "$(format_duration "${STEP_TIMING_SECONDS[$idx]}")"
+  done
+fi
+
+if [[ ${#ITERATION_TIMING_SECONDS[@]} -gt 0 ]]; then
+  echo ""
+  echo "Per-iteration durations:"
+  for idx in "${!ITERATION_TIMING_SECONDS[@]}"; do
+    printf '  Repetition %d/%d: %s\n' \
+      "$((idx + 1))" \
+      "${RUN_REPETITIONS}" \
+      "$(format_duration "${ITERATION_TIMING_SECONDS[$idx]}")"
+  done
+fi
+
+echo ""
+echo "Total elapsed time: $(format_duration "${TOTAL_DURATION}")"
+echo "==============================================="
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
