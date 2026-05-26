@@ -234,6 +234,34 @@ PROD_PGBOUNCER_VARS="${ANSIBLE_DIR}/vars/prod-pgbouncer.yml"
 FAILURE_LOGS_DIR="${REPO_DIR}/results/failure-logs"
 FAILED_STEPS=()
 CURRENT_STEP=0
+# Timing tracking: parallel arrays of per-step labels and durations (seconds).
+STEP_TIMING_LABELS=()
+STEP_TIMING_SECONDS=()
+# Per-iteration (repetition) durations (seconds) and human-readable labels.
+ITERATION_TIMING_LABELS=()
+ITERATION_TIMING_SECONDS=()
+# Per-RPS-round durations (seconds) and human-readable labels.
+RPS_ROUND_TIMING_LABELS=()
+RPS_ROUND_TIMING_SECONDS=()
+SCRIPT_START_EPOCH="$(date +%s)"
+
+format_duration() {
+  local total_seconds="$1"
+  if ! [[ "${total_seconds}" =~ ^[0-9]+$ ]]; then
+    printf '%s' "${total_seconds}"
+    return
+  fi
+  local hours=$((total_seconds / 3600))
+  local minutes=$(((total_seconds % 3600) / 60))
+  local seconds=$((total_seconds % 60))
+  if [[ ${hours} -gt 0 ]]; then
+    printf '%dh%02dm%02ds (%ds)' "${hours}" "${minutes}" "${seconds}" "${total_seconds}"
+  elif [[ ${minutes} -gt 0 ]]; then
+    printf '%dm%02ds (%ds)' "${minutes}" "${seconds}" "${total_seconds}"
+  else
+    printf '%ds' "${total_seconds}"
+  fi
+}
 # Keep this aligned with the three run_step phases in each benchmark sequence:
 # setup, run, and teardown.
 STEPS_PER_BENCHMARK=3
@@ -384,7 +412,15 @@ run_step() {
   CURRENT_STEP=$((CURRENT_STEP + 1))
   echo "== [${CURRENT_STEP}/${TOTAL_STEPS}] ${step_message} =="
 
+  local step_start_epoch
+  step_start_epoch="$(date +%s)"
   "$@" || collect_failure_logs "step-${CURRENT_STEP}-${step_slug}" "${proxy_type}"
+  local step_end_epoch
+  step_end_epoch="$(date +%s)"
+  local step_duration=$((step_end_epoch - step_start_epoch))
+  STEP_TIMING_LABELS+=("[${CURRENT_STEP}/${TOTAL_STEPS}] ${step_slug} — ${step_message}")
+  STEP_TIMING_SECONDS+=("${step_duration}")
+  echo "-- step '${step_slug}' duration: $(format_duration "${step_duration}")"
 }
 
 run_hikari_sequence() {
@@ -462,11 +498,16 @@ for rps_index in "${!RPS_LIST[@]}"; do
     echo "== RPS round $((rps_index + 1))/${#RPS_LIST[@]}: ${rps_label} RPS/replica =="
   fi
 
+  rps_round_start_epoch="$(date +%s)"
+  rps_round_label="${CURRENT_RPS:-default}"
+
   for repetition in $(seq 1 "${RUN_REPETITIONS}"); do
     if [[ "${RUN_REPETITIONS}" -gt 1 ]]; then
       echo ""
       echo "== Repetition ${repetition}/${RUN_REPETITIONS} =="
     fi
+
+    iteration_start_epoch="$(date +%s)"
 
     for benchmark in "${BENCHMARKS_TO_RUN[@]}"; do
       case "${benchmark}" in
@@ -481,8 +522,65 @@ for rps_index in "${!RPS_LIST[@]}"; do
           ;;
       esac
     done
+
+    iteration_end_epoch="$(date +%s)"
+    iteration_duration=$((iteration_end_epoch - iteration_start_epoch))
+    ITERATION_TIMING_LABELS+=("RPS ${rps_round_label} — Repetition ${repetition}/${RUN_REPETITIONS}")
+    ITERATION_TIMING_SECONDS+=("${iteration_duration}")
+    if [[ "${RUN_REPETITIONS}" -gt 1 ]]; then
+      echo "-- repetition ${repetition}/${RUN_REPETITIONS} duration: $(format_duration "${iteration_duration}")"
+    fi
   done
+
+  rps_round_end_epoch="$(date +%s)"
+  rps_round_duration=$((rps_round_end_epoch - rps_round_start_epoch))
+  RPS_ROUND_TIMING_LABELS+=("RPS round $((rps_index + 1))/${#RPS_LIST[@]}: ${rps_round_label} RPS/replica")
+  RPS_ROUND_TIMING_SECONDS+=("${rps_round_duration}")
+  if [[ ${#RPS_LIST[@]} -gt 1 || -n "${CURRENT_RPS}" ]]; then
+    echo "-- RPS round $((rps_index + 1))/${#RPS_LIST[@]} (${rps_round_label}) duration: $(format_duration "${rps_round_duration}")"
+  fi
 done
+
+# ── Timing report ─────────────────────────────────────────────────────────────
+SCRIPT_END_EPOCH="$(date +%s)"
+TOTAL_DURATION=$((SCRIPT_END_EPOCH - SCRIPT_START_EPOCH))
+
+echo ""
+echo "================ Timing Report ================"
+echo "Per-step durations:"
+if [[ ${#STEP_TIMING_LABELS[@]} -eq 0 ]]; then
+  echo "  (no steps recorded)"
+else
+  for idx in "${!STEP_TIMING_LABELS[@]}"; do
+    printf '  %s: %s\n' \
+      "${STEP_TIMING_LABELS[$idx]}" \
+      "$(format_duration "${STEP_TIMING_SECONDS[$idx]}")"
+  done
+fi
+
+if [[ ${#ITERATION_TIMING_SECONDS[@]} -gt 0 ]]; then
+  echo ""
+  echo "Per-iteration durations:"
+  for idx in "${!ITERATION_TIMING_SECONDS[@]}"; do
+    printf '  %s: %s\n' \
+      "${ITERATION_TIMING_LABELS[$idx]}" \
+      "$(format_duration "${ITERATION_TIMING_SECONDS[$idx]}")"
+  done
+fi
+
+if [[ ${#RPS_ROUND_TIMING_SECONDS[@]} -gt 0 ]]; then
+  echo ""
+  echo "Per-RPS-round durations:"
+  for idx in "${!RPS_ROUND_TIMING_SECONDS[@]}"; do
+    printf '  %s: %s\n' \
+      "${RPS_ROUND_TIMING_LABELS[$idx]}" \
+      "$(format_duration "${RPS_ROUND_TIMING_SECONDS[$idx]}")"
+  done
+fi
+
+echo ""
+echo "Total elapsed time: $(format_duration "${TOTAL_DURATION}")"
+echo "==============================================="
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
