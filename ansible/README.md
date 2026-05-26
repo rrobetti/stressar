@@ -362,6 +362,12 @@ ansible/scripts/run_production_comparison.sh ansible/inventory.yml --tests hikar
 
 # Run selected benchmarks 5 times
 ansible/scripts/run_production_comparison.sh ansible/inventory.yml --tests hikari,ojp --repeat 5
+
+# Sweep a list of per-replica RPS values (one round per value, in order)
+ansible/scripts/run_production_comparison.sh ansible/inventory.yml --tests ojp --rps-list 1,5,10,15,20,25,30,35,40
+
+# Combine: sweep RPS values and repeat each round 3 times
+ansible/scripts/run_production_comparison.sh ansible/inventory.yml --tests hikari,pgbouncer,ojp --rps-list 10,20,30 --repeat 3
 ```
 
 To enable Ansible verbose output (`-vvv`) and capture the full log to a file, pass `--debug`:
