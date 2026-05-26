@@ -20,11 +20,11 @@ public class HikariProvider implements ConnectionProvider {
     private final int poolSize;
     private final String modeName;
     
-    public HikariProvider(DatabaseConfig dbConfig, int poolSize, boolean isDisciplined) {
+    public HikariProvider(DatabaseConfig dbConfig, int poolSize, int connectionTimeoutMs, boolean isDisciplined) {
         this.poolSize = poolSize;
         this.modeName = isDisciplined ? "HIKARI_DISCIPLINED" : "HIKARI_DIRECT";
 
-        HikariConfig config = getHikariConfig(dbConfig, poolSize);
+        HikariConfig config = getHikariConfig(dbConfig, poolSize, connectionTimeoutMs);
         config.addDataSourceProperty("cachePrepStmts", "true");
         config.addDataSourceProperty("prepStmtCacheSize", "250");
         config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
@@ -40,7 +40,7 @@ public class HikariProvider implements ConnectionProvider {
         logger.info("Initialized {} with pool size: {}", modeName, poolSize);
     }
 
-    private static @NonNull HikariConfig getHikariConfig(DatabaseConfig dbConfig, int poolSize) {
+    static @NonNull HikariConfig getHikariConfig(DatabaseConfig dbConfig, int poolSize, int connectionTimeoutMs) {
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(dbConfig.getJdbcUrl());
         config.setUsername(dbConfig.getUsername());
@@ -49,7 +49,7 @@ public class HikariProvider implements ConnectionProvider {
         // Pool configuration
         config.setMaximumPoolSize(poolSize);
         config.setMinimumIdle(Math.max(1, poolSize / 2));
-        config.setConnectionTimeout(30000);
+        config.setConnectionTimeout(connectionTimeoutMs);
         config.setIdleTimeout(30000);
         config.setMaxLifetime(30000);
 

@@ -39,6 +39,7 @@ bench_target_rps:           40    # Per replica (16 replicas => 640 aggregate)
 bench_warmup_seconds:       300
 bench_duration_seconds:     1800
 bench_cooldown_seconds:     120
+bench_connection_timeout_ms: 30000
 bench_slo_p95_ms:           150
 bench_workload_type:        "W5_HTAP"
 bench_connection_mode:      "OJP"

@@ -27,7 +27,7 @@ ojp:
   # this production benchmark template.
   # minConnections = maxConnections so each node's share is fully pre-warmed.
   minConnections: {{ bench_db_connection_budget | int }}
-  connectionTimeoutMs: 30000
+  connectionTimeoutMs: {{ bench_connection_timeout_ms }}
   idleTimeoutMs: 30000
   maxLifetimeMs: 30000
   queueLimit: 200

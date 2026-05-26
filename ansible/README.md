@@ -345,7 +345,7 @@ Predefined full-hardware production profiles are available under `ansible/vars/`
 
 - `prod-hikari.yml` (SUT-A): 16 replicas, budget 300, max per replica 19
 - `prod-ojp.yml` (SUT-B): 16 replicas, OJP budget 48
-- `prod-ojp-sqs.yml` (SUT-B variant): OJP profile with slow query segregation enabled
+- `prod-ojp-sqs.yml` (SUT-B variant): OJP profile with slow query segregation enabled; it reuses the same OJP benchmark template and inherits the shared `bench_connection_timeout_ms`
 - `prod-htap.yml` (workload profile): W5_HTAP workload mix (10% OLAP / 90% OLTP)
 - `prod-pgbouncer.yml` (SUT-C): 16 replicas, pgBouncer pool 16 per proxy node, local bench pool 20
 
@@ -445,8 +445,8 @@ Important: always pass a production profile (`prod-hikari.yml`, `prod-ojp.yml`, 
 | SUT | Client-side pool in bench | Server-side/proxy pool | Where configured |
 |-----|---------------------------|-------------------------|------------------|
 | **SUT-A — Hikari Direct** | **Yes** (`poolSize`) | N/A (direct DB) | `ansible/templates/hikari-benchmark.yaml.j2` (`dbConnectionBudget`, `replicas`) → computed in `src/main/java/com/bench/config/BenchmarkConfig.java#calculateDisciplinedPoolSize` |
-| **SUT-B — OJP** | **No client Hikari pool** | **Yes** (OJP server-side pool) | `ansible/templates/ojp-benchmark.yaml.j2` (`dbConnectionBudget`, `replicas`, `ojp.poolSharing`) → computed in `src/main/java/com/bench/config/BenchmarkConfig.java#calculateOjpAllocation` and applied in `src/main/java/com/bench/config/ConnectionProviderFactory.java` |
-| **SUT-C — pgBouncer** | **Optional** (`poolSize`) | **Yes** (`pgbouncer_pool_size` / `pgbouncer_min_pool_size`) | Client pool: `ansible/templates/pgbouncer-benchmark.yaml.j2` (`poolSize: {{ pgbouncer_local_pool_size }}`) used by `src/main/java/com/bench/config/PgbouncerProvider.java`. Server pool: `ansible/group_vars/all.yml` or `ansible/vars/prod-pgbouncer.yml`. |
+| **SUT-B — OJP** | **No client Hikari pool** | **Yes** (OJP server-side pool) | `ansible/templates/ojp-benchmark.yaml.j2` (`dbConnectionBudget`, `replicas`, `ojp.poolSharing`) → computed in `src/main/java/com/bench/config/BenchmarkConfig.java#calculateOjpAllocation` and applied in `src/main/java/com/bench/config/ConnectionProviderFactory.java`. Connection acquisition timeout comes from shared Ansible var `bench_connection_timeout_ms`. |
+| **SUT-C — pgBouncer** | **Optional** (`poolSize`) | **Yes** (`pgbouncer_pool_size` / `pgbouncer_min_pool_size`) | Client pool: `ansible/templates/pgbouncer-benchmark.yaml.j2` (`poolSize: {{ pgbouncer_local_pool_size }}`, `connectionTimeout: {{ bench_connection_timeout_ms }}`) used by `src/main/java/com/bench/config/PgbouncerProvider.java`. Server pool: `ansible/group_vars/all.yml` or `ansible/vars/prod-pgbouncer.yml`. |
 
 Rationale and parameter decisions:
 
@@ -457,6 +457,7 @@ Important notes:
 
 - For OJP, `bench_replica_count` is number of bench JVM replicas; it is **not** OJP pool size.
 - The production OJP benchmark template uses `poolSharing: SHARED`, so all bench replicas share one OJP server-side pool and `bench_replica_count` does not divide the configured budget.
+- Connection-acquisition timeout is shared across benchmark SUTs via `bench_connection_timeout_ms` in `ansible/group_vars/all.yml`; OJP_SQS inherits the same timeout because it uses the same `run_benchmarks_ojp.yml` playbook and `ojp-benchmark.yaml.j2` template as OJP.
 - For pgBouncer, this repo supports both:
   - **main production profile**: `pgbouncer_local_pool_size: 20`, `pgbouncer_reserve_pool_size: 0`
 

@@ -20,6 +20,7 @@ connectionMode: PGBOUNCER
 # Main production profile: 20 (realistic Java microservice topology)
 poolSize: {{ pgbouncer_local_pool_size }}
 replicas: {{ bench_replica_count }}
+connectionTimeout: {{ bench_connection_timeout_ms }}
 
 workload:
   type: {{ bench_workload_type }}

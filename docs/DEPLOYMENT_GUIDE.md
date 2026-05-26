@@ -402,9 +402,9 @@ database:
 connectionMode: OJP
 
 ojp:
-  maximumPoolSize: 16
-  minimumIdle: 4
-  connectionTimeout: 15000
+  maxConnections: 16
+  minConnections: 4
+  connectionTimeoutMs: 30000
 
 workload:
   type: W2_MIXED

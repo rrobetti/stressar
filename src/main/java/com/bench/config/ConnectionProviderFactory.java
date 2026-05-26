@@ -15,11 +15,11 @@ public class ConnectionProviderFactory {
         
         switch (mode) {
             case HIKARI_DIRECT:
-                return new HikariProvider(dbConfig, config.getPoolSize(), false);
+                return new HikariProvider(dbConfig, config.getPoolSize(), config.getConnectionTimeout(), false);
                 
             case HIKARI_DISCIPLINED:
                 int disciplinedPoolSize = config.calculateDisciplinedPoolSize();
-                return new HikariProvider(dbConfig, disciplinedPoolSize, true);
+                return new HikariProvider(dbConfig, disciplinedPoolSize, config.getConnectionTimeout(), true);
                 
             case OJP:
                 // Validate OJP configuration
@@ -39,7 +39,7 @@ public class ConnectionProviderFactory {
                 return new OjpProvider(dbConfig, ojpConfig, ojpAllocation);
                 
             case PGBOUNCER:
-                return new PgbouncerProvider(dbConfig, config.getPoolSize());
+                return new PgbouncerProvider(dbConfig, config.getPoolSize(), config.getConnectionTimeout());
                 
             default:
                 throw new IllegalArgumentException("Unknown connection mode: " + mode);

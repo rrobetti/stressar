@@ -19,27 +19,10 @@ public class PgbouncerProvider implements ConnectionProvider {
 
     private final HikariDataSource dataSource;
 
-    public PgbouncerProvider(DatabaseConfig dbConfig, int configuredPoolSize) {
+    public PgbouncerProvider(DatabaseConfig dbConfig, int configuredPoolSize, int connectionTimeoutMs) {
         this.poolSize = Math.max(1, configuredPoolSize);
 
-        HikariConfig config = new HikariConfig();
-        config.setJdbcUrl(dbConfig.getJdbcUrl());  // Should point to PgBouncer endpoint
-        config.setUsername(dbConfig.getUsername());
-        config.setPassword(dbConfig.getPassword());
-
-        // Client-side pool: PgBouncer holds the real backend pool; keep local
-        // connections equal to the configured poolSize.
-        config.setMaximumPoolSize(poolSize);
-        config.setMinimumIdle(Math.max(1, poolSize / 2));
-        config.setConnectionTimeout(30000);
-        config.setIdleTimeout(30000);
-        config.setMaxLifetime(30000);
-        // autoCommit=true (JDBC default): read workloads need no transaction wrapper
-        // and write workloads (ReadWriteWorkload) explicitly call setAutoCommit(false)
-        // on each connection before use.  Leaving the pool in autoCommit=false causes
-        // HikariCP to issue a silent ROLLBACK when a connection is returned after a
-        // read-only request, inflating pg_stat_database.xact_rollback.
-        config.setAutoCommit(true);
+        HikariConfig config = getHikariConfig(dbConfig, poolSize, connectionTimeoutMs);
 
         // prepareThreshold=0: disable PostgreSQL server-side prepared statements.
         // In pgBouncer transaction pooling mode each transaction can be routed to a
@@ -57,6 +40,28 @@ public class PgbouncerProvider implements ConnectionProvider {
         this.dataSource = new HikariDataSource(config);
         
         logger.info("Initialized PgBouncer provider with local pool size: {}", poolSize);
+    }
+
+    static HikariConfig getHikariConfig(DatabaseConfig dbConfig, int poolSize, int connectionTimeoutMs) {
+        HikariConfig config = new HikariConfig();
+        config.setJdbcUrl(dbConfig.getJdbcUrl());  // Should point to PgBouncer endpoint
+        config.setUsername(dbConfig.getUsername());
+        config.setPassword(dbConfig.getPassword());
+
+        // Client-side pool: PgBouncer holds the real backend pool; keep local
+        // connections equal to the configured poolSize.
+        config.setMaximumPoolSize(poolSize);
+        config.setMinimumIdle(Math.max(1, poolSize / 2));
+        config.setConnectionTimeout(connectionTimeoutMs);
+        config.setIdleTimeout(30000);
+        config.setMaxLifetime(30000);
+        // autoCommit=true (JDBC default): read workloads need no transaction wrapper
+        // and write workloads (ReadWriteWorkload) explicitly call setAutoCommit(false)
+        // on each connection before use.  Leaving the pool in autoCommit=false causes
+        // HikariCP to issue a silent ROLLBACK when a connection is returned after a
+        // read-only request, inflating pg_stat_database.xact_rollback.
+        config.setAutoCommit(true);
+        return config;
     }
     
     @Override
