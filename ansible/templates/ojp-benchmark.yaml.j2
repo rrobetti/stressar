@@ -32,6 +32,10 @@ ojp:
   maxLifetimeMs: 30000
   queueLimit: 200
   slowQueryThresholdMs: 1000
+  # Client-side throttling on the OJP JDBC driver (ojp.jdbc.clientThrottle.mode).
+  # ConfigLoader strips the `properties.` prefix and OjpConfig re-adds `ojp.`,
+  # so the driver receives exactly `ojp.jdbc.clientThrottle.mode=<value>`.
+  properties.jdbc.clientThrottle.mode: "{{ bench_ojp_client_throttle_mode }}"
 
 workload:
   type: {{ bench_workload_type }}
