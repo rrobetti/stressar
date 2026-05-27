@@ -58,6 +58,19 @@ bench_num_items:    100000
 bench_num_orders:   10000000
 bench_seed:         0.42
 
+# ── DB snapshot cache (init-db) ──────────────────────────────────────────────
+# After the first successful `bench init-db`, the playbook takes a pg_dump
+# snapshot on the DB node and reuses it on subsequent init-db runs (when the
+# inputs that determine dataset content are unchanged). This skips the slow
+# generator phase on reruns. The dump lives on the DB node only (not copied
+# back to the control node), keyed by a content hash of the inputs.
+db_snapshot_enabled:         true
+db_snapshot_dir:             "/var/backups/stressar"
+db_snapshot_force_reseed:    false
+# Parallelism for pg_restore -j. Override per inventory if the DB host has
+# significantly more or fewer cores than this default.
+db_snapshot_pg_restore_jobs: 4
+
 # ── Paths on the control node ─────────────────────────────────────────────────
 # playbook_dir resolves to ansible/playbooks/ — go two levels up to reach the repo root.
 bench_repo_dir:   "{{ playbook_dir }}/../.."

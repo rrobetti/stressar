@@ -499,7 +499,62 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_pgbou
 | `pgbouncer` | pgBouncer install + configure on proxy nodes (SUT-C only) |
 | `haproxy` | HAProxy install + configure on the LB node (SUT-C only) |
 | `bench` | Build bench tool |
-| `init-db` | Seed benchmark database |
+| `init-db` | Seed benchmark database (with snapshot cache; see below) |
+
+### Database snapshot cache (init-db)
+
+The first `init-db` run on a fresh DB node runs `bench init-db` as normal (this can
+take 10–25 minutes on the production dataset) and then takes a compressed
+`pg_dump -Fc` snapshot on the DB node. Subsequent `init-db` runs detect the
+existing snapshot and restore it with `pg_restore -j`, typically completing in
+1–3 minutes on the production dataset.
+
+Where things live (all on the DB node — nothing is copied back to the control
+node or committed to the repo):
+
+| Path | Contents |
+|------|----------|
+| `/var/backups/stressar/<key>.dump`      | Compressed `pg_dump -Fc -Z 3` of the benchmark database |
+| `/var/backups/stressar/<key>.meta.json` | Human-readable record of the inputs that produced the dump |
+
+`<key>` is the first 16 hex chars of a SHA-256 over the inputs that determine
+dataset content: `pg_version`, `bench_num_accounts`, `bench_num_items`,
+`bench_num_orders`, `bench_seed`, and the SHA-256 of
+`src/main/resources/schema/ddl.sql`, `schema/indexes.sql`, and
+`data/generator.sql`. Change any of these and you get a different filename, so
+the next `init-db` will re-seed and re-snapshot automatically.
+
+Restore is destructive — the playbook drops and recreates the benchmark
+database before `pg_restore`, re-creates the `benchuser` role and
+`pg_stat_statements` extension, runs `pg_stat_statements_reset()`, and
+`VACUUM (ANALYZE)`s to refresh planner stats. Only run `init-db` when you
+actually want the dataset rebuilt.
+
+Tunables in `ansible/group_vars/all.yml`:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `db_snapshot_enabled`         | `true`                  | Master switch. Set to `false` for fully-reproducible-from-generator runs. |
+| `db_snapshot_dir`             | `/var/backups/stressar` | Where dumps live on the DB node. Override to point at a larger volume. |
+| `db_snapshot_force_reseed`    | `false`                 | One-shot override to ignore an existing snapshot and reseed. |
+| `db_snapshot_pg_restore_jobs` | `4`                     | Parallelism for `pg_restore -j`. |
+
+Common operations:
+
+```bash
+# Force a fresh reseed (and overwrite the cached snapshot) for one run:
+ansible-playbook -i ansible/inventory.yml ansible/playbooks/setup.yml \
+  --tags db,bench,init-db -e db_snapshot_force_reseed=true
+
+# Or, equivalently, delete the snapshot on the DB node:
+ssh <db-node> sudo rm /var/backups/stressar/*.dump /var/backups/stressar/*.meta.json
+
+# Disable the cache entirely for a published, reproducible-from-generator run:
+ansible-playbook ... --tags db,bench,init-db -e db_snapshot_enabled=false
+```
+
+Because the dump lives only on the DB node, **rebuilding the DB VM invalidates
+the cache** — the next `init-db` will reseed and re-snapshot. That's by design.
 
 `teardown.yml` exposes the following tags:
 
