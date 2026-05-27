@@ -74,26 +74,314 @@
         update_cache: true
       become: true
 
-- name: Initialise benchmark database
+- name: Initialise benchmark database (with snapshot cache)
   hosts: control
   gather_facts: false
   tags: init-db
   vars:
     # db_host is the inventory hostname of the DB node; read from hostvars.
     db_host: "{{ hostvars[groups['db'][0]]['ansible_host'] }}"
+    db_inv_host: "{{ groups['db'][0] }}"
+    db_pg_version: "{{ hostvars[groups['db'][0]]['pg_version'] | default(16) }}"
   tasks:
-    - name: Run bench init-db
-      ansible.builtin.command: >
-        {{ bench_binary }} init-db
-          --jdbc-url  "jdbc:postgresql://{{ db_host }}:{{ db_port }}/{{ db_name }}"
-          --username  "{{ db_user }}"
-          --password  "{{ db_password }}"
-          --accounts  "{{ bench_num_accounts }}"
-          --items     "{{ bench_num_items }}"
-          --orders    "{{ bench_num_orders }}"
-          --seed      "{{ bench_seed }}"
-      register: init_db_out
+    # ── 1. Compute cache key on control ──────────────────────────────────────
+    - name: Hash schema/data SQL files for cache key
+      ansible.builtin.set_fact:
+        _ddl_sha: "{{ lookup('file', bench_repo_dir + '/src/main/resources/schema/ddl.sql') | hash('sha256') }}"
+        _idx_sha: "{{ lookup('file', bench_repo_dir + '/src/main/resources/schema/indexes.sql') | hash('sha256') }}"
+        _gen_sha: "{{ lookup('file', bench_repo_dir + '/src/main/resources/data/generator.sql') | hash('sha256') }}"
 
-    - name: Print init-db output
-      ansible.builtin.debug:
-        msg: "{{ init_db_out.stdout_lines }}"
+    - name: Compute snapshot cache key
+      ansible.builtin.set_fact:
+        db_snapshot_cache_key: >-
+          {{ (db_pg_version | string + '|' +
+              bench_num_accounts | string + '|' +
+              bench_num_items | string + '|' +
+              bench_num_orders | string + '|' +
+              bench_seed | string + '|' +
+              _ddl_sha + '|' + _idx_sha + '|' + _gen_sha)
+              | hash('sha256') }}
+
+    - name: Compute snapshot file paths
+      ansible.builtin.set_fact:
+        db_snapshot_short_key: "{{ db_snapshot_cache_key[:16] }}"
+        db_snapshot_path: "{{ db_snapshot_dir }}/{{ db_snapshot_cache_key[:16] }}.dump"
+        db_snapshot_meta_path: "{{ db_snapshot_dir }}/{{ db_snapshot_cache_key[:16] }}.meta.json"
+
+    - name: Ensure snapshot directory exists on DB node
+      ansible.builtin.file:
+        path: "{{ db_snapshot_dir }}"
+        state: directory
+        owner: postgres
+        group: postgres
+        mode: "0750"
+      become: true
+      delegate_to: "{{ db_inv_host }}"
+      when: db_snapshot_enabled | bool
+
+    # ── 2. Probe DB node for an existing dump + meta sidecar ─────────────────
+    - name: Stat snapshot dump on DB node
+      ansible.builtin.stat:
+        path: "{{ db_snapshot_path }}"
+      delegate_to: "{{ db_inv_host }}"
+      register: _snap_dump
+      when: db_snapshot_enabled | bool
+
+    - name: Stat snapshot meta sidecar on DB node
+      ansible.builtin.stat:
+        path: "{{ db_snapshot_meta_path }}"
+      delegate_to: "{{ db_inv_host }}"
+      register: _snap_meta
+      when: db_snapshot_enabled | bool
+
+    - name: Read snapshot meta sidecar
+      ansible.builtin.slurp:
+        src: "{{ db_snapshot_meta_path }}"
+      delegate_to: "{{ db_inv_host }}"
+      register: _snap_meta_content
+      when:
+        - db_snapshot_enabled | bool
+        - not (db_snapshot_force_reseed | bool)
+        - _snap_dump.stat.exists | default(false)
+        - _snap_meta.stat.exists | default(false)
+
+    - name: Parse snapshot meta sidecar
+      ansible.builtin.set_fact:
+        _snap_meta_json: "{{ _snap_meta_content.content | b64decode | from_json }}"
+      when:
+        - _snap_meta_content is defined
+        - _snap_meta_content.content is defined
+
+    # Sanity check: file-name hash should already guarantee a match, but
+    # cross-check the human-readable fields and fail loudly on mismatch
+    # rather than restoring wrong data.
+    - name: Sanity-check snapshot meta fields match current vars
+      ansible.builtin.assert:
+        that:
+          - _snap_meta_json.pg_version | string == db_pg_version | string
+          - _snap_meta_json.bench_num_accounts | int == bench_num_accounts | int
+          - _snap_meta_json.bench_num_items | int == bench_num_items | int
+          - _snap_meta_json.bench_num_orders | int == bench_num_orders | int
+          - _snap_meta_json.bench_seed | string == bench_seed | string
+        fail_msg: >-
+          Snapshot meta sidecar {{ db_snapshot_meta_path }} on DB node does not
+          match current init-db inputs. This should be impossible (the file
+          name is a content hash of those same inputs), so something has been
+          tampered with. Refusing to restore. Remove the file manually or
+          rerun with -e db_snapshot_force_reseed=true to reseed.
+      when: _snap_meta_json is defined
+
+    - name: Decide whether to restore from snapshot
+      ansible.builtin.set_fact:
+        _use_snapshot: >-
+          {{ (db_snapshot_enabled | bool)
+             and (not (db_snapshot_force_reseed | bool))
+             and (_snap_dump.stat.exists | default(false))
+             and (_snap_meta.stat.exists | default(false))
+             and (_snap_meta_json is defined) }}
+
+    # ── 3a. RESTORE path ─────────────────────────────────────────────────────
+    - name: Restore from cached snapshot
+      when: _use_snapshot | bool
+      block:
+        - name: Terminate existing connections to benchmark database
+          become: true
+          become_user: postgres
+          community.postgresql.postgresql_query:
+            db: postgres
+            query: >-
+              SELECT pg_terminate_backend(pid)
+              FROM pg_stat_activity
+              WHERE datname = %s AND pid <> pg_backend_pid();
+            positional_args:
+              - "{{ db_name }}"
+          delegate_to: "{{ db_inv_host }}"
+          changed_when: false
+          failed_when: false
+
+        - name: Drop existing benchmark database
+          become: true
+          become_user: postgres
+          community.postgresql.postgresql_db:
+            name: "{{ db_name }}"
+            state: absent
+          delegate_to: "{{ db_inv_host }}"
+
+        - name: Recreate empty benchmark database
+          become: true
+          become_user: postgres
+          community.postgresql.postgresql_db:
+            name: "{{ db_name }}"
+            state: present
+          delegate_to: "{{ db_inv_host }}"
+
+        # pg_stat_statements is NOT pre-installed here: the cached dump
+        # (pg_dump -Fc) contains a CREATE EXTENSION statement and pg_restore
+        # will recreate it. Pre-installing would cause "extension already
+        # exists" errors during pg_restore. The extension is loaded via
+        # shared_preload_libraries in postgresql.conf.j2, so CREATE EXTENSION
+        # works from inside the dump.
+
+        - name: Ensure benchmark user exists with privileges
+          become: true
+          become_user: postgres
+          community.postgresql.postgresql_user:
+            db: "{{ db_name }}"
+            name: "{{ db_user }}"
+            password: "{{ db_password }}"
+            priv: "ALL"
+            state: present
+          delegate_to: "{{ db_inv_host }}"
+
+        - name: Grant public schema privileges to benchmark user
+          become: true
+          become_user: postgres
+          community.postgresql.postgresql_privs:
+            db: "{{ db_name }}"
+            privs: ALL
+            type: schema
+            objs: public
+            role: "{{ db_user }}"
+            state: present
+          delegate_to: "{{ db_inv_host }}"
+
+        # pg_restore runs as the postgres superuser so it can transfer
+        # ownership back to benchuser (which we just (re)created above).
+        # We intentionally preserve dump ownership/privileges so that
+        # restored tables remain owned by benchuser, matching exactly what
+        # `bench init-db` produces — otherwise the benchmark would fail with
+        # permission errors on tables owned by postgres.
+        - name: Restore database from snapshot (pg_restore -j)
+          become: true
+          become_user: postgres
+          ansible.builtin.command:
+            argv:
+              - pg_restore
+              - "-j"
+              - "{{ db_snapshot_pg_restore_jobs | string }}"
+              - "--exit-on-error"
+              - "-d"
+              - "{{ db_name }}"
+              - "{{ db_snapshot_path }}"
+          delegate_to: "{{ db_inv_host }}"
+          register: _restore_out
+          changed_when: true
+
+        - name: Reset pg_stat_statements after restore
+          become: true
+          become_user: postgres
+          community.postgresql.postgresql_query:
+            db: "{{ db_name }}"
+            query: "SELECT pg_stat_statements_reset();"
+          delegate_to: "{{ db_inv_host }}"
+          changed_when: false
+
+        - name: VACUUM ANALYZE after restore (refresh planner stats)
+          become: true
+          become_user: postgres
+          ansible.builtin.command:
+            argv:
+              - psql
+              - "-d"
+              - "{{ db_name }}"
+              - "-v"
+              - "ON_ERROR_STOP=1"
+              - "-c"
+              - "VACUUM (ANALYZE);"
+          delegate_to: "{{ db_inv_host }}"
+          changed_when: false
+
+        - name: Summary — restored from cache
+          ansible.builtin.debug:
+            msg: >-
+              init-db: restored database '{{ db_name }}' from cache snapshot
+              {{ db_snapshot_path }} on {{ db_inv_host }}
+              (cache key {{ db_snapshot_short_key }}).
+
+    # ── 3b. SEED path ────────────────────────────────────────────────────────
+    - name: Seed database fresh and save snapshot
+      when: not (_use_snapshot | bool)
+      block:
+        - name: Run bench init-db
+          ansible.builtin.command: >
+            {{ bench_binary }} init-db
+              --jdbc-url  "jdbc:postgresql://{{ db_host }}:{{ db_port }}/{{ db_name }}"
+              --username  "{{ db_user }}"
+              --password  "{{ db_password }}"
+              --accounts  "{{ bench_num_accounts }}"
+              --items     "{{ bench_num_items }}"
+              --orders    "{{ bench_num_orders }}"
+              --seed      "{{ bench_seed }}"
+          register: init_db_out
+
+        - name: Print init-db output
+          ansible.builtin.debug:
+            msg: "{{ init_db_out.stdout_lines }}"
+
+        - name: Check free disk space on DB snapshot volume
+          ansible.builtin.command: df -BM --output=avail "{{ db_snapshot_dir }}"
+          delegate_to: "{{ db_inv_host }}"
+          register: _df_out
+          changed_when: false
+          when: db_snapshot_enabled | bool
+
+        - name: Fail if insufficient disk space for pg_dump
+          ansible.builtin.assert:
+            that:
+              - (_df_out.stdout_lines[-1] | regex_replace('[^0-9]', '') | int) >= 1024
+            fail_msg: >-
+              Insufficient free space in {{ db_snapshot_dir }} on
+              {{ db_inv_host }} to write a pg_dump snapshot
+              (need at least 1024 MB free; got {{ _df_out.stdout_lines[-1] | trim }}).
+              Free space or set db_snapshot_enabled=false to skip caching.
+          when:
+            - db_snapshot_enabled | bool
+            - _df_out is defined
+            - _df_out.stdout_lines is defined
+
+        - name: Write pg_dump compressed snapshot on DB node (atomic .tmp + mv)
+          become: true
+          become_user: postgres
+          ansible.builtin.shell: |
+            set -euo pipefail
+            umask 027
+            pg_dump -Fc -Z 3 -f "{{ db_snapshot_path }}.tmp" "{{ db_name }}"
+            chmod 0640 "{{ db_snapshot_path }}.tmp"
+            mv -f "{{ db_snapshot_path }}.tmp" "{{ db_snapshot_path }}"
+          args:
+            executable: /bin/bash
+          delegate_to: "{{ db_inv_host }}"
+          when: db_snapshot_enabled | bool
+
+        - name: Write snapshot meta sidecar
+          become: true
+          ansible.builtin.copy:
+            dest: "{{ db_snapshot_meta_path }}"
+            owner: postgres
+            group: postgres
+            mode: "0640"
+            content: "{{ {
+                'cache_key': db_snapshot_short_key,
+                'cache_key_full': db_snapshot_cache_key,
+                'pg_version': db_pg_version | string,
+                'bench_num_accounts': bench_num_accounts | int,
+                'bench_num_items': bench_num_items | int,
+                'bench_num_orders': bench_num_orders | int,
+                'bench_seed': bench_seed | string,
+                'ddl_sha256': _ddl_sha,
+                'indexes_sha256': _idx_sha,
+                'generator_sha256': _gen_sha,
+                'created_at_utc': lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ')
+              } | to_nice_json }}\n"
+          delegate_to: "{{ db_inv_host }}"
+          when: db_snapshot_enabled | bool
+
+        - name: Summary — seeded fresh
+          ansible.builtin.debug:
+            msg: >-
+              init-db: seeded database '{{ db_name }}' fresh; {{
+                'saved snapshot to ' + db_snapshot_path + ' on ' + db_inv_host
+                + ' (cache key ' + db_snapshot_short_key + ')'
+                if (db_snapshot_enabled | bool)
+                else 'snapshot caching disabled (db_snapshot_enabled=false)'
+              }}.
