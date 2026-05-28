@@ -6,7 +6,7 @@ Step-by-step instructions for the software components commonly used to run Stres
 
 | Tool / component | Version used / required                                      |
 |---|--------------------------------------------------------------|
-| OJP Server + OJP JDBC Driver | **0.4.19-beta**                                              |
+| OJP Server + OJP JDBC Driver | **0.4.20-beta**                                              |
 | Java (benchmark tool / control / loadgen) | **11+** (recommended LTS: 21)                                |
 | Java (OJP Server nodes) | **24+**                                                      |
 | Gradle (via wrapper) | **8.8** pinned in `gradle/wrapper/gradle-wrapper.properties` |
