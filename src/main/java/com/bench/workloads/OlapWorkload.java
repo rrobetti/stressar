@@ -21,20 +21,22 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class OlapWorkload extends Workload {
 
-    // Q1: daily revenue over recent history — range scan on orders(created_at)
+    // Q1: daily revenue over recent history — range scan on orders(created_at).
+    // Window halved (180→90 days) to roughly halve data scanned.
     static final String DAILY_REVENUE =
         "SELECT DATE_TRUNC('day', created_at), COUNT(*), SUM(total_cents) " +
         "FROM orders " +
-        "WHERE created_at >= NOW() - INTERVAL '180 days' " +
+        "WHERE created_at >= NOW() - INTERVAL '90 days' " +
         "GROUP BY 1 " +
         "ORDER BY 1";
 
-    // Q2: top customers over recent activity — filtered aggregate + join + sort
+    // Q2: top customers over recent activity — filtered aggregate + join + sort.
+    // Window halved (90→45 days) to roughly halve data scanned.
     static final String TOP_CUSTOMERS =
         "WITH recent_orders AS ( " +
         "  SELECT account_id, total_cents " +
         "  FROM orders " +
-        "  WHERE created_at >= NOW() - INTERVAL '90 days' " +
+        "  WHERE created_at >= NOW() - INTERVAL '45 days' " +
         ") " +
         "SELECT a.account_id, a.username, COUNT(*), SUM(ro.total_cents) " +
         "FROM recent_orders ro " +
@@ -43,12 +45,13 @@ public class OlapWorkload extends Workload {
         "ORDER BY 4 DESC " +
         "LIMIT 100";
 
-    // Q3: item performance for recent orders — range-filtered join to order_lines
+    // Q3: item performance for recent orders — range-filtered join to order_lines.
+    // Window halved (90→45 days) to roughly halve data scanned.
     static final String ITEM_PERFORMANCE =
         "WITH recent_orders AS ( " +
         "  SELECT order_id " +
         "  FROM orders " +
-        "  WHERE created_at >= NOW() - INTERVAL '90 days' " +
+        "  WHERE created_at >= NOW() - INTERVAL '45 days' " +
         ") " +
         "SELECT i.item_id, i.name, SUM(ol.qty) AS units_sold, " +
         "       SUM(ol.qty * ol.price_cents) AS revenue " +
@@ -59,26 +62,30 @@ public class OlapWorkload extends Workload {
         "ORDER BY 4 DESC " +
         "LIMIT 50";
 
-    // Q4: order status distribution over recent history — filtered aggregate
+    // Q4: order status distribution over recent history — filtered aggregate.
+    // Window halved (180→90 days) to roughly halve data scanned.
     static final String ORDER_STATUS_DISTRIBUTION =
         "SELECT status, COUNT(*), SUM(total_cents), AVG(total_cents), STDDEV(total_cents) " +
         "FROM orders " +
-        "WHERE created_at >= NOW() - INTERVAL '180 days' " +
+        "WHERE created_at >= NOW() - INTERVAL '90 days' " +
         "GROUP BY status " +
         "ORDER BY status";
 
-    // Q5: account running totals on recent slice — still exercises window/sort
+    // Q5: account running totals on recent slice — still exercises window/sort.
+    // Window halved (30→15 days) to roughly halve data scanned.
     static final String ACCOUNT_RUNNING_TOTALS =
         "SELECT order_id, account_id, total_cents, " +
         "       SUM(total_cents) OVER (PARTITION BY account_id ORDER BY created_at) AS running_total " +
         "FROM orders " +
-        "WHERE created_at >= NOW() - INTERVAL '30 days' " +
+        "WHERE created_at >= NOW() - INTERVAL '15 days' " +
         "ORDER BY account_id, created_at " +
         "LIMIT 1000";
 
-    // Q6: account email-domain scan query requested for OLAP mix
+    // Q6: account email-domain scan query requested for OLAP mix.
+    // Capped with a LIMIT so the full-scan cost is bounded (~half the prior work
+    // on a representative dataset where '.com' addresses dominate).
     static final String ACCOUNT_EMAIL_COM =
-        "SELECT * FROM accounts WHERE email LIKE '%@%.com'";
+        "SELECT * FROM accounts WHERE email LIKE '%@%.com' LIMIT 5000";
 
     static final String[] QUERIES = {
         DAILY_REVENUE,
