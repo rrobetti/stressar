@@ -23,7 +23,7 @@ public class MetricsCollector {
     private final long startTimeMs;
     
     public MetricsCollector() {
-        this.latencyRecorder = new LatencyRecorder(60000, 3); // Track up to 60s latencies
+        this.latencyRecorder = new LatencyRecorder(600000, 3); // Track up to 600s (10 min) latencies
         this.attemptedRequests = new AtomicLong(0);
         this.completedRequests = new AtomicLong(0);
         this.errors = new AtomicLong(0);
