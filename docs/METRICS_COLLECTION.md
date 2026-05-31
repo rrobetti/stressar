@@ -11,7 +11,7 @@ a CSV row every ~1 second until they receive `SIGTERM`.
 
 | Metric | Script | Mechanism | Cadence | Started by | Stopped by |
 |---|---|---|---|---|---|
-| Service-tree CPU % (1 core = 100 %) | `collect_process_metrics.sh` | `/proc/<pid>/stat` jiffie delta + `date +%s%N` elapsed | bash `while true; sleep 1` | `nohup` from playbook | `kill $(cat <csv>.pid)` |
+| Service-tree CPU % (1 core = 100 %) | `collect_process_metrics.sh` | `/proc/<pid>/stat` jiffy delta + `date +%s%N` elapsed | bash `while true; sleep 1` | `nohup` from playbook | `kill $(cat <csv>.pid)` |
 | Service-tree RSS / VSZ (MiB) | `collect_process_metrics.sh` | `/proc/<pid>/status` `VmRSS` / `VmSize` summed across tree | same loop, same row | same | same |
 | Host CPU % (core-percent, max ≈ NCPU × 100) | `collect_process_metrics.sh` | `/proc/stat` `cpu` line, busy/total delta × NCPU | same loop, same row | same | same |
 | OJP Java heap used / committed + GC | `collect_jvm_metrics.sh` | `jstat -gc <ojp_pid> 1000` piped into `while read` | `jstat`'s own 1000 ms tick | `nohup` from `run_benchmarks_ojp.yml` | `kill $(cat <csv>.pid)` |
