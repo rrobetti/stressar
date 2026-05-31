@@ -14,8 +14,15 @@ ExecStart=/usr/bin/java \
     -Dojp.libs.path={{ ojp_install_dir }}/ojp-libs \
     -Dojp.server.port={{ ojp_server_port }} \
     -Dojp.server.virtualThreads.enabled={{ ojp_server_virtual_threads_enabled | lower }} \
-    -Dojp.server.slowQuerySegregation.enabled={{ ojp_server_slow_query_segregation_enabled | lower }} \
-    -Dojp.server.logLevel=ERROR \
+    -Dojp.server.slowQuerySegregation.enabled=true \
+    -Dojp.server.slowQuerySegregation.classificationMode=ABSOLUTE_THRESHOLD \
+    -Dojp.server.slowQuerySegregation.slowQueryThresholdMs=5000 \
+    -Dojp.server.slowQuerySegregation.slowSlotTimeout={{ bench_connection_timeout_ms }} \
+    -Dojp.server.slowQuerySegregation.fastSlotTimeout={{ bench_connection_timeout_ms }} \
+    -Dojp.server.logLevel=WARN \
+    -Dojp.telemetry.enabled=false \
+    -Dojp.server.circuitBreakerTimeout=5000 \
+    -Dojp.server.threadPoolSize=16 \
     -jar {{ ojp_install_dir }}/bin/ojp-server-{{ ojp_version }}-shaded.jar
 StandardOutput=append:{{ ojp_log_file }}
 StandardError=append:{{ ojp_log_file }}
