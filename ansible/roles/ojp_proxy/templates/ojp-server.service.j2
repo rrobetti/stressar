@@ -22,7 +22,7 @@ ExecStart=/usr/bin/java \
     -Dojp.server.logLevel=WARN \
     -Dojp.telemetry.enabled=false \
     -Dojp.server.circuitBreakerTimeout=5000 \
-    -Dojp.server.threadPoolSize=16 \
+    -Dojp.server.threadPoolSize={{ bench_db_connection_budget }} \
     -jar {{ ojp_install_dir }}/bin/ojp-server-{{ ojp_version }}-shaded.jar
 StandardOutput=append:{{ ojp_log_file }}
 StandardError=append:{{ ojp_log_file }}
