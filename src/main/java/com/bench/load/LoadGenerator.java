@@ -53,10 +53,13 @@ public abstract class LoadGenerator {
         metrics.recordAttempt();
         intervalMetrics.recordAttempt();
         long startNanos = System.nanoTime();
-        
+
+        // wc is declared outside the try block so the classification is preserved
+        // if an exception is thrown after execute() succeeds.
+        WorkloadClass wc = null;
         try {
             WorkloadExecutionResult result = workload.execute();
-            WorkloadClass wc = result != null ? result.getWorkloadClass() : null;
+            wc = result != null ? result.getWorkloadClass() : null;
             long latencyNanos = System.nanoTime() - startNanos;
             metrics.recordSuccess(wc, latencyNanos);
             intervalMetrics.recordSuccess(wc, latencyNanos);
@@ -70,9 +73,8 @@ public abstract class LoadGenerator {
             }
             String errorMessage = (e.getMessage() != null) ? e.getMessage() : "";
 
-            // Class is unknown on exception; record TOTAL only (null wc)
-            metrics.recordError(null, errorType, errorMessage, latencyNanos);
-            intervalMetrics.recordError(null, errorType, errorMessage, latencyNanos);
+            metrics.recordError(wc, errorType, errorMessage, latencyNanos);
+            intervalMetrics.recordError(wc, errorType, errorMessage, latencyNanos);
 
             long n = errorWarnCounts.computeIfAbsent(errorType, ignored -> new AtomicLong(0))
                 .incrementAndGet();

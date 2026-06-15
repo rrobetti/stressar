@@ -17,12 +17,14 @@ public class HtapWorkloadTest {
     private static final long   SEED      = 42L;
     private static final long   ACCOUNTS  = 1000L;
     private static final long   ITEMS     = 500L;
+    /** Zipf skew factor (α) passed to workload constructors in tests using Zipfian distribution. */
+    private static final double ZIPF_ALPHA = 1.1;
 
     @Test
     public void testGetName() {
         TestConnectionProvider provider = new TestConnectionProvider();
         HtapWorkload workload = new HtapWorkload(
-            provider, SEED, ACCOUNTS, ITEMS, false, 1.1,
+            provider, SEED, ACCOUNTS, ITEMS, false, ZIPF_ALPHA,
             0.30, 0.0, 0.10);
         assertEquals("W5_HTAP", workload.getName());
     }
@@ -35,7 +37,7 @@ public class HtapWorkloadTest {
     public void testAlwaysOlapWhenOlapPercentIsOne() throws SQLException {
         TestConnectionProvider provider = new TestConnectionProvider();
         HtapWorkload workload = new HtapWorkload(
-            provider, SEED, ACCOUNTS, ITEMS, false, 1.1,
+            provider, SEED, ACCOUNTS, ITEMS, false, ZIPF_ALPHA,
             0.30, 0.0, 1.0);
 
         int calls = OlapWorkload.QUERIES.length * 2;
@@ -59,7 +61,7 @@ public class HtapWorkloadTest {
     public void testAlwaysOltpWhenOlapPercentIsZero() throws SQLException {
         TestConnectionProvider provider = new TestConnectionProvider();
         HtapWorkload workload = new HtapWorkload(
-            provider, SEED, ACCOUNTS, ITEMS, false, 1.1,
+            provider, SEED, ACCOUNTS, ITEMS, false, ZIPF_ALPHA,
             0.30, 0.0, 0.0);
 
         int calls = 20;
@@ -85,7 +87,7 @@ public class HtapWorkloadTest {
         TestConnectionProvider provider = new TestConnectionProvider();
         // seed=0 gives a well-spread sequence; writePercent=0 keeps the stub safe
         HtapWorkload workload = new HtapWorkload(
-            provider, 0L, ACCOUNTS, ITEMS, false, 1.1,
+            provider, 0L, ACCOUNTS, ITEMS, false, ZIPF_ALPHA,
             0.30, 0.0, 0.50);
 
         int calls = 100;
@@ -110,7 +112,7 @@ public class HtapWorkloadTest {
     public void testClassificationIsOltpWhenOlapPercentIsZero() throws SQLException {
         TestConnectionProvider provider = new TestConnectionProvider();
         HtapWorkload workload = new HtapWorkload(
-            provider, SEED, ACCOUNTS, ITEMS, false, 1.1,
+            provider, SEED, ACCOUNTS, ITEMS, false, ZIPF_ALPHA,
             0.30, 0.0, 0.0);
 
         for (int i = 0; i < 20; i++) {
@@ -125,7 +127,7 @@ public class HtapWorkloadTest {
     public void testClassificationIsOlapWhenOlapPercentIsOne() throws SQLException {
         TestConnectionProvider provider = new TestConnectionProvider();
         HtapWorkload workload = new HtapWorkload(
-            provider, SEED, ACCOUNTS, ITEMS, false, 1.1,
+            provider, SEED, ACCOUNTS, ITEMS, false, ZIPF_ALPHA,
             0.30, 0.0, 1.0);
 
         int calls = OlapWorkload.QUERIES.length * 2;
@@ -141,7 +143,7 @@ public class HtapWorkloadTest {
     public void testClassificationMixedProducesBothClasses() throws SQLException {
         TestConnectionProvider provider = new TestConnectionProvider();
         HtapWorkload workload = new HtapWorkload(
-            provider, 0L, ACCOUNTS, ITEMS, false, 1.1,
+            provider, 0L, ACCOUNTS, ITEMS, false, ZIPF_ALPHA,
             0.30, 0.0, 0.50);
 
         boolean sawOltp = false;
