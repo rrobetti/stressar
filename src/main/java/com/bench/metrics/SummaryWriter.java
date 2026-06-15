@@ -1,11 +1,13 @@
 package com.bench.metrics;
 
+import com.bench.workloads.WorkloadClass;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -79,8 +81,57 @@ public class SummaryWriter {
         if (snapshot.getQueueDepthMax() != null) {
             summary.queueDepthMax = snapshot.getQueueDepthMax();
         }
+
+        // Per-class metrics section (backward-compatible new section)
+        summary.workloadClassMetrics = buildWorkloadClassMetrics(snapshot);
         
         return summary;
+    }
+
+    /**
+     * Build the {@code workloadClassMetrics} map containing TOTAL, OLTP, and OLAP entries.
+     * TOTAL is derived from the top-level snapshot so it always matches the existing fields.
+     */
+    private static Map<String, WorkloadClassData> buildWorkloadClassMetrics(MetricsSnapshot snapshot) {
+        Map<String, WorkloadClassData> result = new LinkedHashMap<>();
+
+        // TOTAL — derived from the top-level snapshot (always present, matches existing fields)
+        result.put("TOTAL", buildClassData(snapshot));
+
+        // OLTP and OLAP — derived from per-class sub-snapshots
+        for (WorkloadClass wc : new WorkloadClass[]{WorkloadClass.OLTP, WorkloadClass.OLAP}) {
+            MetricsSnapshot cs = snapshot.getClassSnapshot(wc);
+            result.put(wc.name(), cs != null ? buildClassData(cs) : new WorkloadClassData());
+        }
+
+        return result;
+    }
+
+    private static WorkloadClassData buildClassData(MetricsSnapshot s) {
+        WorkloadClassData d = new WorkloadClassData();
+        d.attemptedRequests = s.getAttemptedRequests();
+        d.successfulRequests = s.getCompletedRequests();
+        d.failedRequests = s.getErrors();
+        d.completedRequests = s.getCompletedRequests() + s.getErrors();
+        double elapsed = (s.getTimestampMs() - s.getStartTimeMs()) / 1000.0;
+        if (elapsed > 0) {
+            d.successfulThroughput = s.getAchievedThroughput();
+            d.errorThroughput = s.getErrorThroughput();
+            d.totalThroughput = s.getTotalThroughput();
+        }
+        d.errorRate = s.getErrorRate();
+        d.latency = new WorkloadClassLatency();
+        d.latency.p50 = s.getP50();
+        d.latency.p95 = s.getP95();
+        d.latency.p99 = s.getP99();
+        d.latency.p999 = s.getP999();
+        d.latency.max = s.getMax();
+        d.latency.meanSuccessful = s.getMean();
+        d.latency.meanFailed = s.getMeanFailed();
+        d.latency.meanTotal = s.getMeanTotal();
+        d.errorsByType = s.getErrorsByType();
+        d.firstErrorMessageByType = s.getFirstErrorMessageByType();
+        return d;
     }
     
     public static class SummaryData {
@@ -104,6 +155,9 @@ public class SummaryWriter {
         public Long gcPauseMsTotal;
         public Integer dbActiveConnectionsMedian;
         public Integer queueDepthMax;
+
+        /** Per-class metrics: keys are "TOTAL", "OLTP", "OLAP". New backward-compatible section. */
+        public Map<String, WorkloadClassData> workloadClassMetrics;
     }
     
     public static class LatencyMetrics {
@@ -148,5 +202,32 @@ public class SummaryWriter {
         public java.util.Map<String, String> ojpPropertiesUsed;
         public Long clientVirtualConnectionsOpenedTotal;
         public Integer clientVirtualConnectionsMaxConcurrent;
+    }
+
+    /** Per-class metrics entry inside {@code workloadClassMetrics}. */
+    public static class WorkloadClassData {
+        public long attemptedRequests;
+        public long successfulRequests;
+        public long failedRequests;
+        public long completedRequests;
+        public double successfulThroughput;
+        public double errorThroughput;
+        public double totalThroughput;
+        public double errorRate;
+        public WorkloadClassLatency latency = new WorkloadClassLatency();
+        public Map<String, Long> errorsByType = new HashMap<>();
+        public Map<String, String> firstErrorMessageByType = new HashMap<>();
+    }
+
+    /** Latency sub-object inside {@link WorkloadClassData}. */
+    public static class WorkloadClassLatency {
+        public double p50;
+        public double p95;
+        public double p99;
+        public double p999;
+        public double max;
+        public double meanSuccessful;
+        public double meanFailed;
+        public double meanTotal;
     }
 }

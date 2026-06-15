@@ -1,5 +1,8 @@
 package com.bench.metrics;
 
+import com.bench.workloads.WorkloadClass;
+
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -31,6 +34,9 @@ public class MetricsSnapshot {
     private Long gcPauseMsTotal;
     private Integer dbActiveConnectionsMedian;
     private Integer queueDepthMax;
+
+    /** Per-class snapshots (OLTP / OLAP). Absent keys mean no data was recorded. */
+    private final EnumMap<WorkloadClass, MetricsSnapshot> classSnapshots = new EnumMap<>(WorkloadClass.class);
 
     private double getElapsedSeconds() {
         if (timestampMs <= startTimeMs) {
@@ -230,5 +236,21 @@ public class MetricsSnapshot {
 
     public void setQueueDepthMax(Integer queueDepthMax) {
         this.queueDepthMax = queueDepthMax;
+    }
+
+    /**
+     * Store or replace the per-class snapshot for the given workload class.
+     * Only OLTP and OLAP are meaningful; TOTAL is the parent snapshot itself.
+     */
+    public void setClassSnapshot(WorkloadClass wc, MetricsSnapshot snapshot) {
+        classSnapshots.put(wc, snapshot);
+    }
+
+    /**
+     * Retrieve the per-class snapshot for the given workload class, or {@code null}
+     * if no data has been recorded for that class.
+     */
+    public MetricsSnapshot getClassSnapshot(WorkloadClass wc) {
+        return classSnapshots.get(wc);
     }
 }

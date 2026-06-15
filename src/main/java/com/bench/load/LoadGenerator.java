@@ -2,6 +2,8 @@ package com.bench.load;
 
 import com.bench.metrics.MetricsCollector;
 import com.bench.workloads.Workload;
+import com.bench.workloads.WorkloadClass;
+import com.bench.workloads.WorkloadExecutionResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,10 +55,11 @@ public abstract class LoadGenerator {
         long startNanos = System.nanoTime();
         
         try {
-            workload.execute();
+            WorkloadExecutionResult result = workload.execute();
+            WorkloadClass wc = result != null ? result.getWorkloadClass() : null;
             long latencyNanos = System.nanoTime() - startNanos;
-            metrics.recordSuccess(latencyNanos);
-            intervalMetrics.recordSuccess(latencyNanos);
+            metrics.recordSuccess(wc, latencyNanos);
+            intervalMetrics.recordSuccess(wc, latencyNanos);
             
         } catch (Exception e) {
             long latencyNanos = System.nanoTime() - startNanos;
@@ -67,8 +70,9 @@ public abstract class LoadGenerator {
             }
             String errorMessage = (e.getMessage() != null) ? e.getMessage() : "";
 
-            metrics.recordError(errorType, errorMessage, latencyNanos);
-            intervalMetrics.recordError(errorType, errorMessage, latencyNanos);
+            // Class is unknown on exception; record TOTAL only (null wc)
+            metrics.recordError(null, errorType, errorMessage, latencyNanos);
+            intervalMetrics.recordError(null, errorType, errorMessage, latencyNanos);
 
             long n = errorWarnCounts.computeIfAbsent(errorType, ignored -> new AtomicLong(0))
                 .incrementAndGet();

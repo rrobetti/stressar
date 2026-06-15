@@ -100,4 +100,58 @@ public class HtapWorkloadTest {
         assertTrue("Expected OLAP SQL in mixed-split run", sawOlap);
         assertTrue("Expected OLTP SQL in mixed-split run", sawOltp);
     }
+
+    // -------------------------------------------------------------------------
+    // WorkloadExecutionResult classification tests
+    // -------------------------------------------------------------------------
+
+    /** With olapPercent=0.0 every execution must return OLTP. */
+    @Test
+    public void testClassificationIsOltpWhenOlapPercentIsZero() throws SQLException {
+        TestConnectionProvider provider = new TestConnectionProvider();
+        HtapWorkload workload = new HtapWorkload(
+            provider, SEED, ACCOUNTS, ITEMS, false, 1.1,
+            0.30, 0.0, 0.0);
+
+        for (int i = 0; i < 20; i++) {
+            WorkloadExecutionResult result = workload.execute();
+            assertEquals("Expected OLTP classification when olapPercent=0.0",
+                WorkloadClass.OLTP, result.getWorkloadClass());
+        }
+    }
+
+    /** With olapPercent=1.0 every execution must return OLAP. */
+    @Test
+    public void testClassificationIsOlapWhenOlapPercentIsOne() throws SQLException {
+        TestConnectionProvider provider = new TestConnectionProvider();
+        HtapWorkload workload = new HtapWorkload(
+            provider, SEED, ACCOUNTS, ITEMS, false, 1.1,
+            0.30, 0.0, 1.0);
+
+        int calls = OlapWorkload.QUERIES.length * 2;
+        for (int i = 0; i < calls; i++) {
+            WorkloadExecutionResult result = workload.execute();
+            assertEquals("Expected OLAP classification when olapPercent=1.0",
+                WorkloadClass.OLAP, result.getWorkloadClass());
+        }
+    }
+
+    /** With mixed probability both classes must appear over enough iterations. */
+    @Test
+    public void testClassificationMixedProducesBothClasses() throws SQLException {
+        TestConnectionProvider provider = new TestConnectionProvider();
+        HtapWorkload workload = new HtapWorkload(
+            provider, 0L, ACCOUNTS, ITEMS, false, 1.1,
+            0.30, 0.0, 0.50);
+
+        boolean sawOltp = false;
+        boolean sawOlap = false;
+        for (int i = 0; i < 100; i++) {
+            WorkloadExecutionResult result = workload.execute();
+            if (result.getWorkloadClass() == WorkloadClass.OLTP) sawOltp = true;
+            if (result.getWorkloadClass() == WorkloadClass.OLAP) sawOlap = true;
+        }
+        assertTrue("Expected OLTP classification in mixed run", sawOltp);
+        assertTrue("Expected OLAP classification in mixed run", sawOlap);
+    }
 }

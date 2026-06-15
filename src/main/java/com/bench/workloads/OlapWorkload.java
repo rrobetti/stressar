@@ -104,7 +104,7 @@ public class OlapWorkload extends Workload {
     }
 
     @Override
-    public void execute() throws SQLException {
+    public WorkloadExecutionResult execute() throws SQLException {
         // Mask the sign bit before the modulo so the index stays non-negative even
         // after the AtomicInteger wraps around Integer.MAX_VALUE.
         int idx = (queryIndex.getAndIncrement() & Integer.MAX_VALUE) % QUERIES.length;
@@ -124,6 +124,7 @@ public class OlapWorkload extends Workload {
                 default: while (rs.next()) { /* drain */ }
             }
         }
+        return WorkloadExecutionResult.olap();
     }
 
     private void consumeDailyRevenue(ResultSet rs) throws SQLException {

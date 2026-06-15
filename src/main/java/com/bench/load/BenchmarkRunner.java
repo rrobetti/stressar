@@ -10,6 +10,7 @@ import com.bench.metrics.SummaryWriter;
 import com.bench.metrics.SystemMetricsCollector;
 import com.bench.metrics.TimeseriesWriter;
 import com.bench.workloads.Workload;
+import com.bench.workloads.WorkloadClass;
 import com.bench.workloads.WorkloadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -134,6 +135,14 @@ public class BenchmarkRunner {
                                     - intervalSnapshots.get(intervalSnapshots.size() - 2).getErrors() : 0;
 
                             // FIXED: Use per-interval histogram percentiles, not cumulative
+                            // Build per-class interval metrics for timeseries
+                            TimeseriesWriter.ClassIntervalMetrics totalClass =
+                                    buildClassIntervalMetrics(intervalSnapshot, null);
+                            TimeseriesWriter.ClassIntervalMetrics oltpClass =
+                                    buildClassIntervalMetrics(intervalSnapshot, WorkloadClass.OLTP);
+                            TimeseriesWriter.ClassIntervalMetrics olapClass =
+                                    buildClassIntervalMetrics(intervalSnapshot, WorkloadClass.OLAP);
+
                             timeseriesWriter.writeRow(
                                     cumulativeSnapshot.getTimestampMs(),
                                     intervalAttemptedRps,
@@ -143,7 +152,8 @@ public class BenchmarkRunner {
                                     intervalSnapshot.getP95(),
                                     intervalSnapshot.getP99(),
                                     intervalSnapshot.getP999(),
-                                    intervalSnapshot.getMax());
+                                    intervalSnapshot.getMax(),
+                                    totalClass, oltpClass, olapClass);
 
                             // Reset interval metrics for next window
                             intervalMetrics.reset();
@@ -255,6 +265,28 @@ public class BenchmarkRunner {
             }
             logger.info("Results written to: {}", outputDir);
         }
+    }
+
+    /**
+     * Build a {@link TimeseriesWriter.ClassIntervalMetrics} from an interval snapshot.
+     *
+     * @param intervalSnapshot The interval-level snapshot (resets every metrics interval)
+     * @param wc               Workload class to extract (null = TOTAL / top-level)
+     */
+    private static TimeseriesWriter.ClassIntervalMetrics buildClassIntervalMetrics(
+            MetricsSnapshot intervalSnapshot, WorkloadClass wc) {
+        TimeseriesWriter.ClassIntervalMetrics m = new TimeseriesWriter.ClassIntervalMetrics();
+        MetricsSnapshot src = (wc == null || wc == WorkloadClass.TOTAL)
+                ? intervalSnapshot
+                : intervalSnapshot.getClassSnapshot(wc);
+        if (src != null) {
+            m.attempted = src.getAttemptedRequests();
+            m.successful = src.getCompletedRequests();
+            m.failed = src.getErrors();
+            m.p95 = src.getP95();
+            m.p99 = src.getP99();
+        }
+        return m;
     }
 
     /**

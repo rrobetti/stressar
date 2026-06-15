@@ -26,12 +26,13 @@ public class ReadOnlyWorkload extends Workload {
     }
     
     @Override
-    public void execute() throws SQLException {
+    public WorkloadExecutionResult execute() throws SQLException {
         if (random.nextDouble() < queryAPercent) {
             executeQueryA();
         } else {
             executeQueryB();
         }
+        return WorkloadExecutionResult.oltp();
     }
     
     private void executeQueryA() throws SQLException {
