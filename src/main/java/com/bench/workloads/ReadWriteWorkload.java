@@ -35,7 +35,7 @@ public class ReadWriteWorkload extends Workload {
     }
     
     @Override
-    public void execute() throws SQLException {
+    public WorkloadExecutionResult execute() throws SQLException {
         long accountId = generateAccountId();
         int numLines = random.nextInt(1, 5);
         
@@ -87,6 +87,7 @@ public class ReadWriteWorkload extends Workload {
                 throw e;
             }
         }
+        return WorkloadExecutionResult.oltp();
     }
     
     @Override

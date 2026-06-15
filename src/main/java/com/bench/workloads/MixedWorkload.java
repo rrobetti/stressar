@@ -25,12 +25,13 @@ public class MixedWorkload extends Workload {
     }
     
     @Override
-    public void execute() throws SQLException {
+    public WorkloadExecutionResult execute() throws SQLException {
         if (random.nextDouble() < writePercent) {
             writeWorkload.execute();
         } else {
             readWorkload.execute();
         }
+        return WorkloadExecutionResult.oltp();
     }
     
     @Override

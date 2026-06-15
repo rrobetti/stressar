@@ -2,6 +2,8 @@ package com.bench.load;
 
 import com.bench.metrics.MetricsCollector;
 import com.bench.workloads.Workload;
+import com.bench.workloads.WorkloadClass;
+import com.bench.workloads.WorkloadExecutionResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,12 +53,16 @@ public abstract class LoadGenerator {
         metrics.recordAttempt();
         intervalMetrics.recordAttempt();
         long startNanos = System.nanoTime();
-        
+
+        // wc is declared outside the try block so the classification is preserved
+        // if an exception is thrown after execute() succeeds.
+        WorkloadClass wc = null;
         try {
-            workload.execute();
+            WorkloadExecutionResult result = workload.execute();
+            wc = result != null ? result.getWorkloadClass() : null;
             long latencyNanos = System.nanoTime() - startNanos;
-            metrics.recordSuccess(latencyNanos);
-            intervalMetrics.recordSuccess(latencyNanos);
+            metrics.recordSuccess(wc, latencyNanos);
+            intervalMetrics.recordSuccess(wc, latencyNanos);
             
         } catch (Exception e) {
             long latencyNanos = System.nanoTime() - startNanos;
@@ -67,8 +73,8 @@ public abstract class LoadGenerator {
             }
             String errorMessage = (e.getMessage() != null) ? e.getMessage() : "";
 
-            metrics.recordError(errorType, errorMessage, latencyNanos);
-            intervalMetrics.recordError(errorType, errorMessage, latencyNanos);
+            metrics.recordError(wc, errorType, errorMessage, latencyNanos);
+            intervalMetrics.recordError(wc, errorType, errorMessage, latencyNanos);
 
             long n = errorWarnCounts.computeIfAbsent(errorType, ignored -> new AtomicLong(0))
                 .incrementAndGet();

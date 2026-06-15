@@ -32,12 +32,13 @@ public class SlowQueryWorkload extends Workload {
     }
     
     @Override
-    public void execute() throws SQLException {
+    public WorkloadExecutionResult execute() throws SQLException {
         if (random.nextDouble() < slowQueryPercent) {
             executeSlowQuery();
         } else {
             executeFastQuery();
         }
+        return WorkloadExecutionResult.oltp();
     }
     
     private void executeFastQuery() throws SQLException {

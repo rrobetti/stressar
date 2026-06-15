@@ -38,11 +38,11 @@ public class HtapWorkload extends Workload {
     }
 
     @Override
-    public void execute() throws SQLException {
+    public WorkloadExecutionResult execute() throws SQLException {
         if (random.nextDouble() < olapPercent) {
-            olapWorkload.execute();
+            return olapWorkload.execute();
         } else {
-            mixedWorkload.execute();
+            return mixedWorkload.execute();
         }
     }
 

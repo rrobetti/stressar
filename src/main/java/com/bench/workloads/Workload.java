@@ -43,10 +43,11 @@ public abstract class Workload {
     }
     
     /**
-     * Execute one workload operation.
+     * Execute one workload operation and return its workload classification.
+     * @return the classification of the operation that was executed
      * @throws SQLException on database errors
      */
-    public abstract void execute() throws SQLException;
+    public abstract WorkloadExecutionResult execute() throws SQLException;
     
     /**
      * Get workload name.
