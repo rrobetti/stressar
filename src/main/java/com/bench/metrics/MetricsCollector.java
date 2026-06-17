@@ -20,7 +20,7 @@ public class MetricsCollector {
     /** Captures the first error message seen for each error type, for diagnostics. */
     private final Map<String, String> firstErrorMessageByType;
     
-    private final long startTimeMs;
+    private volatile long startTimeMs;
     
     public MetricsCollector() {
         this.latencyRecorder = new LatencyRecorder(600000, 3); // Track up to 600s (10 min) latencies
@@ -129,7 +129,9 @@ public class MetricsCollector {
     }
     
     /**
-     * Reset all metrics.
+     * Reset all metrics, including the start-time clock.
+     * Call this after a warmup period so that elapsed-time calculations
+     * (and thus computed RPS values) reflect only the steady-state window.
      */
     public void reset() {
         attemptedRequests.set(0);
@@ -140,6 +142,7 @@ public class MetricsCollector {
         errorsByType.clear();
         firstErrorMessageByType.clear();
         latencyRecorder.reset();
+        startTimeMs = System.currentTimeMillis();
     }
     
     /**
