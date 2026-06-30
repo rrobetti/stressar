@@ -245,6 +245,18 @@ public class TrueOpenLoopLoadGenerator extends LoadGenerator {
     }
     
     /**
+     * Reset the open-loop diagnostic counters (attempted ops, missed opportunities,
+     * scheduling delay) so that post-warmup reporting reflects only the steady-state
+     * window.  Call this immediately after the warmup period ends and before the
+     * steady-state measurement begins.
+     */
+    public void resetAtWarmupEnd() {
+        attemptedOps.set(0);
+        missedOpportunities.set(0);
+        schedulingDelaysNanos.set(0);
+    }
+
+    /**
      * Get total attempted operations.
      */
     public long getAttemptedOps() {

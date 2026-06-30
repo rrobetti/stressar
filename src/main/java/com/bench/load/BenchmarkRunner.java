@@ -159,9 +159,17 @@ public class BenchmarkRunner {
                         loadGen.start();
                         Thread.sleep(warmupSec * 1000L);
 
-                        // Reset metrics after warmup
+                        // Reset metrics after warmup: counters and the start-time clock so that
+                        // elapsed-time / RPS calculations reflect the steady-state window only.
                         metrics.reset();
                         intervalMetrics.reset();
+                        // Clear interval snapshot history so delta calculations don't mix
+                        // warmup and steady-state counts, which would produce negative RPS.
+                        intervalSnapshots.clear();
+                        // Reset open-loop diagnostic counters for the same reason.
+                        if (trueOpenLoop != null) {
+                            trueOpenLoop.resetAtWarmupEnd();
+                        }
                         logger.info("Warmup complete, metrics reset");
                     } else {
                         loadGen.start();
