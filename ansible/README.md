@@ -51,7 +51,7 @@ in `inventory.yml` (do not use `local`).
 
 | Step | Playbook / Script | What happens |
 |------|------------------|--------------|
-| 1 | `setup.yml` | Installs PostgreSQL 16 on the DB node and tunes it for benchmarking. Installs Java 24 + OJP Server on each proxy node (SUT-B). Installs pgBouncer on each proxy node and HAProxy on the LB node (SUT-C, via `--tags pgbouncer,haproxy`). Builds the `bench` tool on the control node. Initialises the benchmark database. |
+| 1 | `setup.yml` | Installs PostgreSQL 16 on the DB node and tunes it for benchmarking. Installs Java 25 + OJP Server on each proxy node (SUT-B). Installs pgBouncer on each proxy node and HAProxy on the LB node (SUT-C, via `--tags pgbouncer,haproxy`). Builds the `bench` tool on the control node. Initialises the benchmark database. |
 | 2a | `run_benchmarks_hikari.yml` | **hikari-prod (SUT-A):** orchestrated from `control`, benchmark JVM replicas run on `loadgen` hosts, direct JDBC to PostgreSQL with local HikariCP multiplication. |
 | 2b | `run_benchmarks_ojp.yml` | **ojp-prod (SUT-B):** orchestrated from `control`, benchmark JVM replicas run on `loadgen` hosts, OJP service validated on `ojp` nodes, no local client-side HikariCP pool. |
 | 2c | `run_benchmarks_pgbouncer.yml` | **pgbouncer-prod (SUT-C):** orchestrated from `control`, benchmark JVM replicas run on `loadgen` hosts, traffic via `haproxy` to `pgbouncer` nodes. |
@@ -495,7 +495,7 @@ ansible-playbook -i ansible/inventory.yml ansible/playbooks/run_benchmarks_pgbou
 | Tag | What runs |
 |-----|-----------|
 | `db` | PostgreSQL install + configure |
-| `ojp` | Java 24 + OJP Server install (SUT-B only) |
+| `ojp` | Java 25 + OJP Server install (SUT-B only) |
 | `pgbouncer` | pgBouncer install + configure on proxy nodes (SUT-C only) |
 | `haproxy` | HAProxy install + configure on the LB node (SUT-C only) |
 | `bench` | Build bench tool |
@@ -649,7 +649,7 @@ ansible/
 │   │   └── templates/
 │   │       ├── postgresql.conf.j2
 │   │       └── pg_hba.conf.j2
-│   ├── ojp_proxy/                     # Install Java 24 + OJP Server (systemd) — SUT-B only
+│   ├── ojp_proxy/                     # Install Java 25 + OJP Server (systemd) — SUT-B only
 │   │   ├── defaults/main.yml
 │   │   ├── handlers/main.yml
 │   │   ├── tasks/main.yml
