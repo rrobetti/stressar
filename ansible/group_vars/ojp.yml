@@ -12,5 +12,5 @@ ojp_server_virtual_threads_enabled: false
 # docs/RATIONALE.md Appendix B for the full rationale.
 ojp_server_slow_query_segregation_enabled: true
 
-# Java version required by OJP Server.
-java_package: "temurin-24-jdk"
+# Java version required by OJP Server 0.5.0-beta.
+java_package: "temurin-25-jdk"

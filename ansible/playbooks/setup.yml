@@ -3,7 +3,7 @@
 #
 # Full infrastructure setup:
 #   1. Installs and configures PostgreSQL 16 on the db group.
-#   2. Installs Java 24 + OJP Server on every ojp node.            (SUT-B only, --tags ojp)
+#   2. Installs Java 25 + OJP Server on every ojp node.            (SUT-B only, --tags ojp)
 #   3. Installs pgBouncer on every pgbouncer node.                  (SUT-C only, --tags pgbouncer)
 #   4. Installs HAProxy on the haproxy node.                        (SUT-C only, --tags haproxy)
 #   5. Initialises the benchmark database from the control node.

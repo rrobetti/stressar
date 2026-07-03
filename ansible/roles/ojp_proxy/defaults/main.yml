@@ -8,4 +8,4 @@ ojp_server_virtual_threads_enabled: false
 # Slow query segregation is enabled by default — see ansible/group_vars/ojp.yml
 # and docs/RATIONALE.md Appendix B for the rationale.
 ojp_server_slow_query_segregation_enabled: true
-java_package:     "temurin-24-jdk"
+java_package:     "temurin-25-jdk"
