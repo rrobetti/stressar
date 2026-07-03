@@ -98,6 +98,7 @@ public class BenchmarkRunner {
             long steadyStateStart;
             Double appCpuMedian;
             Long gcPauseMsTotal;
+            MetricsSnapshot finalSnapshot = null;
 
             try (TimeseriesWriter timeseriesWriter = new TimeseriesWriter(
                     Paths.get(outputDir, "timeseries.csv").toString())) {
@@ -185,6 +186,11 @@ public class BenchmarkRunner {
                         // Stop load
                         loadGen.stop();
 
+                        // Capture metrics immediately after load stops so that elapsedSeconds
+                        // reflects only the measurement window (durationSec + drain overhead),
+                        // not the cooldown or scheduler-shutdown overhead that follows.
+                        finalSnapshot = metrics.getSnapshot();
+
                         // Cooldown phase
                         if (cooldownSec > 0) {
                             logger.info("=== Cooldown phase: {} seconds ===", cooldownSec);
@@ -196,9 +202,6 @@ public class BenchmarkRunner {
                     }
                 }
             }
-
-            // Get final metrics
-            MetricsSnapshot finalSnapshot = metrics.getSnapshot();
 
             // Populate in-process system metrics fields on the snapshot
             finalSnapshot.setAppCpuMedian(appCpuMedian);
