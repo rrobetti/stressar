@@ -762,7 +762,7 @@ proxy overhead that is the subject of study. The 64 GB allocation requires a mac
   affect other replicas on the same machine. 8 GB stays well within the 32 GB machine RAM,
   leaving ample memory for the OS and network stack.
 
-- **Java 25:** Required by OJP Server `0.5.0-beta`; keeps the proxy tier on the matching LTS
+- **Java 25:** Required by OJP Server `0.5.1-beta`; keeps the proxy tier on the matching LTS
   runtime while preserving stable G1GC behavior and Virtual Threads availability for future OJP
   configurations.
 
