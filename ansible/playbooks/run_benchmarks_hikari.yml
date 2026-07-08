@@ -335,6 +335,28 @@
         mode: "0644"
       loop: "{{ remote_summaries.results }}"
 
+    # ── Fetch raw metrics files (timeseries + HDR histogram) from loadgen hosts ─
+
+    - name: Fetch replica timeseries.csv from loadgen hosts
+      ansible.builtin.fetch:
+        src: "{{ remote_run_root }}/replica-{{ item }}/timeseries.csv"
+        dest: "{{ bench_results_dir }}/{{ run_name }}/replica-{{ item }}/timeseries.csv"
+        flat: true
+        fail_on_missing: false
+        validate_checksum: false
+      delegate_to: "{{ loadgen_hosts[item | int % loadgen_count | int] }}"
+      loop: "{{ range(0, bench_replica_count | int) | list }}"
+
+    - name: Fetch replica hdr.hlog from loadgen hosts
+      ansible.builtin.fetch:
+        src: "{{ remote_run_root }}/replica-{{ item }}/hdr.hlog"
+        dest: "{{ bench_results_dir }}/{{ run_name }}/replica-{{ item }}/hdr.hlog"
+        flat: true
+        fail_on_missing: false
+        validate_checksum: false
+      delegate_to: "{{ loadgen_hosts[item | int % loadgen_count | int] }}"
+      loop: "{{ range(0, bench_replica_count | int) | list }}"
+
     # ── Stop PostgreSQL metrics side-car; fetch CSV ───────────────────────────
 
     - name: Stop PostgreSQL metrics collection on DB node
