@@ -79,7 +79,9 @@ HEADER
   # before the static separator strings and all detail blocks follow after them.
   jq -r '
     def nstr:       if . != null then tostring else "N/A" end;
-    def mb_to_gib:  . / 1024 * 10 | round / 10;
+    # mb_to_gib: MiB → GiB rounded to one decimal place.
+    # Pattern: multiply by 10, round to integer, divide by 10.
+    def mb_to_gib:  (. / 1024 * 10 | round) / 10;
     def mem_short:  if . != null and . > 0
                     then (mb_to_gib | tostring) + " GiB"
                     else "N/A" end;
