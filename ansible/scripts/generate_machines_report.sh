@@ -76,6 +76,8 @@ HEADER
 
   # One summary row per host
   jq -r '
+    def mem_gib: if . != null and . > 0 then (. / 1024 * 10 | round / 10 | tostring) + " GiB" else "N/A" end;
+    def nstr: if . != null then tostring else "N/A" end;
     .hosts[] |
     {
       h:   .inventory_hostname,
@@ -84,12 +86,10 @@ HEADER
       os:  ((.os_name // "N/A") + " " + (.os_version // "") | rtrimstr(" ")),
       arc: (.architecture // "N/A"),
       cpu: (.cpu_model // "N/A"),
-      skt: (if .cpu_sockets != null then (.cpu_sockets | tostring) else "N/A" end),
-      cps: (if .cpu_cores_per_socket != null then (.cpu_cores_per_socket | tostring) else "N/A" end),
-      vcpu:(if .cpu_vcpus != null then (.cpu_vcpus | tostring) else "N/A" end),
-      mem: (if .total_memory_mb != null and .total_memory_mb > 0
-            then (.total_memory_mb / 1024 * 10 | round / 10 | tostring) + " GiB"
-            else "N/A" end)
+      skt: (.cpu_sockets | nstr),
+      cps: (.cpu_cores_per_socket | nstr),
+      vcpu:(.cpu_vcpus | nstr),
+      mem: (.total_memory_mb | mem_gib)
     } |
     "| \(.h) | `\(.ip)` | \(.r) | \(.os) | \(.arc) | \(.cpu) | \(.skt) × \(.cps) | \(.vcpu) | \(.mem) |"
   ' "${NODE_INVENTORY}"
@@ -102,6 +102,8 @@ HEADER
 
   # Detailed block per host
   jq -r '
+    def mem_gib: if . != null and . > 0 then (. / 1024 * 10 | round / 10 | tostring) + " GiB (" + (. | tostring) + " MiB)" else "N/A" end;
+    def nstr: if . != null then tostring else "N/A" end;
     .hosts[] |
     "### " + .inventory_hostname + "\n\n" +
     "| Field | Value |\n" +
@@ -115,14 +117,11 @@ HEADER
     "| **Kernel** | " + (.kernel // "N/A") + " |\n" +
     "| **Architecture** | " + (.architecture // "N/A") + " |\n" +
     "| **CPU model** | " + (.cpu_model // "N/A") + " |\n" +
-    "| **CPU sockets** | " + (if .cpu_sockets != null then (.cpu_sockets | tostring) else "N/A" end) + " |\n" +
-    "| **Cores per socket** | " + (if .cpu_cores_per_socket != null then (.cpu_cores_per_socket | tostring) else "N/A" end) + " |\n" +
-    "| **Threads per core** | " + (if .cpu_threads_per_core != null then (.cpu_threads_per_core | tostring) else "N/A" end) + " |\n" +
-    "| **Total vCPUs** | " + (if .cpu_vcpus != null then (.cpu_vcpus | tostring) else "N/A" end) + " |\n" +
-    "| **Total memory** | " +
-      (if .total_memory_mb != null and .total_memory_mb > 0
-       then (.total_memory_mb / 1024 * 10 | round / 10 | tostring) + " GiB (" + (.total_memory_mb | tostring) + " MiB)"
-       else "N/A" end) + " |\n"
+    "| **CPU sockets** | " + (.cpu_sockets | nstr) + " |\n" +
+    "| **Cores per socket** | " + (.cpu_cores_per_socket | nstr) + " |\n" +
+    "| **Threads per core** | " + (.cpu_threads_per_core | nstr) + " |\n" +
+    "| **Total vCPUs** | " + (.cpu_vcpus | nstr) + " |\n" +
+    "| **Total memory** | " + (.total_memory_mb | mem_gib) + " |\n"
   ' "${NODE_INVENTORY}"
 
 cat <<FOOTER
