@@ -45,15 +45,16 @@
         'os_release':          hostvars[item].ansible_distribution_release  | default('N/A'),
         'kernel':              hostvars[item].ansible_kernel                | default('N/A'),
         'architecture':        hostvars[item].ansible_machine               | default('N/A'),
-        'cpu_model':
-          (hostvars[item].ansible_processor | default([])
-           | reject('match', '^[0-9]+$')
-           | reject('equalto', 'GenuineIntel')
-           | reject('equalto', 'AuthenticAMD')
-           | reject('equalto', 'ARM')
-           | reject('equalto', 'CentaurHauls')
-           | reject('equalto', 'HygonGenuine')
-           | list | unique | first) | default('N/A'),
+        'cpu_model': >-
+          {%- set _cpu_candidates = hostvars[item].ansible_processor | default([])
+               | reject('match', '^[0-9]+$')
+               | reject('equalto', 'GenuineIntel')
+               | reject('equalto', 'AuthenticAMD')
+               | reject('equalto', 'ARM')
+               | reject('equalto', 'CentaurHauls')
+               | reject('equalto', 'HygonGenuine')
+               | list | unique -%}
+          {{ _cpu_candidates[0] | default('N/A') }},
         'cpu_sockets':         hostvars[item].ansible_processor_count       | default(none),
         'cpu_cores_per_socket': hostvars[item].ansible_processor_cores      | default(none),
         'cpu_threads_per_core': hostvars[item].ansible_processor_threads_per_core | default(none),

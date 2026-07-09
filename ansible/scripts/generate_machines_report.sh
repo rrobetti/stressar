@@ -79,17 +79,27 @@ HEADER
   # before the static separator strings and all detail blocks follow after them.
   jq -r '
     def nstr:       if . != null then tostring else "N/A" end;
+    def mb_to_gib:  . / 1024 * 10 | round / 10;
     def mem_short:  if . != null and . > 0
-                    then (. / 1024 * 10 | round / 10 | tostring) + " GiB"
+                    then (mb_to_gib | tostring) + " GiB"
                     else "N/A" end;
     def mem_long:   if . != null and . > 0
-                    then (. / 1024 * 10 | round / 10 | tostring) + " GiB (" + (. | tostring) + " MiB)"
+                    then (mb_to_gib | tostring) + " GiB (" + (. | tostring) + " MiB)"
                     else "N/A" end;
     def roles_str:  (.roles // []) | join(", ") | if . == "" then "—" else . end;
+    def os_str:     (.os_name // "N/A") + " " + (.os_version // "") | rtrimstr(" ");
 
     # ── Summary table rows ────────────────────────────────────────
     (.hosts[] |
-      "| \(.inventory_hostname) | `\(.ansible_host // "N/A")` | \(roles_str) | \((.os_name // "N/A") + " " + (.os_version // "") | rtrimstr(" ")) | \(.architecture // "N/A") | \(.cpu_model // "N/A") | \(.cpu_sockets | nstr) × \(.cpu_cores_per_socket | nstr) | \(.cpu_vcpus | nstr) | \(.total_memory_mb | mem_short) |"
+      "| " + .inventory_hostname +
+      " | `" + (.ansible_host // "N/A") + "`" +
+      " | " + roles_str +
+      " | " + os_str +
+      " | " + (.architecture // "N/A") +
+      " | " + (.cpu_model // "N/A") +
+      " | " + (.cpu_sockets | nstr) + " × " + (.cpu_cores_per_socket | nstr) +
+      " | " + (.cpu_vcpus | nstr) +
+      " | " + (.total_memory_mb | mem_short) + " |"
     ),
 
     # ── Section break (output once, between summary and detail) ───
