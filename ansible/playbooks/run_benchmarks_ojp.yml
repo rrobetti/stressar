@@ -54,6 +54,15 @@
           — re-run setup.yml --tags ojp to install/start it.
         success_msg: "ojp-server is running on {{ inventory_hostname }}"
 
+- name: Collect machine facts from all inventory hosts
+  # Facts are gathered before the benchmark starts so hardware details
+  # (CPU model, memory, OS) can be recorded in node_inventory.json and
+  # machines_report.md alongside the performance data.
+  hosts: all
+  gather_facts: true
+  ignore_unreachable: true
+  tasks: []
+
 - name: Run benchmark from control node
   hosts: control
   gather_facts: false
@@ -130,6 +139,12 @@
             "real_db_connections_per_ojp_server": {{ (bench_db_connection_budget | int / (groups['ojp'] | length if (groups['ojp'] | length) > 0 else 1)) | round(0, 'ceil') | int }},
             "external_lb": false
           }
+
+    # ── Node hardware inventory (written before the test runs) ────────────────
+
+    - name: Collect node hardware inventory for machines report
+      ansible.builtin.include_tasks:
+        file: "{{ bench_repo_dir }}/ansible/tasks/write_node_inventory.yml"
 
     - name: Assert loadgen inventory is defined
       ansible.builtin.assert:
@@ -588,9 +603,21 @@
       register: report_out
       changed_when: true
 
+    - name: Generate machines report
+      ansible.builtin.command: >
+        {{ bench_repo_dir }}/ansible/scripts/generate_machines_report.sh
+          "{{ bench_results_dir }}/{{ run_name }}"
+          "{{ bench_results_dir }}/{{ run_name }}/machines_report.md"
+      register: machines_report_out
+      changed_when: true
+
     - name: Print report location
       ansible.builtin.debug:
         msg: "Report written to {{ bench_results_dir }}/{{ run_name }}/report.md"
+
+    - name: Print machines report location
+      ansible.builtin.debug:
+        msg: "Machines report written to {{ bench_results_dir }}/{{ run_name }}/machines_report.md"
 
     - name: Print report summary
       ansible.builtin.command: >
