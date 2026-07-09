@@ -21,6 +21,13 @@
     _node_inventory_hosts: []
 
 - name: Build node inventory from gathered facts
+  # ansible_processor is a flat list structured as repeating triples per socket:
+  #   [socket_index, vendor_id, model_name, ...]
+  # e.g. ["0", "GenuineIntel", "Intel(R) Xeon(R) ..."]
+  # We extract the CPU model by filtering out pure-numeric socket indices and
+  # known vendor ID strings, then taking the first unique remaining value.
+  # Known vendor IDs: GenuineIntel, AuthenticAMD, ARM, CentaurHauls, HygonGenuine.
+  # Extend the reject list below if other platforms are added to your inventory.
   ansible.builtin.set_fact:
     _node_inventory_hosts: >-
       {{ _node_inventory_hosts + [{
@@ -45,6 +52,7 @@
            | reject('equalto', 'AuthenticAMD')
            | reject('equalto', 'ARM')
            | reject('equalto', 'CentaurHauls')
+           | reject('equalto', 'HygonGenuine')
            | list | unique | first) | default('N/A'),
         'cpu_sockets':         hostvars[item].ansible_processor_count       | default(none),
         'cpu_cores_per_socket': hostvars[item].ansible_processor_cores      | default(none),

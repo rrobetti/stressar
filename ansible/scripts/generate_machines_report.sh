@@ -74,54 +74,47 @@ cat <<HEADER
 |------|-----------|---------|----|-----------|-----------|-----------------------|-------|-------------|
 HEADER
 
-  # One summary row per host
+  # Single jq pass: emit summary rows, then section divider, then detail blocks.
+  # In jq the comma operator produces sequential output, so all summary rows appear
+  # before the static separator strings and all detail blocks follow after them.
   jq -r '
-    def mem_gib: if . != null and . > 0 then (. / 1024 * 10 | round / 10 | tostring) + " GiB" else "N/A" end;
-    def nstr: if . != null then tostring else "N/A" end;
-    .hosts[] |
-    {
-      h:   .inventory_hostname,
-      ip:  (.ansible_host // "N/A"),
-      r:   ((.roles // []) | join(", ") | if . == "" then "—" else . end),
-      os:  ((.os_name // "N/A") + " " + (.os_version // "") | rtrimstr(" ")),
-      arc: (.architecture // "N/A"),
-      cpu: (.cpu_model // "N/A"),
-      skt: (.cpu_sockets | nstr),
-      cps: (.cpu_cores_per_socket | nstr),
-      vcpu:(.cpu_vcpus | nstr),
-      mem: (.total_memory_mb | mem_gib)
-    } |
-    "| \(.h) | `\(.ip)` | \(.r) | \(.os) | \(.arc) | \(.cpu) | \(.skt) × \(.cps) | \(.vcpu) | \(.mem) |"
-  ' "${NODE_INVENTORY}"
+    def nstr:       if . != null then tostring else "N/A" end;
+    def mem_short:  if . != null and . > 0
+                    then (. / 1024 * 10 | round / 10 | tostring) + " GiB"
+                    else "N/A" end;
+    def mem_long:   if . != null and . > 0
+                    then (. / 1024 * 10 | round / 10 | tostring) + " GiB (" + (. | tostring) + " MiB)"
+                    else "N/A" end;
+    def roles_str:  (.roles // []) | join(", ") | if . == "" then "—" else . end;
 
-  echo ""
-  echo "---"
-  echo ""
-  echo "## Detailed Specifications"
-  echo ""
+    # ── Summary table rows ────────────────────────────────────────
+    (.hosts[] |
+      "| \(.inventory_hostname) | `\(.ansible_host // "N/A")` | \(roles_str) | \((.os_name // "N/A") + " " + (.os_version // "") | rtrimstr(" ")) | \(.architecture // "N/A") | \(.cpu_model // "N/A") | \(.cpu_sockets | nstr) × \(.cpu_cores_per_socket | nstr) | \(.cpu_vcpus | nstr) | \(.total_memory_mb | mem_short) |"
+    ),
 
-  # Detailed block per host
-  jq -r '
-    def mem_gib: if . != null and . > 0 then (. / 1024 * 10 | round / 10 | tostring) + " GiB (" + (. | tostring) + " MiB)" else "N/A" end;
-    def nstr: if . != null then tostring else "N/A" end;
-    .hosts[] |
-    "### " + .inventory_hostname + "\n\n" +
-    "| Field | Value |\n" +
-    "|-------|-------|\n" +
-    "| **Inventory hostname** | `" + .inventory_hostname + "` |\n" +
-    "| **IP address** | `" + (.ansible_host // "N/A") + "` |\n" +
-    "| **Role(s)** | " + ((.roles // []) | join(", ") | if . == "" then "—" else . end) + " |\n" +
-    "| **OS name** | " + (.os_name // "N/A") + " |\n" +
-    "| **OS version** | " + (.os_version // "N/A") + " |\n" +
-    "| **OS release codename** | " + (.os_release // "N/A") + " |\n" +
-    "| **Kernel** | " + (.kernel // "N/A") + " |\n" +
-    "| **Architecture** | " + (.architecture // "N/A") + " |\n" +
-    "| **CPU model** | " + (.cpu_model // "N/A") + " |\n" +
-    "| **CPU sockets** | " + (.cpu_sockets | nstr) + " |\n" +
-    "| **Cores per socket** | " + (.cpu_cores_per_socket | nstr) + " |\n" +
-    "| **Threads per core** | " + (.cpu_threads_per_core | nstr) + " |\n" +
-    "| **Total vCPUs** | " + (.cpu_vcpus | nstr) + " |\n" +
-    "| **Total memory** | " + (.total_memory_mb | mem_gib) + " |\n"
+    # ── Section break (output once, between summary and detail) ───
+    "", "---", "", "## Detailed Specifications", "",
+
+    # ── Per-host detail blocks ────────────────────────────────────
+    (.hosts[] |
+      "### " + .inventory_hostname + "\n\n" +
+      "| Field | Value |\n" +
+      "|-------|-------|\n" +
+      "| **Inventory hostname** | `" + .inventory_hostname + "` |\n" +
+      "| **IP address** | `" + (.ansible_host // "N/A") + "` |\n" +
+      "| **Role(s)** | " + roles_str + " |\n" +
+      "| **OS name** | " + (.os_name // "N/A") + " |\n" +
+      "| **OS version** | " + (.os_version // "N/A") + " |\n" +
+      "| **OS release codename** | " + (.os_release // "N/A") + " |\n" +
+      "| **Kernel** | " + (.kernel // "N/A") + " |\n" +
+      "| **Architecture** | " + (.architecture // "N/A") + " |\n" +
+      "| **CPU model** | " + (.cpu_model // "N/A") + " |\n" +
+      "| **CPU sockets** | " + (.cpu_sockets | nstr) + " |\n" +
+      "| **Cores per socket** | " + (.cpu_cores_per_socket | nstr) + " |\n" +
+      "| **Threads per core** | " + (.cpu_threads_per_core | nstr) + " |\n" +
+      "| **Total vCPUs** | " + (.cpu_vcpus | nstr) + " |\n" +
+      "| **Total memory** | " + (.total_memory_mb | mem_long) + " |\n"
+    )
   ' "${NODE_INVENTORY}"
 
 cat <<FOOTER
