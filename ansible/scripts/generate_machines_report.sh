@@ -47,16 +47,8 @@ command -v jq >/dev/null 2>&1 || {
   exit 1
 }
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
 collected_at=$(jq -r '.collected_at // "N/A"' "${NODE_INVENTORY}")
 host_count=$(jq '.hosts | length' "${NODE_INVENTORY}")
-
-# Format memory: MiB → GiB rounded to one decimal place
-mem_gib() {
-  # $1 = jq expression for the memory_mb field (already selected as a number or null)
-  awk "BEGIN { if ($1 == \"null\" || $1 == 0) { print \"N/A\" } else { printf \"%.1f GiB\", $1 / 1024 } }"
-}
 
 mkdir -p "$(dirname "${OUTPUT_FILE}")"
 
