@@ -171,18 +171,6 @@
         - "{{ local_lb_csv_dir }}"
         - "{{ local_db_csv_dir }}"
 
-    - name: Generate machines report
-      ansible.builtin.command: >
-        {{ bench_repo_dir }}/ansible/scripts/generate_machines_report.sh
-          "{{ bench_results_dir }}/{{ run_name }}"
-          "{{ bench_results_dir }}/{{ run_name }}/machines_report.md"
-      register: machines_report_out
-      changed_when: true
-
-    - name: Print machines report location
-      ansible.builtin.debug:
-        msg: "Machines report written to {{ bench_results_dir }}/{{ run_name }}/machines_report.md"
-
     - name: Write run metadata
       ansible.builtin.copy:
         dest: "{{ bench_results_dir }}/{{ run_name }}/run_metadata.json"
@@ -671,9 +659,21 @@
       register: report_out
       changed_when: true
 
+    - name: Generate machines report
+      ansible.builtin.command: >
+        {{ bench_repo_dir }}/ansible/scripts/generate_machines_report.sh
+          "{{ bench_results_dir }}/{{ run_name }}"
+          "{{ bench_results_dir }}/{{ run_name }}/machines_report.md"
+      register: machines_report_out
+      changed_when: true
+
     - name: Print report location
       ansible.builtin.debug:
         msg: "Report written to {{ bench_results_dir }}/{{ run_name }}/report.md"
+
+    - name: Print machines report location
+      ansible.builtin.debug:
+        msg: "Machines report written to {{ bench_results_dir }}/{{ run_name }}/machines_report.md"
 
     - name: Print report summary
       ansible.builtin.command: >
