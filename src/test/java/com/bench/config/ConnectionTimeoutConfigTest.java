@@ -29,5 +29,6 @@ public class ConnectionTimeoutConfigTest {
         HikariConfig config = PgbouncerProvider.getHikariConfig(dbConfig, 9, 23456);
 
         assertEquals(23456, config.getConnectionTimeout());
+        assertEquals("org.postgresql.Driver", config.getDriverClassName());
     }
 }
