@@ -44,6 +44,9 @@ public class PgbouncerProvider implements ConnectionProvider {
 
     static HikariConfig getHikariConfig(DatabaseConfig dbConfig, int poolSize, int connectionTimeoutMs) {
         HikariConfig config = new HikariConfig();
+        // Keep pgBouncer mode pinned to the PostgreSQL driver even when other JDBC
+        // drivers are on the classpath (e.g., OJP).
+        config.setDriverClassName("org.postgresql.Driver");
         config.setJdbcUrl(dbConfig.getJdbcUrl());  // Should point to PgBouncer endpoint
         config.setUsername(dbConfig.getUsername());
         config.setPassword(dbConfig.getPassword());
