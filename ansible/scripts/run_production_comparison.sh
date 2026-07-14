@@ -380,7 +380,7 @@ collect_failure_logs() {
         --become \
         -m ansible.builtin.shell \
         -a "journalctl -u ojp-server.service --no-pager -n 5000 2>&1 || true" \
-        2>&1 | tee "${dest}/ojp-server.journal.log" || true
+        > "${dest}/ojp-server.journal.log" 2>&1 || true
     )
     echo "  OJP proxy journal   -> ${dest}/ojp-server.journal.log"
   elif [[ "${proxy_type}" == "pgbouncer" ]]; then
@@ -392,7 +392,7 @@ collect_failure_logs() {
         --become \
         -m ansible.builtin.shell \
         -a "journalctl -u pgbouncer.service --no-pager -n 5000 2>&1 || true" \
-        2>&1 | tee "${dest}/pgbouncer.log" || true
+        > "${dest}/pgbouncer.log" 2>&1 || true
     )
     echo "  pgBouncer logs      -> ${dest}/pgbouncer.log"
   fi
